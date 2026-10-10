@@ -1,0 +1,56 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+joint_trajectory_controller:
+  ros__parameters:
+    # Alle 26 beweglichen Gelenke aus R1.urdf (siehe R1_GELENKE in
+    # steuerung_gazebo.launch.py -- muss mit dem dortigen <ros2_control>-
+    # Block uebereinstimmen, sonst meldet der Controller beim Start
+    # fehlende Command-/State-Interfaces).
+    joints:
+      - left_hip_pitch_joint
+      - left_hip_roll_joint
+      - left_hip_yaw_joint
+      - left_knee_joint
+      - left_ankle_pitch_joint
+      - left_ankle_roll_joint
+      - right_hip_pitch_joint
+      - right_hip_roll_joint
+      - right_hip_yaw_joint
+      - right_knee_joint
+      - right_ankle_pitch_joint
+      - right_ankle_roll_joint
+      - waist_roll_joint
+      - waist_yaw_joint
+      - left_shoulder_pitch_joint
+      - left_shoulder_roll_joint
+      - left_shoulder_yaw_joint
+      - left_elbow_joint
+      - left_wrist_roll_joint
+      - right_shoulder_pitch_joint
+      - right_shoulder_roll_joint
+      - right_shoulder_yaw_joint
+      - right_elbow_joint
+      - right_wrist_roll_joint
+      - head_pitch_joint
+      - head_yaw_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+    # Erlaubt Testbefehle, die nur EIN einzelnes Gelenk ansprechen
+    # (statt aller 26 auf einmal) -- ohne das lehnt der Controller
+    # solche Trajectory-Nachrichten kommentarlos ab (kein Fehler im
+    # ros2-topic-pub-Terminal sichtbar, nur eine Warnung im
+    # controller_manager-Log). Genau das war der Grund, warum sich
+    # beim ersten Test nichts bewegt hat.
+    allow_partial_joints_goal: true
