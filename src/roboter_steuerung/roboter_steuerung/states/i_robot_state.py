@@ -4,10 +4,14 @@ from abc import ABC, abstractmethod
 class IRobotState(ABC):
     """
     Abstrakte Basisklasse (Layer 3, State Pattern) fuer die Roboter-
-    Zustaende "Gehen"/"Balancieren" (siehe RoboterZustandsautomat im
-    SysML-Modell - dort als Teil eines groesseren Zustandsautomaten mit
-    weiteren, hier nicht relevanten Zustaenden wie AkkuSchwach/Laden/
-    NotAus, die auf dieser ROS2-Ebene bisher nicht abgebildet sind).
+    Zustaende (siehe RoboterZustandsautomat im SysML-Modell,
+    RoboterZustaende.sysml). Stand 12.10.2026: "Start", "Bereitschaft",
+    "Gehen", "Balancieren" und "NotAus" sind auf dieser ROS2-Ebene
+    implementiert (siehe start_state.py/bereitschaft_state.py/
+    gehen_state.py/balancieren_state.py/not_aus_state.py). "AkkuSchwach"
+    und "Laden" bleiben bewusst zurueckgestellt - dafuer gibt es in der
+    MuJoCo-Simulation keine echten Batteriedaten, nur ein erfundener
+    Platzhalterwert waere moeglich (siehe Statusupdate/Chat-Historie).
 
     Definiert nur den "Vertrag" (ein Zustand fuehrt pro Regelungstakt
     eine execute()-Methode aus und entscheidet dabei selbst, ob in einen

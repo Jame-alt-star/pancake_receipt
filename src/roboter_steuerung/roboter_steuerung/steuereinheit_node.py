@@ -3,13 +3,16 @@ import yaml
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
 
 from r1_bringup.bridges.mujoco_bridge import MujocoBridge
 from roboter_steuerung.control.rl_locomotion_controller import RLLocomotionController
-from roboter_steuerung.states.gehen_state import GehenState
+from roboter_steuerung.states.start_state import StartState
+from roboter_steuerung.states.bereitschaft_state import BereitschaftState
+from roboter_steuerung.states.not_aus_state import NotAusState
 
 
 # NEU (12.10.2026): maximale Aenderungsrate von self.cmd pro Sekunde (siehe
@@ -83,6 +86,15 @@ class SteuereinheitNode(Node):
     roboter_steuerung/states/), nicht mehr fest in diesem Knoten. Dieser
     Knoten ruft pro Takt nur noch self.state.execute(self) auf und
     uebernimmt den zurueckgegebenen Zustand fuer den naechsten Takt.
+
+    NEU (12.10.2026): der Zustandsautomat deckt jetzt zusaetzlich
+    StartState (noch keine gueltigen Sensordaten), BereitschaftState
+    (ein Takt Uebergang) und NotAusState ab (siehe RoboterZustaende.sysml
+    fuer den vollen SysML-Automaten). NotAusState wird als einziger
+    davon NICHT ueber den normalen execute()-Rueckgabewert erreicht,
+    sondern zentral in _control_loop() erzwungen (siehe dort) - Not-Aus
+    muss jeden anderen Zustand unterbrechen koennen. AkkuSchwach/Laden
+    bleiben bewusst zurueckgestellt (siehe i_robot_state.py).
     """
 
     def __init__(self):
@@ -128,6 +140,19 @@ class SteuereinheitNode(Node):
         self.cmd_target = np.array(self.config.get("cmd_init", [0.5, 0.0, 0.0]), dtype=np.float32)
         self.cmd = self.cmd_target.copy()
 
+        # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
+        # BereitschaftState sofort anhand von cmd_target entscheiden -
+        # und cmd_target startet mit cmd_init (haeufig != 0), der
+        # Roboter wuerde also direkt nach dem Hochfahren von sich aus
+        # loslaufen, OHNE dass je ein Bediener ein Kommando gesendet
+        # hat. True wird es erst in _cmd_vel_callback(), sobald die
+        # ERSTE echte /cmd_vel-Nachricht ankommt (siehe dort) - das ist
+        # die eigentliche "Freigabe", nach der BereitschaftState
+        # wartet (siehe bereitschaft_state.py). cmd_init bleibt dadurch
+        # nur noch ein Platzhalter-Anfangswert, der erst nach der
+        # Freigabe tatsaechlich wirksam werden kann.
+        self.bewegung_freigegeben = False
+
         # NEU (12.10.2026): Soll-Ausrichtung/Soll-Position fuer die
         # Haltungs-Korrekturen (_apply_heading_hold()/
         # _apply_position_hold()). None bis zur ersten gueltigen Messung -
@@ -159,12 +184,40 @@ class SteuereinheitNode(Node):
         # Vorbereitung fuer eine spaetere Erweiterung, bewusst schon verdrahtet.
         self.pub_balance_mode = self.create_publisher(Bool, "/balance_mode", 10)
 
+        # NEU (12.10.2026): /not_aus-Subscriber - Not-Aus (SysML:
+        # RoboterZustandsautomat, Zustand "NotAus"). Recherche zur
+        # ueblichen ROS2-/Industrie-Praxis (siehe Chat-Historie): ein
+        # einzelnes, ROS(2)-weit standardisiertes Not-Aus-Topic/-Service
+        # gibt es nicht - auf echter Hardware wird Not-Aus ueblicherweise
+        # HARDWARE-seitig (Sicherheitsrelais/-schaltkreis) verdrahtet und
+        # kappt die Motorversorgung UNABHAENGIG von der Software; die
+        # Software bekommt den resultierenden Fehlerzustand nur noch
+        # gemeldet. Da hier keine solche physische Verdrahtung existiert
+        # (MuJoCo-Simulation), wird Not-Aus rein softwareseitig ausgeloest
+        # - nach demselben Muster wie /balance_mode, aber mit expliziter
+        # TRANSIENT_LOCAL-QoS ("gelatcht"): ein spaeter startender oder
+        # neu verbindender Subscriber soll den zuletzt gesetzten Zustand
+        # sofort kennen, nicht erst auf die naechste Nachricht warten
+        # muessen - bei einem Sicherheitssignal darf "ich weiss es nicht"
+        # niemals als "alles ok" fehlinterpretiert werden.
+        not_aus_qos = QoSProfile(
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+        )
+        self.not_aus_aktiv = False
+        self.sub_not_aus = self.create_subscription(
+            Bool, "/not_aus", self._not_aus_callback, not_aus_qos
+        )
+
         # NEU: initialer Zustand (State Pattern, siehe roboter_steuerung/
-        # states/). Start bewusst im GehenState - passend zum Default-
-        # Kommando cmd_init aus der YAML (meist ungleich 0). Von dort aus
-        # wechselt der Regelkreis automatisch nach BalancierenState,
-        # sobald das Kommando auf ~0 steht (siehe gehen_state.py).
-        self.state = GehenState()
+        # states/). Start jetzt im eigenen StartState (vorher implizit
+        # als frueher return im Start-Gate unten in _control_loop
+        # behandelt, siehe dort) - wechselt automatisch weiter nach
+        # BereitschaftState, sobald die erste gueltige Sensormessung da
+        # ist, und von dort nach Gehen/Balancieren je nach cmd_target.
+        self.state = StartState()
 
         # 4. Regelungsschleife takten: simulation_dt * control_decimation,
         # z.B. 0.002s * 10 = 0.02s -> 50 Hz. Muss mit der Taktung passen,
@@ -185,6 +238,25 @@ class SteuereinheitNode(Node):
         self.cmd_target = np.array(
             [msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32
         )
+
+        # NEU (12.10.2026, Realismus-Fix): das Ankommen IRGENDEINER
+        # /cmd_vel-Nachricht gilt als bewusste Freigabe durch einen
+        # Bediener/eine uebergeordnete Instanz (Joystick, Tastatur,
+        # Nav2, "ros2 topic pub") - auch ein explizites "stehen
+        # bleiben" (0,0,0) zaehlt als Freigabe, nicht nur ein
+        # Bewegungswunsch. Bleibt einmal True (kein automatisches
+        # Zuruecksetzen hier) - wird NUR beim Ausloesen von Not-Aus
+        # wieder auf False gesetzt (siehe _control_loop()), damit nach
+        # einer Entwarnung wieder eine bewusste Freigabe noetig ist.
+        self.bewegung_freigegeben = True
+
+    def _not_aus_callback(self, msg: Bool):
+        # Setzt nur das Flag - die eigentliche Reaktion (Zustandswechsel
+        # nach NotAusState bzw. zurueck nach BereitschaftState) passiert
+        # zentral in _control_loop(), nicht hier, weil Not-Aus JEDEN
+        # Zustand unterbrechen kann/muss (nicht nur Gehen/Balancieren) -
+        # siehe Kommentar dort.
+        self.not_aus_aktiv = bool(msg.data)
 
     def _ramp_cmd(self):
         """
@@ -342,6 +414,31 @@ class SteuereinheitNode(Node):
         # erhalten (fuer eine spaetere, vorsichtiger abgestimmte Variante
         # oder eine andere Policy), wird aber aktuell NICHT aufgerufen.
         # self._apply_position_hold(self.bridge.read_base_position(), quat)
+
+        # NEU (12.10.2026): Not-Aus unterbricht JEDEN Zustand, nicht nur
+        # Gehen/Balancieren - deshalb zentral hier, VOR dem normalen
+        # State-Pattern-Aufruf, statt als Teil des regulaeren
+        # execute()-Rueckgabewerts einzelner Zustaende. Erzwingt den
+        # Wechsel nach NotAusState, solange self.not_aus_aktiv True ist,
+        # und danach zurueck nach BereitschaftState, sobald es wieder
+        # False wird - inkl. Ruecksetzen von bewegung_freigegeben, damit
+        # nach einer Entwarnung eine bewusste neue Freigabe noetig ist
+        # (siehe bewegung_freigegeben oben, schliesst den vorher
+        # dokumentierten offenen Punkt).
+        if self.not_aus_aktiv:
+            if not isinstance(self.state, NotAusState):
+                self.get_logger().warn("NOT-AUS ausgeloest - Bewegungsregelung angehalten.")
+                self.state = NotAusState()
+                # NEU (12.10.2026): schliesst den vorher dokumentierten
+                # offenen Punkt - ohne das wuerde die Bewegung nach
+                # Entwarnung automatisch wieder anlaufen (letzter
+                # cmd_target-Wert war ja schon vorher gueltig). Jetzt
+                # muss nach Not-Aus erst wieder eine echte /cmd_vel-
+                # Nachricht ankommen (siehe BereitschaftState).
+                self.bewegung_freigegeben = False
+        elif isinstance(self.state, NotAusState):
+            self.get_logger().info("NOT-AUS aufgehoben - Zustandsautomat wird ab Bereitschaft fortgesetzt.")
+            self.state = BereitschaftState()
 
         # State Pattern (siehe roboter_steuerung/states/): der aktuelle
         # Zustand liest sich seine Sensordaten selbst erneut (kleine,
