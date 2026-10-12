@@ -1,0 +1,15 @@
+# GleichgewichtService.srv
+#
+# Abgeleitet aus GleichgewichtServicePort (RoboterVerhalten.sysml), das
+# RosServicePort (RoboterKnoten.sysml) spezialisiert. Die generischen
+# Felder "anfrage"/"antwort" (String) werden nicht dupliziert: die
+# Anfrage braucht keinen Inhalt (reine Kurzabfrage "steht der Roboter
+# stabil?"), die Antwort wird durch die zwei konkreten, typisierten
+# Felder unten dargestellt statt einer generischen String-Antwort.
+
+# ===== Anfrage (Request) =====
+# keine Felder -- reine Kurzabfrage ohne Parameter
+---
+# ===== Antwort (Response) =====
+bool stabil
+float64 neigung_grad

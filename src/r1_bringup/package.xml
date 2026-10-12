@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>r1_bringup</name>
+  <version>0.0.1</version>
+  <description>
+    Bringt das Unitree-R1-URDF (aus dem offiziellen unitreerobotics/unitree_ros
+    Repo, Ordner r1_description -- nicht Teil dieses Pakets, siehe README) in
+    RViz und Gazebo zur Anzeige. Erster Schritt der Unitree-R1-Spezialisierung
+    fuer die MBSE-Pipeline SysML v2 -> ROS2 -> Simulation: liefert die
+    konkreten Massen/Traegheiten/Geometrie, die das generische SysML-Modell
+    bewusst nicht enthaelt.
+  </description>
+  <maintainer email="pascalfranz02@gmail.com">Pascal</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Echte Laufzeit-Abhaengigkeiten des aktuellen MuJoCo-Pfads
+       (mujoco_node.py, bridges/mujoco_bridge.py, bridges/i_hardware_bridge.py) -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>  <!-- NEU (12.10.2026): fuer /base_position (geometry_msgs/Point), siehe mujoco_node.py -->
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- HINWEIS: "mujoco" (das Python-Paket der MuJoCo-Physik-Engine) fehlt
+       hier bewusst - das ist kein ROS2-Paket mit eigenem rosdep-Key,
+       sondern wird separat per "pip install mujoco" installiert (siehe
+       auch mujoco_test/test_g1_mujoco.py im alten Workspace). Gehoert
+       deshalb nicht in diese Liste, muss aber weiterhin manuell
+       installiert sein, damit mujoco_node.py importierbar ist. -->
+
+  <!-- Generische Launch-Infrastruktur - wird noch von den alten
+       RViz/Gazebo-Launch-Dateien benutzt (siehe launch/), auch wenn
+       diese fuer den aktuellen MuJoCo-Workflow nicht mehr relevant sind. -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <!-- Offener Punkt: die folgenden Abhaengigkeiten stammen noch aus der
+       alten R1/Gazebo-Phase (RViz-Anzeige, ros2_control + Gazebo-
+       Simulation). Der aktuelle MuJoCo-Pfad (mujoco_node.py) braucht
+       sie nicht mehr - bewusst noch nicht entfernt, falls die alten
+       RViz/Gazebo-Launch-Dateien (siehe launch/) noch gebraucht werden.
+       Siehe Entscheidung "Gazebo-Anbindung behalten oder nicht". -->
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

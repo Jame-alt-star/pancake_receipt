@@ -1,0 +1,30 @@
+# GehAktion.action
+#
+# Abgeleitet aus GehAktionPort (RoboterVerhalten.sysml), das RosActionPort
+# (RoboterKnoten.sysml) spezialisiert. ROS2-Typzuordnung nach
+# RoboterKnoten.sysml: ScalarValues::Real -> float64.
+#
+# Die generischen RosActionPort-Felder "ziel"/"abbrechen" (String/Bool)
+# werden hier NICHT dupliziert: "ziel" wird durch die drei konkreten,
+# typisierten Zielfelder unten ersetzt (die generische String-Kodierung
+# war nur fuer den abstrakten Fall ohne bekannte Struktur gedacht),
+# "abbrechen" entfaellt, weil ROS2-Actions Abbruch/Cancel bereits nativ
+# als Teil des Action-Protokolls anbieten -- keine eigene Modellierung
+# noetig. Modellierungsentscheidung, siehe Projektstand.
+
+# ===== Ziel (Goal) =====
+# entspricht den "in"-Feldern von GehAktionPort
+float64 ziel_position_x_m
+float64 ziel_position_y_m
+float64 ziel_geschwindigkeit_m_pro_s
+---
+# ===== Ergebnis (Result) =====
+# entspricht sinngemaess dem "out ergebnis"-Feld von RosActionPort,
+# aufgeteilt in einen klaren Erfolgs-Status plus Freitext
+bool erfolgreich
+string ergebnis
+---
+# ===== Fortschritt (Feedback) =====
+# entspricht "out fortschritt"/"out status" von RosActionPort
+float64 fortschritt
+string status

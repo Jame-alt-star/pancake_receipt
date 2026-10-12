@@ -1,0 +1,17 @@
+# BalancierAktion.action
+#
+# Abgeleitet aus BalancierAktionPort (RoboterVerhalten.sysml). Gleiche
+# Modellierungsentscheidung wie bei GehAktion.action: generisches "ziel"
+# ersetzt durch das konkrete Feld, "abbrechen" entfaellt zugunsten des
+# nativen ROS2-Action-Cancel.
+
+# ===== Ziel (Goal) =====
+float64 toleranz_grad
+---
+# ===== Ergebnis (Result) =====
+bool erfolgreich
+string ergebnis
+---
+# ===== Fortschritt (Feedback) =====
+float64 fortschritt
+string status
