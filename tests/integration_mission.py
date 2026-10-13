@@ -28,13 +28,21 @@ class Probe(Node):
         lat = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.RELIABLE,
                          durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.p = None
+        self.min_clear = 9.0      # kleinster Abstand Roboterzentrum -> Hindernisrechtecke
         self.status = []
-        self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
+        self.create_subscription(Point, "/base_position", self._on_pos, 10)
         lat50 = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=50, reliability=ReliabilityPolicy.RELIABLE,
                            durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(String, "/mission/status", lambda m: self.status.append(json.loads(m.data)), lat50)
         self.not_aus = self.create_publisher(Bool, "/not_aus", lat)
         self.start = self.create_client(Trigger, "/mission/start")
+
+    def _on_pos(self, m):
+        self.p = (m.x, m.y, m.z)
+        for x0, x1, y0, y1 in BOXEN:
+            dx = max(x0 - m.x, 0.0, m.x - x1)
+            dy = max(y0 - m.y, 0.0, m.y - y1)
+            self.min_clear = min(self.min_clear, float(np.hypot(dx, dy)))
 
     def spin(self, s):
         e = time.time() + s
@@ -58,11 +66,20 @@ class Probe(Node):
 
 
 NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
+WELT = "--welt" in sys.argv     # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
+if WELT:
+    NAV2 = True
+# Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
+BOXEN = [(1.25, 1.75, -0.8, 0.8), (4.45, 4.55, 0.8, 3.0), (4.45, 4.55, -3.0, -0.8)]
 
 
 def launch(logfile):
     env = dict(os.environ)
     nav = ["nav2:=true", "headless:=true"] if NAV2 else ["nav_testdouble:=true"]   # Nav2 + Viewer: zu wenig RAM
+    if WELT:
+        share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
+        nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",
+                f"mission_file:={share}/share/roboter_task_planning/missions/testwelt.yaml"]
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
                              *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)
@@ -98,10 +115,15 @@ def main():
         if end:
             check("S1 Status erfolg", end.get("status") == "erfolg", str(end))
         plans = [s for s in pr.status[n0:] if s.get("phase") == "plan"]
-        check("S1 Plan besucht a vor b", bool(plans) and "gehe_zu(start, a)" in plans[0]["plan"]
-              and plans[0]["plan"].index("gehe_zu(start, a)") < plans[0]["plan"].index("gehe_zu(a, b)"),
-              str(plans[0]["plan"]) if plans else "")
-        dist_b = float(np.hypot(pr.p[0] - 3.0, pr.p[1] - 2.0))
+        if WELT:
+            check("S1 kein Kontakt mit Hindernis/Waenden (Abstand > 0.2 m)", pr.min_clear > 0.2,
+                  f"min_abstand={pr.min_clear:.2f} m")
+        else:
+            check("S1 Plan besucht a vor b", bool(plans) and "gehe_zu(start, a)" in plans[0]["plan"]
+                  and plans[0]["plan"].index("gehe_zu(start, a)") < plans[0]["plan"].index("gehe_zu(a, b)"),
+                  str(plans[0]["plan"]) if plans else "")
+        goal = (5.8, 1.5) if WELT else (3.0, 2.0)
+        dist_b = float(np.hypot(pr.p[0] - goal[0], pr.p[1] - goal[1]))
         check("S1 Roboter nahe b (<0.6 m)", dist_b < 0.6, f"abstand={dist_b:.2f}")
         check("S1 steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
 

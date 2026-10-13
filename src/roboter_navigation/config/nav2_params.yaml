@@ -7,9 +7,9 @@
 #     Gehen folgt die Policy gut (~75 %). Drehen auf der Stelle daher mit wz ~1.0 (-> ~0.5 rad/s).
 #   - unter ~0.3 m/s laeuft der Roboter nicht an (Totzone)
 #   - Beschleunigung in Layer 3 auf 1.0 m/s^2 gerampt
-# Keine Sensorik in der Simulation (kein Lidar/Kamera): kein Hindernis-Layer, kein AMCL/SLAM.
-# map->odom ist eine statische Identitaet (siehe launch/navigation.launch.py); Costmaps rollen im
-# odom-Frame. Odometrie ist Ground-Truth aus mujoco_node (/odom, TF odom->base_link).
+# Sensorik: simuliertes 2D-Lidar (/scan, Frame lidar_link) aus mujoco_node -> ObstacleLayer in
+# beiden Costmaps und collision_monitor. Lokalisierung: Ground-Truth (/odom, TF odom->base_link);
+# map->odom statische Identitaet (siehe launch/navigation.launch.py), Costmaps rollen im odom-Frame.
 
 bt_navigator:
   ros__parameters:
@@ -68,7 +68,10 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: false
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.5
-      max_angular_accel: 3.0
+      # RPP begrenzt die Drehbeschleunigung relativ zur GEMESSENEN Drehrate. Die Policy reagiert im
+      # Stand auf kleine wz kaum -> Messung bleibt ~0 und der Befehl klebt bei accel*dt. Daher so
+      # gross, dass ein Schritt (dt=0.05 s) sofort rotate_to_heading_angular_vel erreicht.
+      max_angular_accel: 25.0
       allow_reversing: false
 
 local_costmap:
@@ -79,11 +82,29 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 6
-      height: 6
+      width: 4
+      height: 4
       resolution: 0.05
       robot_radius: 0.30
-      plugins: ["inflation_layer"]
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          sensor_frame: lidar_link
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          inf_is_valid: true
+          expected_update_rate: 0.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -98,12 +119,30 @@ global_costmap:
       global_frame: odom                     # map==odom (statische Identitaet), rollendes Fenster
       robot_base_frame: base_link
       rolling_window: true
-      width: 60
-      height: 60
+      width: 24
+      height: 24
       resolution: 0.1
       robot_radius: 0.30
       track_unknown_space: false
-      plugins: ["inflation_layer"]
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          sensor_frame: lidar_link
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          inf_is_valid: true
+          expected_update_rate: 0.5
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -173,8 +212,7 @@ velocity_smoother:
     velocity_timeout: 1.0
 
 # collision_monitor ist in Jazzy fester Teil der Nav2-Kette (velocity_smoother -> collision_monitor
-# -> /cmd_vel). Ohne Sensorik ist die Quelle deaktiviert, der Monitor reicht Geschwindigkeiten
-# unveraendert durch. Mit Lidar/Kamera hier eine echte Quelle eintragen.
+# -> /cmd_vel): bremst per 'approach' vor vorhergesagten Kollisionen mit dem Lidar-Scan.
 collision_monitor:
   ros__parameters:
     base_frame_id: "base_link"
@@ -200,9 +238,9 @@ collision_monitor:
     scan:
       type: "scan"
       topic: "scan"
-      min_height: 0.15
+      min_height: 0.0
       max_height: 2.0
-      enabled: false
+      enabled: true
 
 # docking_server gehoert in Jazzy zur Standard-Lifecycle-Kette und verlangt Plugin-Konfiguration,
 # wird hier aber nicht benutzt (keine Ladestation; Zustand "Laden" ist Layer 3 und ausgestellt).
