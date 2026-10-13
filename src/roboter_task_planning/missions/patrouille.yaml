@@ -1,0 +1,21 @@
+# Patrouille in der Testwelt: a und b besuchen, in b balancieren, am Ende zurueck zum Start.
+orte:
+  start: {x: 0.0, y: 0.0}
+  a:     {x: 3.0, y: -1.5}
+  b:     {x: 5.8, y: 1.5}
+verbindungen:
+  - [start, a]
+  - [a, b]
+  - [start, b]
+start_ort: start
+ziele:
+  - {art: besucht,    ort: a}
+  - {art: besucht,    ort: b}
+  - {art: balanciert, ort: b}
+  - {art: am_ort,     ort: start}
+parameter:
+  warte_s: 2.0
+  balancier_toleranz_grad: 5.0
+  nav_toleranz_m: 0.3
+  nav_geschwindigkeit: 0.4
+  max_replans: 2

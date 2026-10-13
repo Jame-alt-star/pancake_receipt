@@ -138,3 +138,27 @@ def test_executor_keine_bridge():
     r = MissionExecutor(FastDownwardPlanner(), [Skript()], log=lambda m: None) \
         .run(Mission.from_dict(MISSION), threading.Event())
     assert r.status == FEHLGESCHLAGEN and "warte" in r.meldung
+
+
+# ---------------- Zielart am_ort (Endposition) ----------------
+def test_ziel_am_ort_im_problem():
+    d = dict(MISSION)
+    d["ziele"] = [{"art": "besucht", "ort": "a"}, {"art": "am_ort", "ort": "start"}]
+    w = WorldKnowledge(Mission.from_dict(d), "start")
+    assert "(at start)" in generate_problem(w).split(":goal")[1]
+    assert w.offene_ziele() == [("besucht", "a"), ("am_ort", "start")] or w.offene_ziele() == [("besucht", "a")]
+    w.schritt_erledigt("gehe_zu", ["start", "a"])
+    assert ("am_ort", "start") in w.offene_ziele()          # Besuch erledigt, aber nicht mehr am Start
+    w.schritt_erledigt("gehe_zu", ["a", "start"])
+    assert w.offene_ziele() == []
+
+
+@needs_fd
+def test_executor_rundfahrt_zurueck_zum_start():
+    d = dict(MISSION)
+    d["ziele"] = [{"art": "besucht", "ort": "a"}, {"art": "besucht", "ort": "b"}, {"art": "am_ort", "ort": "start"}]
+    b = Skript()
+    r = executor(b).run(Mission.from_dict(d), threading.Event())
+    assert r.status == ERFOLG
+    assert b.log[-1] == "gehe_zu(" + b.log[-1].split("(")[1].split(",")[0] + ", start)"   # letzte Aktion endet am Start
+    assert {"gehe_zu(start, a)", "gehe_zu(a, b)"} <= set(b.log) or {"gehe_zu(start, b)", "gehe_zu(b, a)"} <= set(b.log)

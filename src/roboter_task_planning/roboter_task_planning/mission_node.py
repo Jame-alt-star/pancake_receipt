@@ -38,11 +38,10 @@ class MissionNode(Node):
         status_qos = QoSProfile(depth=50, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                                 reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
         self.pub_status = self.create_publisher(String, "/mission/status", status_qos)
-        self.create_subscription(Point, "/base_position", self._pos, 10, callback_group=cb)
+        self._cb = cb
         self.create_subscription(Bool, "/not_aus", self._not_aus, latched, callback_group=cb)
         self.create_service(Trigger, "/mission/start", self._start, callback_group=cb)
         self.create_service(Trigger, "/mission/abort", self._abort_srv, callback_group=cb)
-        self._pos_last = None
         self._not_aus_aktiv = False
         self._abort = threading.Event()
         self._thread = None
@@ -55,8 +54,21 @@ class MissionNode(Node):
             self._auto_done = False
 
     # ---- Eingaenge ----
-    def _pos(self, m: Point):
-        self._pos_last = (m.x, m.y)
+    def _locate(self, timeout_s: float = 1.5):
+        """Aktuelle Roboterposition auf Abruf (einmaliges Abo; /base_position laeuft mit 100 Hz, ein
+        Dauerabo kostete im Leerlauf ~30 % CPU)."""
+        got = {}
+        ev = threading.Event()
+
+        def cb(m: Point):
+            got["p"] = (m.x, m.y)
+            ev.set()
+        sub = self.create_subscription(Point, "/base_position", cb, 10, callback_group=self._cb)
+        try:
+            ev.wait(timeout_s)
+        finally:
+            self.destroy_subscription(sub)
+        return got.get("p")
 
     def _not_aus(self, m: Bool):
         self._not_aus_aktiv = bool(m.data)
@@ -85,7 +97,7 @@ class MissionNode(Node):
         except Exception as e:      # Datei fehlt, YAML/Validierung
             return False, f"Mission nicht ladbar: {e}"
         self._abort.clear()
-        ex = MissionExecutor(FastDownwardPlanner(), self.bridges, locator=lambda: self._pos_last,
+        ex = MissionExecutor(FastDownwardPlanner(), self.bridges, locator=self._locate,
                              log=lambda m: self.get_logger().info(m), status_cb=self._publish)
         self._thread = threading.Thread(target=ex.run, args=(mission, self._abort), daemon=True)
         self._thread.start()

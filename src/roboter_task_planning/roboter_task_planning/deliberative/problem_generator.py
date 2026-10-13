@@ -35,7 +35,8 @@ def generate_problem(world: WorldKnowledge) -> str:
         lines.append(f"    (= (strecke {a} {b}) {c})")
         lines.append(f"    (= (strecke {b} {a}) {c})")
     lines.append("  )")
-    goals = [f"({art} {ort})" for art, ort in world.mission.ziele]
+    # am_ort (Endposition) entspricht dem Praedikat (at ort)
+    goals = [f"(at {ort})" if art == "am_ort" else f"({art} {ort})" for art, ort in world.mission.ziele]
     lines.append(f"  (:goal (and {' '.join(goals)}))")
     lines.append("  (:metric minimize (total-cost)))")
     return "\n".join(lines) + "\n"

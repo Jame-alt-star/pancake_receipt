@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
-ZIEL_ARTEN = ("besucht", "balanciert", "gewartet")
+ZIEL_ARTEN = ("besucht", "balanciert", "gewartet", "am_ort")   # am_ort = Endposition
 DYNAMISCHER_ORT = "pos_aktuell"      # wird bei Neuplanung an der aktuellen Position eingefuegt
 
 
@@ -97,4 +97,9 @@ class WorldKnowledge:
             self.fakten.add(("gewartet", args[0]))
 
     def offene_ziele(self):
-        return [z for z in self.mission.ziele if z not in self.fakten]
+        def erfuellt(z):
+            art, ort = z
+            if art == "am_ort":
+                return self.current_ort == ort
+            return z in self.fakten
+        return [z for z in self.mission.ziele if not erfuellt(z)]

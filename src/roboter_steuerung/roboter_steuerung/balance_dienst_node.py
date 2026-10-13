@@ -34,6 +34,31 @@ def neigung_grad(qw, qx, qy, qz) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * (qx * qx + qy * qy)))))
 
 
+class _Tap:
+    """Abo auf Abruf: abonniert nur zwischen acquire() und release(). Spart CPU, weil die 100-Hz-Topics
+    (/imu, /base_position) im Leerlauf nicht dauerhaft in Python deserialisiert werden muessen."""
+
+    def __init__(self, node, msg_type, topic, callback, group):
+        self.node, self.msg_type, self.topic, self.cb, self.group = node, msg_type, topic, callback, group
+        self.sub = None
+        self.refs = 0
+        self.lock = threading.Lock()
+
+    def acquire(self):
+        with self.lock:
+            self.refs += 1
+            if self.sub is None:
+                self.sub = self.node.create_subscription(self.msg_type, self.topic, self.cb, 10,
+                                                         callback_group=self.group)
+
+    def release(self):
+        with self.lock:
+            self.refs = max(0, self.refs - 1)
+            if self.refs == 0 and self.sub is not None:
+                self.node.destroy_subscription(self.sub)
+                self.sub = None
+
+
 class BalanceDienstNode(Node):
     def __init__(self):
         super().__init__("balance_dienst_node")
@@ -43,8 +68,8 @@ class BalanceDienstNode(Node):
         self._quat = None
         self._hist = []                      # (t, x, y) der letzten ~1 s
         cb = ReentrantCallbackGroup()
-        self.create_subscription(Imu, "/imu", self._imu, 10, callback_group=cb)
-        self.create_subscription(Point, "/base_position", self._pos, 10, callback_group=cb)
+        self._tap_imu = _Tap(self, Imu, "/imu", self._imu, cb)
+        self._tap_pos = _Tap(self, Point, "/base_position", self._pos, cb)
         self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
         self.create_service(GleichgewichtService, "/gleichgewicht", self._service, callback_group=cb)
         self.action = ActionServer(
@@ -77,7 +102,16 @@ class BalanceDienstNode(Node):
         return math.hypot(h[-1][1] - h[0][1], h[-1][2] - h[0][2]) / (h[-1][0] - h[0][0])
 
     def _service(self, req, resp):
-        t = self._tilt()
+        with self._lock:
+            self._quat = None
+        self._tap_imu.acquire()
+        try:
+            t0 = time.monotonic()
+            while self._tilt() is None and time.monotonic() - t0 < 1.0:
+                time.sleep(0.02)
+            t = self._tilt()
+        finally:
+            self._tap_imu.release()
         resp.neigung_grad = float(t) if t is not None else 0.0
         resp.stabil = bool(t is not None and t <= self.grenze)
         return resp
@@ -89,6 +123,17 @@ class BalanceDienstNode(Node):
         fb = BalancierAktion.Feedback()
         res = BalancierAktion.Result()
         self.get_logger().info(f"Balancieren gestartet (Toleranz {tol:.1f} Grad)")
+        with self._lock:
+            self._quat, self._hist = None, []
+        self._tap_imu.acquire()
+        self._tap_pos.acquire()
+        try:
+            return self._balance_loop(goal_handle, tol, t0, stabil_seit, fb, res)
+        finally:
+            self._tap_imu.release()
+            self._tap_pos.release()
+
+    def _balance_loop(self, goal_handle, tol, t0, stabil_seit, fb, res):
         while rclpy.ok():
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()

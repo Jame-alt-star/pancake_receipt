@@ -66,7 +66,8 @@ class Probe(Node):
 
 
 NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
-WELT = "--welt" in sys.argv     # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
+PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
+WELT = "--welt" in sys.argv or PATROUILLE   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
 if WELT:
     NAV2 = True
 # Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
@@ -79,7 +80,7 @@ def launch(logfile):
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
         nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",
-                f"mission_file:={share}/share/roboter_task_planning/missions/testwelt.yaml"]
+                f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else 'testwelt'}.yaml"]
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
                              *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)
@@ -122,7 +123,7 @@ def main():
             check("S1 Plan besucht a vor b", bool(plans) and "gehe_zu(start, a)" in plans[0]["plan"]
                   and plans[0]["plan"].index("gehe_zu(start, a)") < plans[0]["plan"].index("gehe_zu(a, b)"),
                   str(plans[0]["plan"]) if plans else "")
-        goal = (5.8, 1.5) if WELT else (3.0, 2.0)
+        goal = (0.0, 0.0) if PATROUILLE else ((5.8, 1.5) if WELT else (3.0, 2.0))
         dist_b = float(np.hypot(pr.p[0] - goal[0], pr.p[1] - goal[1]))
         check("S1 Roboter nahe b (<0.6 m)", dist_b < 0.6, f"abstand={dist_b:.2f}")
         check("S1 steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
