@@ -235,3 +235,16 @@ Werkzeug: `tests/arm_feasibility.py` (synchroner Kreis, ohne ROS2). Die Policy h
 **Nicht gemessen/offen:** Hand/Greifer (Modell endet am Handgelenk, `g1_29dof_with_hand.xml` existiert), Einarm-Aufgaben (nur symmetrische Zweiarm-Posen getestet), echte Objektkontakte/Reibung, Wahrnehmung (nur Simulations-Ground-Truth), IK mit pinocchio (hier eigene gedämpfte Kleinste-Quadrate-IK auf MuJoCo-Jacobi). Regressionstest: `tests/test_arm_feasibility.py`.
 
 **Umsetzung im Betrieb (noch NICHT gebaut):** Zustand `Manipulieren` (nur aus Balancieren): Armtargets überschreiben die Policy-Ausgabe für Gelenke 15..28, Controller maskiert die Arm-Beobachtungen nur solange dieser Zustand aktiv ist (nicht beim Gehen, dort ist die Policy auf ihre eigenen Armbewegungen trainiert), Taille Pitch −0,15 rad proportional zur Armauslenkung.
+
+## Layer 1: Missionsplanung (13.10.2026) – umgesetzt und getestet
+
+**Zuschnitt:** Layer 2 (Navigation, Nav2) macht ein Kollege und wurde nicht gebaut. Layer 1 (Planer + Dispatcher) ist komplett, die Nav-Aktion läuft über eine Bridge auf `nav2_msgs/NavigateToPose` (nicht getestet, `nav2_msgs` hier nicht installiert) bzw. `GehAktion` (mit einem als solchen markierten Testdouble getestet).
+
+**Neu:**
+- `roboter_task_planning`: PDDL-Domäne (3 Aktionen `gehe_zu`/`balanciere`/`warte`, Kosten = Strecke in cm), Mission als YAML, Problem-Generator, **Fast Downward** (Release 24.06.1, gebaut unter `~/tools/downward`, `astar(lmcut())`), Dispatcher mit Neuplanung (`pos_aktuell` als dynamischer Ort, `max_replans`), `mission_node` (Services `/mission/start`, `/mission/abort`, Topic `/mission/status`), `mission.launch.py`, `README.md`.
+- Layer 3: `balance_dienst_node` (Service `/gleichgewicht`, Action `/balanciere`) – die bisher nur definierten Schnittstellen `GleichgewichtService`/`BalancierAktion` sind jetzt implementiert (Neigung aus `/imu`, Geschwindigkeit aus `/base_position`).
+- Testdouble `nav_testdouble_node` (GehAktion-Server, ausrichten + geradeaus; ersetzt Nav2 nur in Tests).
+
+**Getestet:** Kern 10/10 (`src/roboter_task_planning/test/test_layer1.py`, u. a. kostenoptimaler Weg, unlösbares Problem, Neuplanung, Abbruch, max. Neuplanungen); Simulation 14/14 (`tests/integration_mission.py`): Mission start→a→b mit Balancieren und Warten läuft komplett (Abstand zu b 0,19 m, steht), Plan besucht a vor b, NotAus bricht ab (Roboter steht), Start bei aktivem NotAus wird abgelehnt, keine Instabilität/Tracebacks.
+
+**Offen / für den Kollegen:** (1) `/odom` und TF (`odom→base_link`) fehlen in der Simulation – klären, wer sie liefert. (2) Nav2-Grenzen auf Policy-Bereich setzen: `max_vel_theta ≤ 0,2 rad/s`, vx ≥ ~0,3, vy ≤ 0,3. (3) `nav_backend=nav2` ist ungetestet. (4) `balanciere` publiziert `/cmd_vel = 0`; falls Nav2 gleichzeitig sendet, konkurrieren die Quellen (idle in der Mission, aber ggf. cmd_vel-Multiplexer nötig). (5) Neuplanung nach Fehlschlag ist in der Simulation nur über Unit-Tests abgedeckt (Testdouble scheitert nicht).

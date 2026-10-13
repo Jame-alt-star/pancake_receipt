@@ -32,6 +32,7 @@ setup(
     entry_points={
         'console_scripts': [
             'steuereinheit_node = roboter_steuerung.steuereinheit_node:main',
+            'balance_dienst_node = roboter_steuerung.balance_dienst_node:main',
         ],
     },
 )
