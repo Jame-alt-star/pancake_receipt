@@ -165,3 +165,9 @@ Ergebnis (gemessen): kein Sturz in irgendeiner Phase (z = 0,78–0,79 m durchgeh
 Damit ist die finale NotAus-Variante (Policy aktiv, cmd=0) und die bewusste Freigabe nach Entwarnung im echten Lauf bestätigt. Nicht getestet: NotAus im 12-DOF-Pfad, NotAus direkt in Start/Bereitschaft.
 
 `onnxruntime` ist als Hinweis-Kommentar in `roboter_steuerung/package.xml` ergänzt (kein rosdep-Schlüssel vorhanden, `<depend>` würde `rosdep install` brechen; Muster wie bei `mujoco`).
+
+## cmd-Begrenzung + NotAus-Stillstand (13.10.2026)
+
+**cmd-Begrenzung umgesetzt und getestet:** `steuereinheit_node.py` begrenzt `self.cmd` nach Rampe und Kurshaltung per `np.clip` auf `cmd_training_range` aus der YAML (vx −0,5…1,0, vy ±0,3, wz ±0,2) und warnt einmalig, wenn `/cmd_vel` außerhalb liegt. Ohne den Schlüssel (12-DOF-Config) unverändert. Test im echten Lauf mit `vx=2,0 / wz=1,0`: Warnung erscheint, Roboter bleibt stabil (z ≈ 0,77), läuft ~0,7 m/s und dreht langsam (wz auf 0,2 begrenzt). Hinweis: die Kurshaltung (bis ±0,3) wird dadurch ebenfalls auf ±0,2 begrenzt.
+
+**NotAus: Beine stehen im 29-DOF-Pfad still (gemessen).** Mittlere Beingelenk-Geschwindigkeit nach NotAus aus dem Gehen: ~0,7 rad/s (Gehen) → 0,017 nach ~2 s → 0,002 rad/s ab ~4 s, beide Füße flach am Boden (z = 0,034 m, konstant); im synchronen Kreis identisch (0,002 rad/s). Das „Auf-der-Stelle-Traben“ aus dem Statusupdate vom 12.10. betraf den 12-DOF-Pfad und tritt mit der 29-DOF-Policy nicht auf. Die Bewegung der ersten 2–3 s ist das Abbremsen des Gehens, kein Trippeln.

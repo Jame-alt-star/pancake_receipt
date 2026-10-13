@@ -177,6 +177,18 @@ class SteuereinheitNode(Node):
         self.cmd_ramped = self.cmd_target.copy()
         self.cmd = self.cmd_ramped.copy()
 
+        # NEU (13.10.2026): Begrenzung von self.cmd auf den Trainings-
+        # Wertebereich der Policy (cmd_training_range in der YAML). Ein
+        # Kommando ausserhalb waere "out of distribution". Fehlt der
+        # Schluessel (12-DOF-Config), bleibt das Verhalten unveraendert.
+        rng = self.config.get("cmd_training_range")
+        if rng:
+            self.cmd_min = np.array([rng["lin_vel_x"][0], rng["lin_vel_y"][0], rng["ang_vel_z"][0]], dtype=np.float32)
+            self.cmd_max = np.array([rng["lin_vel_x"][1], rng["lin_vel_y"][1], rng["ang_vel_z"][1]], dtype=np.float32)
+        else:
+            self.cmd_min = self.cmd_max = None
+        self._cmd_clip_gemeldet = False
+
         # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
         # BereitschaftState sofort anhand von cmd_target entscheiden -
         # und cmd_target startet mit cmd_init (haeufig != 0), der
@@ -445,6 +457,16 @@ class SteuereinheitNode(Node):
 
         self._ramp_cmd()
         self._apply_heading_hold(quat)
+        if self.cmd_min is not None:
+            if not self._cmd_clip_gemeldet and np.any(
+                (self.cmd_target < self.cmd_min) | (self.cmd_target > self.cmd_max)
+            ):
+                self.get_logger().warn(
+                    f"cmd_vel {self.cmd_target.tolist()} liegt ausserhalb des Trainingsbereichs "
+                    f"[{self.cmd_min.tolist()} .. {self.cmd_max.tolist()}] - wird begrenzt."
+                )
+                self._cmd_clip_gemeldet = True
+            self.cmd = np.clip(self.cmd, self.cmd_min, self.cmd_max)
         # ZURUECKGEBAUT (12.10.2026): _apply_position_hold() wurde testweise
         # aktiviert, hat beim Stehen-Test aber zum Umfallen gefuehrt - die
         # aktive vx/vy-Korrektur hat die bisher stabile Variante (cmd hart

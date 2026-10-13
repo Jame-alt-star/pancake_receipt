@@ -85,14 +85,11 @@ num_obs: 480
 # cmd_training_range unten).
 cmd_init: [0.5, 0, 0]
 
-# OFFENER PUNKT: anders als beim 12-DOF-Pfad gibt es hier noch KEINE
-# Begrenzung von node.cmd auf den Trainings-Wertebereich der Policy -
-# velocity_commands hat scale=1.0 (keine Vorab-Skalierung), ein cmd
-# ausserhalb dieser Ranges waere "out of distribution" fuer die Policy
-# (unklares/instabiles Verhalten denkbar, nicht getestet):
-#   lin_vel_x: [-0.5, 1.0]   lin_vel_y: [-0.3, 0.3]   ang_vel_z: [-0.2, 0.2]
-# Noch nicht in Code umgesetzt (z.B. als Clip in _ramp_cmd() oder im
-# Controller selbst) - vor produktivem Einsatz nachruesten/testen.
+# Trainings-Wertebereich der Policy (aus deploy.yaml). steuereinheit_node.py
+# begrenzt self.cmd (nach Rampe + Kurshaltung) per np.clip auf diese
+# Ranges und meldet einmalig eine Warnung, wenn /cmd_vel ausserhalb liegt
+# (umgesetzt und getestet 13.10.2026). Fehlt der Schluessel (12-DOF-
+# Config), wird nicht begrenzt.
 cmd_training_range:
   lin_vel_x: [-0.5, 1.0]
   lin_vel_y: [-0.3, 0.3]
