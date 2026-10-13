@@ -257,3 +257,18 @@ Werkzeug: `tests/arm_feasibility.py` (synchroner Kreis, ohne ROS2). Die Policy h
 Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des Kollegen kommt): `config/nav2_params.yaml` (RegulatedPurePursuit, NavFn, velocity_smoother mit Policy-Grenzen vx ≤ 0,6 / wz ≤ 0,2 rad/s, Mindestgeschwindigkeit 0,3, kein Hindernis-Layer, rollende Costmaps im `odom`-Frame), `launch/navigation.launch.py` (statisches `map→odom`, `navigation_launch.py` von nav2_bringup, `params_file` übergebbar). `mission.launch.py` hat das Argument `nav2:=true`; `tests/integration_mission.py --nav2` testet es mit echtem Nav2.
 
 **Stand:** `ros-jazzy-navigation2`/`nav2-bringup` sind hier NICHT installiert (113 Pakete, `sudo` nötig). Konfiguration und Launch sind angelegt und gebaut, YAML ist syntaktisch gültig, aber **gegen echtes Nav2 ungeprüft**. Der Testdouble-Pfad ist unverändert grün (14/14). Einschränkung: nur ~2,8 GB RAM in WSL2 (Simulation allein ~1,1 GB), Nav2 läuft mit `use_composition=True` (ein Prozess).
+
+
+## Nav2 angebunden und getestet (13.10.2026)
+
+`ros-jazzy-navigation2`/`nav2-bringup` installiert (113 Pakete). Paket `roboter_navigation` (Layer 2, Platzhalter bis zur Variante des Kollegen) läuft mit echtem Nav2: `mission.launch.py nav2:=true headless:=true`; `tests/integration_mission.py --nav2` **14/14** (2 Läufe, ohne Neuplanung): Mission start→a→b, Balancieren, Warten, Abstand zu b 0,18 m; NotAus bricht ab. Probe: Quadrat 3,0 → 3,2 → 0,2 → 0,0 mit `NavigateToPose` alle vier Ziele erreicht.
+
+**Was dafür nötig war (Befunde):**
+- `navigation_launch.py` lädt bei `use_composition=True` nur in einen bereits laufenden Container → in `navigation.launch.py` selbst gestartet. In Jazzy gehören `collision_monitor` und `docking_server` zur festen Kette und verlangen Konfiguration (hier deaktiviert/ungenutzt, ohne Sensorik).
+- **Drehen auf der Stelle:** kleine `wz` werden im Stand fast ignoriert (0,2 → 0,025 rad/s, 13 %; 0,5 → 0,07; 1,0 → 0,56 rad/s), beim Gehen folgt die Policy gut (~75 %). Der Clip ±0,2 aus `deploy.yaml` ist eine Joystick-Grenze, keine Stabilitätsgrenze: `wz` ±1,0 ist stabil (60 s Stehen/Gehen, 40 ms Verzögerung, Jitter, vx bis 1,0). `cmd_training_range.ang_vel_z` jetzt ±1,0.
+- **Kombinierte Grenze:** vx 1,0 + wz 1,0 fällt in ~15–20 % der Läufe (synchroner Kreis 2/10, ROS 1 von 3). Neu `cmd_wz_limit_high_speed`: oberhalb vx 0,7 wird |wz| linear bis 0,5 bei vx 1,0 abgesenkt (je Punkt 10 Seeds stabil). ROS-Integrationstest danach 3/3 grün.
+- Nav2-Parameter angepasst: `PoseProgressChecker` (zählt Drehung als Fortschritt), `rotate_to_heading_angular_vel` 1,0, velocity_smoother wz ±1,0, vx ≤ 0,6, Mindestfahrgeschwindigkeit 0,3.
+- `NavigationBridge` wartet auf `/lifecycle_manager_navigation/is_active`; Nav2 bricht Ziele sonst direkt nach `configure` mit ABORTED ab (führte zu einer unnötigen Neuplanung und einem Sturz-Kaskaden-Lauf).
+- Neuer Parameter `headless` (`mujoco_node`, `steuereinheit.launch.py`, `mission.launch.py`): MuJoCo ohne Viewer. Mit Viewer + Nav2 reichen die ~2,8 GB RAM nicht (Control-Loop 6 Hz, Lifecycle-Heartbeat verloren).
+
+**Offen:** `cmd_vel`-Watchdog fehlt (Layer 3 hält das letzte Kommando); Nav2 ohne Sensorik (kein Hindernis-Layer, `map→odom` statisch); Nav2-Parameter sind generisch, die Variante des Kollegen steht aus. **Hinweis:** Wegen der schwachen Standdrehung braucht jede Navigation mit enger Kurve einen Drehradius ≥ ~1,5 m beim Gehen oder Drehen auf der Stelle mit |wz| ≥ 0,8.

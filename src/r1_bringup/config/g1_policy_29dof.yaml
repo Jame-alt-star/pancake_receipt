@@ -93,8 +93,15 @@ cmd_init: [0.5, 0, 0]
 cmd_training_range:
   lin_vel_x: [-0.5, 1.0]
   lin_vel_y: [-0.3, 0.3]
-  ang_vel_z: [-0.2, 0.2]
+  ang_vel_z: [-1.0, 1.0]   # deploy.yaml: +-0.2 (Joystick-Grenze). Gemessen 13.10.2026: im Stand wird wz < ~0.5 fast ignoriert (0.2 -> 0.025 rad/s), +-1.0 ist stabil (60 s, 40 ms Verzoegerung, Jitter, Gehen bis vx 1.0) und dreht auch auf der Stelle (0.56 rad/s)
 
 # Positionshaltung im Stand (Zustand Balancieren), siehe steuereinheit_node.py
 # _apply_position_hold(). Nutzt /base_position (Simulations-Ground-Truth).
 position_hold: true
+
+# Kombinierte Grenze (13.10.2026): bei |vx| > vx_ref wird |wz| linear bis wz_at_vmax (bei vx_max)
+# abgesenkt. Gemessen: vx 1.0 + wz 1.0 faellt in ~15-20 % der Laeufe (synchroner Kreis und ROS);
+# die Linie (0.7, 1.0) -> (1.0, 0.5) war je Punkt in 10 Seeds stabil.
+cmd_wz_limit_high_speed:
+  vx_ref: 0.7
+  wz_at_vmax: 0.5

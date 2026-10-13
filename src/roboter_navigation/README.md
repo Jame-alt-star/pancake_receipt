@@ -5,13 +5,14 @@ ersetzt diese Datei** (`params_file:=...` oder dieses Paket austauschen).
 
 ```bash
 sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+# Hinweis: bei ~2,8 GB RAM Simulation headless fahren (headless:=true)
 ros2 launch roboter_navigation navigation.launch.py
 # komplett mit Layer 1/3/4:
-ros2 launch roboter_task_planning mission.launch.py nav2:=true
+ros2 launch roboter_task_planning mission.launch.py nav2:=true headless:=true
 ```
 
 - Navigation ohne Lokalisierung: `map→odom` statisch (Identität), Odometrie = Ground-Truth aus
   `mujoco_node` (`/odom`, TF `odom→base_link`). Keine Sensorik, daher kein Hindernis-Layer.
-- Geschwindigkeitsgrenzen = Trainingsbereich der Policy (wz ≤ 0,2 rad/s, vx ≥ 0,3 beim Fahren).
+- Geschwindigkeitsgrenzen = Kommandobereich der Policy (vx ≤ 0,6, wz ≤ 1,0, vx ≥ 0,3 beim Fahren). Drehen auf der Stelle braucht |wz| ≳ 0,8 (kleine wz werden im Stand fast ignoriert).
 - Ausgang `/cmd_vel` kommt vom `velocity_smoother` direkt an Layer 3.
 - Hinweis: Layer 3 hält das letzte `/cmd_vel` ohne Watchdog; Nav2 sendet zum Zielende Nullen.

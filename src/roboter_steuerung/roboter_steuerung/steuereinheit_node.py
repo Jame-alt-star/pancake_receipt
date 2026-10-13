@@ -187,6 +187,12 @@ class SteuereinheitNode(Node):
             self.cmd_max = np.array([rng["lin_vel_x"][1], rng["lin_vel_y"][1], rng["ang_vel_z"][1]], dtype=np.float32)
         else:
             self.cmd_min = self.cmd_max = None
+        # Kombinierte Grenze: bei hoher Vorwaertsgeschwindigkeit wird die Drehrate zusaetzlich
+        # linear auf wz_at_vmax abgesenkt (gemessen: vx 1.0 + wz 1.0 faellt in ~15-20 % der Laeufe,
+        # die Linie vx 0.7/wz 1.0 -> vx 1.0/wz 0.5 war in 10 Seeds je Punkt stabil).
+        hs = self.config.get("cmd_wz_limit_high_speed")
+        self.wz_vx_ref = float(hs["vx_ref"]) if hs else None
+        self.wz_at_vmax = float(hs["wz_at_vmax"]) if hs else None
         self._cmd_clip_gemeldet = False
 
         # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
@@ -447,6 +453,14 @@ class SteuereinheitNode(Node):
             )
             self._cmd_clip_gemeldet = True
         self.cmd = np.clip(self.cmd, self.cmd_min, self.cmd_max)
+        if self.wz_vx_ref is not None:
+            vmax = float(max(abs(self.cmd_min[0]), abs(self.cmd_max[0])))
+            wz_hi = float(self.cmd_max[2])
+            v = abs(float(self.cmd[0]))
+            if v > self.wz_vx_ref and vmax > self.wz_vx_ref:
+                a = min(1.0, (v - self.wz_vx_ref) / (vmax - self.wz_vx_ref))
+                cap = wz_hi + a * (self.wz_at_vmax - wz_hi)
+                self.cmd[2] = float(np.clip(self.cmd[2], -cap, cap))
 
     def _control_loop(self):
         # Start-Gate bleibt hier im Node und ist bewusst zustands-

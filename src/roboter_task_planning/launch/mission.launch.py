@@ -23,13 +23,16 @@ def generate_launch_description():
         DeclareLaunchArgument("config_file", default_value="g1_policy_29dof.yaml"),
         DeclareLaunchArgument("mission_file", default_value=os.path.join(share, "missions", "beispiel.yaml")),
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
+        DeclareLaunchArgument("headless", default_value="false",
+                              description="MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher)"),
         DeclareLaunchArgument("nav2", default_value="false",
                               description="Nav2 (roboter_navigation, Layer 2) mitstarten"),
         DeclareLaunchArgument("auto_start", default_value="false"),
     ]
     layer3 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(steuer, "launch", "steuereinheit.launch.py")),
-        launch_arguments={"config_file": LaunchConfiguration("config_file")}.items())
+        launch_arguments={"config_file": LaunchConfiguration("config_file"),
+                          "headless": LaunchConfiguration("headless")}.items())
     balance = Node(package="roboter_steuerung", executable="balance_dienst_node", output="screen")
     double = Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen",
                   condition=IfCondition(LaunchConfiguration("nav_testdouble")))

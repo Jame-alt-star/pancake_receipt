@@ -27,6 +27,28 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
+class _NullViewer:
+    """Platzhalter fuer headless=True: gleiche Schnittstelle wie der passive MuJoCo-Viewer,
+    tut aber nichts (kein Fenster, kein Rendering)."""
+
+    def __init__(self):
+        from types import SimpleNamespace
+        self.cam = SimpleNamespace(type=None, distance=0.0, azimuth=0.0, elevation=0.0,
+                                   lookat=np.zeros(3))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def is_running(self):
+        return True
+
+    def sync(self):
+        pass
+
+
 def rotate_inverse(q, v):
     """v (Weltkoordinaten) in das Koerper-Koordinatensystem mit Orientierung q=[w,x,y,z]."""
     w, x, y, z = q
@@ -127,6 +149,10 @@ class MujocoBridgeNode(Node):
         # NEU (13.10.2026): /odom + TF (odom -> base_link) fuer Nav2 (Layer 2). Reiner
         # Simulations-Ground-Truth (perfekte Odometrie, kein Drift/Rauschen). Abschaltbar, falls
         # eine andere Quelle (z.B. robot_localization) Odometrie/TF liefert.
+        # NEU (13.10.2026): headless=True -> kein Viewer-Fenster. Spart bei Tests/Nav2-Betrieb
+        # viel CPU und Speicher (Rendering war der groesste Posten der Sim-Schleife).
+        self.declare_parameter("headless", False)
+        self.headless = self.get_parameter("headless").value
         self.declare_parameter("publish_odom", True)
         self.declare_parameter("publish_tf", True)
         self.declare_parameter("odom_frame", "odom")
@@ -206,7 +232,9 @@ class MujocoBridgeNode(Node):
         prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
         prof_t0 = time.perf_counter()
 
-        with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
+        viewer_ctx = (_NullViewer() if self.headless
+                      else mujoco.viewer.launch_passive(self.model, self.data))
+        with viewer_ctx as viewer:
             # NEU: freie Kamera mit groesserem Abstand, direkt von hinten
             # (Laufrichtung +X, siehe cmd_init in g1_policy.yaml), leicht
             # erhoeht - damit der ganze Roboter UND ein Stueck Laufweg

@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -25,6 +26,14 @@ def generate_launch_description():
 
     static_tf = Node(package="tf2_ros", executable="static_transform_publisher", name="map_to_odom",
                      arguments=["--frame-id", "map", "--child-frame-id", "odom"])
+    # navigation_launch.py laedt bei use_composition=True die Knoten nur in einen BEREITS
+    # laufenden Container (den startet sonst bringup_launch.py) - also hier selbst starten.
+    container = Node(
+        condition=IfCondition(LaunchConfiguration("use_composition")),
+        package="rclcpp_components", executable="component_container_isolated",
+        name="nav2_container", output="screen",
+        parameters=[LaunchConfiguration("params_file"), {"autostart": True}],
+        arguments=["--ros-args", "--log-level", "info"])
     navigation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(nav2, "launch", "navigation_launch.py")),
         launch_arguments={
@@ -33,4 +42,4 @@ def generate_launch_description():
             "autostart": "true",
             "use_composition": LaunchConfiguration("use_composition"),
         }.items())
-    return LaunchDescription([params, composition, static_tf, navigation])
+    return LaunchDescription([params, composition, static_tf, container, navigation])

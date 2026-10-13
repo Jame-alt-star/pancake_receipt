@@ -42,13 +42,17 @@ def generate_launch_description():
         description="Policy-Config (im config/-Ordner von r1_bringup) - g1_policy.yaml (12-DOF, Default) oder g1_policy_29dof.yaml (29-DOF-Ganzkoerper).",
     )
     config_file = LaunchConfiguration("config_file")
+    headless_arg = DeclareLaunchArgument(
+        "headless", default_value="false",
+        description="true = MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher, fuer Tests/Nav2).")
+    headless = LaunchConfiguration("headless")
 
     mujoco_node = Node(
         package="r1_bringup",
         executable="mujoco_node",
         name="mujoco_bridge_node",
         output="screen",
-        parameters=[{"config_file": config_file}],
+        parameters=[{"config_file": config_file, "headless": headless}],
     )
 
     steuereinheit_node = Node(
@@ -61,6 +65,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         config_file_arg,
+        headless_arg,
         mujoco_node,
         steuereinheit_node,
     ])

@@ -62,7 +62,7 @@ NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdou
 
 def launch(logfile):
     env = dict(os.environ)
-    nav = ["nav2:=true"] if NAV2 else ["nav_testdouble:=true"]
+    nav = ["nav2:=true", "headless:=true"] if NAV2 else ["nav_testdouble:=true"]   # Nav2 + Viewer: zu wenig RAM
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
                              *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)

@@ -30,6 +30,7 @@ def make(cmd_target=(0.0, 0.0, 0.0), rng=True):
         n.cmd_max = np.array([1.0, 0.3, 0.2], dtype=np.float32)
     else:
         n.cmd_min = n.cmd_max = None
+    n.wz_vx_ref = n.wz_at_vmax = None
     n._log = _Log()
     n.get_logger = lambda: n._log
     return n
@@ -109,3 +110,15 @@ def test_positionshaltung_aus_bei_kommando_oder_laufender_rampe():
     n.cmd_ramped = np.array([0.3, 0, 0], dtype=np.float32)
     n._apply_position_hold(np.array([-0.1, 0.0, 0.79]), quat_yaw(0))
     assert n.target_position is None
+
+
+def test_kombigrenze_wz_bei_hoher_geschwindigkeit():
+    n = make()
+    n.cmd_min = np.array([-0.5, -0.3, -1.0], dtype=np.float32)
+    n.cmd_max = np.array([1.0, 0.3, 1.0], dtype=np.float32)
+    n.wz_vx_ref, n.wz_at_vmax = 0.7, 0.5
+    for vx, wz, erwartet in ((0.4, 1.0, 1.0), (0.7, 1.0, 1.0), (0.85, 1.0, 0.75), (1.0, 1.0, 0.5), (1.0, -1.0, -0.5),
+                             (2.0, 0.9, 0.5)):
+        n.cmd = np.array([vx, 0.0, wz], dtype=np.float32)
+        n._clip_cmd()
+        assert n.cmd[2] == pytest.approx(erwartet, abs=1e-5), (vx, wz, n.cmd.tolist())
