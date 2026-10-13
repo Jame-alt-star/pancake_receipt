@@ -197,3 +197,19 @@ Neuer Ordner `tests/` (Details in `tests/README.md`): `test_closed_loop.py` (11 
 **Einschränkung:** nutzt `/base_position` (Simulations-Ground-Truth). Auf echter Hardware braucht es Odometrie/Lokalisierung. Das Gieren stellt sich bei ~6° Restfehler ein (P-Regler ohne Integralanteil), für Greifen unkritisch.
 
 **Entscheidung (Nutzer, 13.10.2026):** Das Projekt wird zeitnah komplett auf 29-DOF umgestellt; der 12-DOF-Pfad wird nicht mehr getestet.
+
+## Korrektur zur Positionshaltung: eigentliche Drift-Ursache (13.10.2026)
+
+Die weitere Messung (synchroner Kreis, 50 s Stehen) zeigt, dass **die Kurshaltung** den Stand-Drift behebt, nicht die Positionshaltung:
+
+| Variante | Basis verschoben | Beine \|dq\| | Fuß angehoben |
+|---|---|---|---|
+| ohne Kurs- und Positionshaltung | 31,7 cm | 0,018 rad/s (Spitze 5,9) | 1,8 % der Zeit (bis 2,5 cm) |
+| nur Kurshaltung | 0,6 cm | 0,0004 rad/s | 0 % |
+| Kurs- + Positionshaltung | 0,6 cm | 0,0004 rad/s | 0 % |
+
+Ohne Gegensteuerung dreht der Roboter langsam weg (Yaw-Drift), die Policy reagiert mit gelegentlichen kleinen Schritten, und die Basis wandert. Mit Kurshaltung stehen die Beine praktisch still. Die frühere Aussage „Positionshaltung senkt den Drift von 32 cm auf 1 cm“ war damit irreführend: der Test mit kp = 0 hatte auch die Kurshaltung ausgeschaltet.
+
+Die Positionshaltung bleibt trotzdem sinnvoll, aber als Schutz gegen Störungen: seitlicher Stoß 0,3 m/s: ohne 3,9 cm / mit 3,9 cm (kein Unterschied); Stoß 0,6 m/s: ohne 26 cm Abweichung (24 cm Endabweichung), mit 15 cm max (6 cm Endabweichung).
+
+**Eigentlicher Fund:** Die Drift trat in **Bereitschaft** auf, weil dort cmd=[0,0,0] hart an die Policy ging, also ohne Kurshaltung. Fix: `BereitschaftState` übergibt jetzt `cmd[2]` der Kurshaltung. Echte Pipeline: Drift in Bereitschaft 0,6 cm in 30 s (vorher ~0,3 m/60 s). Integrationstest 23/23 (neue Prüfung S1).

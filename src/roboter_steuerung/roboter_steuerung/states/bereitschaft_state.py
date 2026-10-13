@@ -65,7 +65,12 @@ class BereitschaftState(IRobotState):
             node.pub_balance_mode.publish(Bool(data=False))
             quat, omega = node.bridge.read_imu()
             joint_pos, joint_vel = node.bridge.read_joint_states()
-            cmd_fuer_policy = np.zeros(3, dtype=np.float32)
+            # NEU (13.10.2026): Kurshaltung auch beim Warten auf die Freigabe.
+            # Gemessen: ohne sie driftet der Roboter in Bereitschaft (~0.3 m /
+            # 60 s, Fuesse heben sich, kleine Schritte), mit ihr stehen die
+            # Beine praktisch still (|dq| 0.0004 rad/s, Basis 0.6 cm / 50 s).
+            # vx/vy bleiben hart 0.
+            cmd_fuer_policy = np.array([0.0, 0.0, float(node.cmd[2])], dtype=np.float32)
             target_positions = node.controller.compute_joint_targets(
                 joint_positions=joint_pos,
                 joint_velocities=joint_vel,

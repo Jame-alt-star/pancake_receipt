@@ -92,8 +92,10 @@ def main():
             raise SystemExit(1)
 
         print("== S1 Start: Stehen in Bereitschaft ohne Kommando (Startrennen)")
-        pr.spin(25)
+        pr.spin(10); pb = pr.p; yb = pr.yaw(); pr.spin(30)
         check("S1 steht nach Hochfahren (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        drift = float(np.hypot(pr.p[0] - pb[0], pr.p[1] - pb[1]))
+        check("S1 Drift in Bereitschaft < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm, dyaw={pr.yaw()-yb:.1f}")
         check("S1 Regler verbunden/Physik gestartet", "Regler verbunden" in read_log(logfile))
 
         print("== S2 Freigabe + Stehen")
