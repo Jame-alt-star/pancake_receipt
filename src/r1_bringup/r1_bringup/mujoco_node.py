@@ -8,11 +8,11 @@ import mujoco
 import mujoco.viewer
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Imu, JointState
+from sensor_msgs.msg import Imu, JointState, LaserScan
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Point, TransformStamped
 from nav_msgs.msg import Odometry
-from tf2_ros import TransformBroadcaster
+from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -108,7 +108,10 @@ class MujocoBridgeNode(Node):
         self.get_logger().info(f"[mujoco_bridge_node] aktive Config: {config_file} (xml_path={self.config.get('xml_path')})")
 
         # Pfade aufloesen (relativ zum Share-Verzeichnis)
-        xml_rel_path = self.config["xml_path"]
+        # NEU (13.10.2026): scene_file ueberschreibt xml_path der Config (z.B. Testwelt mit Waenden)
+        self.declare_parameter("scene_file", "")
+        scene_file = self.get_parameter("scene_file").value
+        xml_rel_path = scene_file or self.config["xml_path"]
         xml_path = os.path.join(pkg_share, xml_rel_path)
         if not os.path.exists(xml_path):
             # Fallback, falls colcon den Share-Ordner (noch) nicht gefuellt
@@ -163,6 +166,37 @@ class MujocoBridgeNode(Node):
         self.base_frame = self.get_parameter("base_frame").value
         self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if self.publish_odom else None
         self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
+
+        # NEU (13.10.2026): simuliertes 2D-Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2) fuer
+        # Nav2 (Costmaps) und SLAM. Frame lidar_link an base_link (0,0,lidar_z), Scan in der
+        # Koerperebene (kippt mit dem Roboter wie ein echter Torso-Lidar).
+        self.declare_parameter("lidar", True)
+        self.declare_parameter("lidar_rate_hz", 10.0)
+        self.declare_parameter("lidar_rays", 360)
+        self.declare_parameter("lidar_range_max", 10.0)
+        self.declare_parameter("lidar_z", 0.45)           # ueber dem Becken [m]
+        self.declare_parameter("lidar_geomgroup", 2)
+        self.lidar_on = bool(self.get_parameter("lidar").value)
+        self.lidar_period = max(1, int(round(100.0 / float(self.get_parameter("lidar_rate_hz").value))))
+        self.lidar_n = int(self.get_parameter("lidar_rays").value)
+        self.lidar_rmax = float(self.get_parameter("lidar_range_max").value)
+        self.lidar_z = float(self.get_parameter("lidar_z").value)
+        self.lidar_mask = np.zeros(6, dtype=np.uint8)
+        self.lidar_mask[int(self.get_parameter("lidar_geomgroup").value)] = 1
+        self._lidar_count = 0
+        a = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
+        self.lidar_dirs_local = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
+        if self.lidar_on:
+            self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
+            if self.publish_tf:
+                st = TransformStamped()
+                st.header.stamp = self.get_clock().now().to_msg()
+                st.header.frame_id = self.base_frame
+                st.child_frame_id = "lidar_link"
+                st.transform.translation.z = self.lidar_z
+                st.transform.rotation.w = 1.0
+                self._static_tf = StaticTransformBroadcaster(self)
+                self._static_tf.sendTransform(st)
         self.sub_joint_commands = self.create_subscription(
             Float32MultiArray,
             "/joint_commands",
@@ -392,6 +426,40 @@ class MujocoBridgeNode(Node):
             t.transform.rotation.y = float(quat[2])
             t.transform.rotation.z = float(quat[3])
             self.tf_broadcaster.sendTransform(t)
+
+        if self.lidar_on:
+            self._lidar_count += 1
+            if self._lidar_count >= self.lidar_period:
+                self._lidar_count = 0
+                self._publish_scan(now, quat)
+
+    def _publish_scan(self, now, quat):
+        w, x, y, z = quat
+        R = np.array([
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ])
+        origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
+        dirs = self.lidar_dirs_local @ R.T
+        n = self.lidar_n
+        dist = np.zeros(n, dtype=np.float64)
+        geomid = np.zeros(n, dtype=np.int32)
+        mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
+                           geomid, dist, None, n, self.lidar_rmax)
+        ranges = np.where((geomid >= 0) & (dist >= 0) & (dist < self.lidar_rmax), dist, np.inf)
+        sc = LaserScan()
+        sc.header.stamp = now
+        sc.header.frame_id = "lidar_link"
+        sc.angle_min = -float(np.pi)
+        sc.angle_max = float(np.pi) - 2.0 * float(np.pi) / n
+        sc.angle_increment = 2.0 * float(np.pi) / n
+        sc.time_increment = 0.0
+        sc.scan_time = self.lidar_period * 0.01
+        sc.range_min = 0.15
+        sc.range_max = self.lidar_rmax
+        sc.ranges = [float(r) for r in ranges]
+        self.pub_scan.publish(sc)
 
     def destroy_node(self):
         # Hintergrund-Thread aktiv stoppen, bevor der Knoten zerstoert wird -

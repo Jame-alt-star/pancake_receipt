@@ -46,13 +46,18 @@ def generate_launch_description():
         "headless", default_value="false",
         description="true = MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher, fuer Tests/Nav2).")
     headless = LaunchConfiguration("headless")
+    scene_arg = DeclareLaunchArgument(
+        "scene_file", default_value="",
+        description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
+                    "models/robots/g1_description/scene_testwelt_29dof.xml")
+    scene = LaunchConfiguration("scene_file")
 
     mujoco_node = Node(
         package="r1_bringup",
         executable="mujoco_node",
         name="mujoco_bridge_node",
         output="screen",
-        parameters=[{"config_file": config_file, "headless": headless}],
+        parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene}],
     )
 
     steuereinheit_node = Node(
@@ -66,6 +71,7 @@ def generate_launch_description():
     return LaunchDescription([
         config_file_arg,
         headless_arg,
+        scene_arg,
         mujoco_node,
         steuereinheit_node,
     ])
