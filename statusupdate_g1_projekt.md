@@ -213,3 +213,25 @@ Ohne Gegensteuerung dreht der Roboter langsam weg (Yaw-Drift), die Policy reagie
 Die Positionshaltung bleibt trotzdem sinnvoll, aber als Schutz gegen Störungen: seitlicher Stoß 0,3 m/s: ohne 3,9 cm / mit 3,9 cm (kein Unterschied); Stoß 0,6 m/s: ohne 26 cm Abweichung (24 cm Endabweichung), mit 15 cm max (6 cm Endabweichung).
 
 **Eigentlicher Fund:** Die Drift trat in **Bereitschaft** auf, weil dort cmd=[0,0,0] hart an die Policy ging, also ohne Kurshaltung. Fix: `BereitschaftState` übergibt jetzt `cmd[2]` der Kurshaltung. Echte Pipeline: Drift in Bereitschaft 0,6 cm in 30 s (vorher ~0,3 m/60 s). Integrationstest 23/23 (neue Prüfung S1).
+
+## Greifen im Stehen: Machbarkeit gemessen (13.10.2026)
+
+Werkzeug: `tests/arm_feasibility.py` (synchroner Kreis, ohne ROS2). Die Policy hält Beine und Taille (Kurs- + Positionshaltung wie im Knoten), die Armgelenke (Index 15..28) werden von einer IK-Trajektorie überschrieben: 10 s Stehen → Greifpose → halten → Anheben 15 cm → Ablegen → zurück. Last = Zusatzmasse je Hand (Punktmasse am Handgelenk, Trägheit vernachlässigt).
+
+**1. Unveränderte Policy:** stabil nur bis ~0,20 m vor dem Becken (≤ 1 kg je Hand: 3,3 cm Drift, 8° Neigung; 2 kg fällt). Bei 0,25 m Sturz beim Ablegen, bei 0,30 m schon im statischen Halten und ohne Last.
+
+**2. Ursache des Sturzes ist die Beobachtung, nicht der Schwerpunkt.** Wird der Policy für die Armgelenke die Ruhepose (Position) und Geschwindigkeit 0 als Beobachtung gegeben („blind für die Arme“, Armbewegung = Störung), bleibt der Roboter bei 0,30 m ohne Last stabil (6,8 cm Drift, 10° Neigung; bei 0,45 m noch kein Sturz). Die Arm-Positionen liegen für die Policy außerhalb ihres Trainingsbereichs.
+
+**3. Mit Last braucht es Gegengewicht.** Maskiert, ohne Taillenausgleich, kippt der Roboter mit 0,5 kg je Hand bei 0,30 m (neigt sich statisch ~11° nach vorn, fällt beim Ablegen). Mit Taille 0,15 rad nach HINTEN (Pitch −0,15) ist es stabil. Positive Werte (nach vorn) fallen immer; −0,25 ist unzuverlässig (2 kg läuft weg); −0,10 fällt mit 2 kg.
+
+**Empfohlener Betriebspunkt (robust geprüft):** Policy blind für Arme, Taille Pitch −0,15 rad (mit der Armpose eingeblendet), Hände 0,30 m vor dem Becken, Last ≤ 1 kg je Hand.
+- 0,5 kg: 5,0 cm max. Drift, 2,7° Neigung; 1,0 kg: 5,6 cm, 4,1°; Endabweichung ≤ 0,3 cm.
+- robust gegen Armabstand 0,12/0,20 m, halbe Geschwindigkeit, +10 cm Höhe; 60 s Halten in Greifpose: 4,8 / 5,5 cm, kein Anwachsen.
+- Schwächen: schnelle Bewegung (0,5×Dauer) oder 25 cm Hub mit 1 kg: ~14 cm Drift, 10–12 cm Endabweichung. Größere Reichweite unter Last (0,35 m, 1 kg: 66 cm Ausreißer) und 2 kg bei 0,30 m sind nicht tragfähig.
+- Teilweises Maskieren (Mischung der Beobachtung 0,25–0,75) ist NICHT monoton und nicht robust (0,75 fällt wieder) – nicht verwenden.
+
+**Einordnung:** Hände 0,30 m vor dem Becken liegen ~10–20 cm vor der Körperfront (Rumpf reicht etwa 0,1–0,2 m nach vorn), das reicht für Tischkanten-Objekte. IK-Fehler bei 0,30 m ~6 cm (Gelenklimits, Hand nicht exakt am Ziel). Reichweite des Handgelenks insgesamt max. 0,71 m (Taille fest).
+
+**Nicht gemessen/offen:** Hand/Greifer (Modell endet am Handgelenk, `g1_29dof_with_hand.xml` existiert), Einarm-Aufgaben (nur symmetrische Zweiarm-Posen getestet), echte Objektkontakte/Reibung, Wahrnehmung (nur Simulations-Ground-Truth), IK mit pinocchio (hier eigene gedämpfte Kleinste-Quadrate-IK auf MuJoCo-Jacobi). Regressionstest: `tests/test_arm_feasibility.py`.
+
+**Umsetzung im Betrieb (noch NICHT gebaut):** Zustand `Manipulieren` (nur aus Balancieren): Armtargets überschreiben die Policy-Ausgabe für Gelenke 15..28, Controller maskiert die Arm-Beobachtungen nur solange dieser Zustand aktiv ist (nicht beim Gehen, dort ist die Policy auf ihre eigenen Armbewegungen trainiert), Taille Pitch −0,15 rad proportional zur Armauslenkung.

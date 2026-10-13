@@ -56,7 +56,8 @@ def solve_ik(m, base_qpos, q_start, hand_bodies, targets_world, arm_idx_sets, it
     return q, float(np.sqrt(err_all))
 
 
-def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False):
+def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False, obs_mask=False, obs_blend=0.0, tscale=1.0,
+        waist=(0.0, 0.0, 0.0), y_lat=0.17, z_off=0.0, elbow_seed=0.0):
     cfg = load_config()
     ctl = load_controller29(cfg)
     m = mujoco.MjModel.from_xml_path(BRINGUP + cfg["xml_path"])
@@ -79,20 +80,24 @@ def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False):
             for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
 
     # Greifposen per IK (Welt-Ziel relativ zur Beckenposition im Stand)
-    t_l = p0 + np.array([reach, 0.17, 0.0])
-    t_r = p0 + np.array([reach, -0.17, 0.0])
-    q_grasp, e1 = solve_ik(m, base0, home.copy(), [lw, rw], [t_l, t_r], [LARM, RARM])
+    t_l = p0 + np.array([reach, y_lat, z_off])
+    t_r = p0 + np.array([reach, -y_lat, z_off])
+    q_seed = home.copy()
+    q_seed[18] += elbow_seed      # linker Ellbogen
+    q_seed[25] += elbow_seed      # rechter Ellbogen
+    q_grasp, e1 = solve_ik(m, base0, q_seed, [lw, rw], [t_l, t_r], [LARM, RARM])
     q_lift, e2 = solve_ik(m, base0, q_grasp.copy(), [lw, rw],
                           [t_l + [0, 0, dz], t_r + [0, 0, dz]], [LARM, RARM])
     ik_err = max(e1, e2)
 
     # Phasen: (Dauer, von, nach)
-    seq = [(10, home, home), (3, home, q_grasp), (4, q_grasp, q_grasp), (2, q_grasp, q_lift),
-           (4, q_lift, q_lift), (2, q_lift, q_grasp), (3, q_grasp, q_grasp), (3, q_grasp, home),
+    ts = tscale
+    seq = [(10, home, home), (3 * ts, home, q_grasp), (4, q_grasp, q_grasp), (2 * ts, q_grasp, q_lift),
+           (4, q_lift, q_lift), (2 * ts, q_lift, q_grasp), (3, q_grasp, q_grasp), (3 * ts, q_grasp, home),
            (5 + hold_extra, home, home)]
     names = ["Stehen", "Greifen", "halten", "Anheben", "oben", "Ablegen", "unten", "Zurueck", "Ende"]
     if hold_extra:   # Dauer-Test: lange in der Greifpose mit Last halten statt zurueck
-        seq = [(10, home, home), (3, home, q_grasp), (hold_extra, q_grasp, q_grasp)]
+        seq = [(10, home, home), (3 * ts, home, q_grasp), (hold_extra, q_grasp, q_grasp)]
         names = ["Stehen", "Greifen", "halten"]
 
     t_edges = np.cumsum([0] + [s[0] for s in seq])
@@ -121,8 +126,13 @@ def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False):
                     e = tp - d.qpos[:2]
                     cmd[0] = np.clip(np.cos(yaw) * e[0] + np.sin(yaw) * e[1], -0.15, 0.15)
                     cmd[1] = np.clip(-np.sin(yaw) * e[0] + np.cos(yaw) * e[1], -0.15, 0.15)
-            tgt = ctl.compute_joint_targets(d.qpos[7:].copy(), d.qvel[6:].copy(), q.copy(),
-                                            d.qvel[3:6].copy(), cmd)
+            jp = d.qpos[7:].copy()
+            jv = d.qvel[6:].copy()
+            if obs_mask:          # Policy sieht die Arme in Ruhepose (Armbewegung = unbekannte Stoerung)
+                lam = obs_blend   # 0 = blind, 1 = echte Beobachtung
+                jp[15:29] = home[15:29] + lam * (jp[15:29] - home[15:29])
+                jv[15:29] = lam * jv[15:29]
+            tgt = ctl.compute_joint_targets(jp, jv, q.copy(), d.qvel[3:6].copy(), cmd)
             k = int(np.searchsorted(t_edges, t, side="right") - 1)
             k = min(k, len(seq) - 1)
             dur, a, b = seq[k]
@@ -130,6 +140,8 @@ def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False):
             arm = (1 - s) * a + s * b
             tgt = tgt.copy()
             tgt[15:29] = arm[15:29]
+            alpha = float(np.linalg.norm(arm[15:29] - home[15:29]) / (np.linalg.norm(q_grasp[15:29] - home[15:29]) + 1e-9))
+            tgt[12:15] = tgt[12:15] + np.clip(alpha, 0, 1) * np.array(waist)
         # Metriken
         k = min(int(np.searchsorted(t_edges, t, side="right") - 1), len(seq) - 1)
         ph = res["ph"][names[k]]
@@ -161,14 +173,26 @@ def main():
     ap.add_argument("--dz", type=float, default=0.15, help="Anheben [m]")
     ap.add_argument("--hold", type=float, default=0.0, help="Dauertest: so lange in Greifpose [s]")
     ap.add_argument("--no-poshold", action="store_true")
+    ap.add_argument("--empfohlen", action="store_true",
+                    help="Betriebspunkt: Policy blind fuer Arme, Taille -0.15 rad, ylat 0.15")
     ap.add_argument("--phases", action="store_true", help="Ergebnisse je Phase")
+    ap.add_argument("--obs-mask", action="store_true", help="Policy sieht Arme in Ruhepose")
+    ap.add_argument("--obs-blend", type=float, default=0.0, help="mit --obs-mask: Anteil echter Arm-Beobachtung")
+    ap.add_argument("--tscale", type=float, default=1.0, help="Faktor auf Dauer der Armbewegungen")
+    ap.add_argument("--waist", type=float, nargs=3, default=[0, 0, 0], help="Taille yaw roll pitch Offset [rad]")
+    ap.add_argument("--ylat", type=float, default=0.17)
+    ap.add_argument("--zoff", type=float, default=0.0)
+    ap.add_argument("--elbow-seed", type=float, default=0.0)
     a = ap.parse_args()
+    if a.empfohlen:
+        a.obs_mask, a.obs_blend, a.waist, a.ylat = True, 0.0, [0, 0, -0.15], 0.15
     print(f"Greifpose: Haende {a.reach:.2f} m vor dem Becken, Anheben {a.dz:.2f} m, "
           f"Positionshaltung {'aus' if a.no_poshold else 'an'}")
     print(f"{'Last/Hand':>9} | {'IK-Fehler':>9} | {'Sturz':>8} | {'max Drift':>9} | {'Ende':>7} | "
           f"{'max Neigung':>11} | {'min z':>6} | {'Fuss hoch':>9} | {'max |dq| Beine':>14}")
     for load in a.loads:
-        r = run(a.reach, load, a.dz, a.hold, use_poshold=not a.no_poshold)
+        r = run(a.reach, load, a.dz, a.hold, use_poshold=not a.no_poshold, obs_mask=a.obs_mask, obs_blend=a.obs_blend,
+                tscale=a.tscale, waist=tuple(a.waist), y_lat=a.ylat, z_off=a.zoff, elbow_seed=a.elbow_seed)
         fell = f"{r['fell']:.1f}s" if r["fell"] else "nein"
         print(f"{load:7.1f}kg | {r['ik_err']*100:7.1f}cm | {fell:>8} | {r['drift']*100:7.1f}cm | "
               f"{r['end_drift']*100:5.1f}cm | {r['tilt']:9.1f}° | {r['minz']:6.3f} | "
