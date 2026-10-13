@@ -25,6 +25,8 @@ def generate_launch_description():
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
         DeclareLaunchArgument("headless", default_value="false",
                               description="MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher)"),
+        DeclareLaunchArgument("slam", default_value="false",
+                              description="slam_toolbox statt statischem map->odom (mit nav2:=true)"),
         DeclareLaunchArgument("cmd_vel_timeout_s", default_value="1.0",
                               description="cmd_vel-Watchdog in Layer 3 [s] (0 = aus)"),
         DeclareLaunchArgument("scene_file", default_value="",
@@ -45,6 +47,7 @@ def generate_launch_description():
     navigation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory("roboter_navigation"), "launch", "navigation.launch.py")),
+        launch_arguments={"slam": LaunchConfiguration("slam")}.items(),
         condition=IfCondition(LaunchConfiguration("nav2")))
     mission = Node(package="roboter_task_planning", executable="mission_node", output="screen",
                    parameters=[{

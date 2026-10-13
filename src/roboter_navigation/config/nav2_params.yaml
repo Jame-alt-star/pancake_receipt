@@ -116,7 +116,7 @@ global_costmap:
     ros__parameters:
       update_frequency: 1.0
       publish_frequency: 1.0
-      global_frame: odom                     # map==odom (statische Identitaet), rollendes Fenster
+      global_frame: map                      # Ziele kommen im map-Frame; rollendes Fenster
       robot_base_frame: base_link
       rolling_window: true
       width: 24
@@ -183,7 +183,7 @@ behavior_server:
     wait:
       plugin: "nav2_behaviors::Wait"
     local_frame: odom
-    global_frame: odom
+    global_frame: map
     robot_base_frame: base_link
     transform_tolerance: 0.2
     simulate_ahead_time: 2.0

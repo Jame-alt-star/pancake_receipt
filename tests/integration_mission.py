@@ -11,7 +11,9 @@ import rclpy
 from geometry_msgs.msg import Point
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
+from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool, String
+from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
 
 R = []
@@ -35,7 +37,31 @@ class Probe(Node):
                            durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(String, "/mission/status", lambda m: self.status.append(json.loads(m.data)), lat50)
         self.not_aus = self.create_publisher(Bool, "/not_aus", lat)
+        self.map = None
+        self.tf_map_odom = False
+        self.create_subscription(OccupancyGrid, "/map", lambda m: setattr(self, "map", m), lat)
+        self.create_subscription(TFMessage, "/tf", self._tf, 50)
         self.start = self.create_client(Trigger, "/mission/start")
+
+    def _tf(self, m):
+        for t in m.transforms:
+            if t.header.frame_id == "map" and t.child_frame_id == "odom":
+                self.tf_map_odom = True
+
+    def map_occupied(self, x, y, r=0.15):
+        """True, wenn im Umkreis r um (x, y) eine belegte Zelle (>50) der /map liegt."""
+        m = self.map
+        if m is None:
+            return False
+        res = m.info.resolution
+        ox, oy = m.info.origin.position.x, m.info.origin.position.y
+        k = int(round(r / res))
+        cx, cy = int((x - ox) / res), int((y - oy) / res)
+        for j in range(cy - k, cy + k + 1):
+            for i in range(cx - k, cx + k + 1):
+                if 0 <= i < m.info.width and 0 <= j < m.info.height and m.data[j * m.info.width + i] > 50:
+                    return True
+        return False
 
     def _on_pos(self, m):
         self.p = (m.x, m.y, m.z)
@@ -66,17 +92,20 @@ class Probe(Node):
 
 
 NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
+SLAM = "--slam" in sys.argv       # slam_toolbox (impliziert --welt); prueft /map und map->odom
 PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
-WELT = "--welt" in sys.argv or PATROUILLE   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
+WELT = "--welt" in sys.argv or PATROUILLE or SLAM   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
 if WELT:
     NAV2 = True
 # Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
-BOXEN = [(1.25, 1.75, -0.8, 0.8), (4.45, 4.55, 0.8, 3.0), (4.45, 4.55, -3.0, -0.8)]
+BOXEN = [(1.25, 1.75, -0.8, 0.8), (4.45, 4.55, 0.8, 2.95), (4.45, 4.55, -2.95, -0.8)]
 
 
 def launch(logfile):
     env = dict(os.environ)
     nav = ["nav2:=true", "headless:=true"] if NAV2 else ["nav_testdouble:=true"]   # Nav2 + Viewer: zu wenig RAM
+    if SLAM:
+        nav += ["slam:=true"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
         nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",
@@ -125,8 +154,20 @@ def main():
                   str(plans[0]["plan"]) if plans else "")
         goal = (0.0, 0.0) if PATROUILLE else ((5.8, 1.5) if WELT else (3.0, 2.0))
         dist_b = float(np.hypot(pr.p[0] - goal[0], pr.p[1] - goal[1]))
-        check("S1 Roboter nahe b (<0.6 m)", dist_b < 0.6, f"abstand={dist_b:.2f}")
+        tol_b = 1.0 if SLAM else 0.6   # SLAM: Ziele im map-Frame, Scan-Matching-Versatz gegen die Welt
+        check(f"S1 Roboter nahe b (<{tol_b} m)", dist_b < tol_b, f"abstand={dist_b:.2f}")
         check("S1 steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+
+        if SLAM:
+            print("== S1b SLAM: /map und map->odom")
+            pr.spin(8)
+            check("S1b /map empfangen", pr.map is not None)
+            check("S1b TF map->odom von slam_toolbox", pr.tf_map_odom)
+            # bekannte Wandpunkte (Welt = map-Frame, da Start im Ursprung mit Yaw 0)
+            for name, (wx, wy) in {"Westwand": (-1.5, 0.0), "Nordwand": (2.0, 2.95), "Suedwand": (2.0, -2.95),
+                                   "Hindernis": (1.25, 0.0), "Trennwand": (4.5, 2.0)}.items():
+                check(f"S1b Karte enthaelt {name} bei ({wx},{wy})", pr.map_occupied(wx, wy, 0.3))
+            check("S1b Tuer in der Karte frei", not pr.map_occupied(4.5, 0.0, 0.15))
 
         print("== S2 NotAus waehrend der Mission")
         # Roboter ist bei b; Mission erneut starten: Ziele sind bezogen auf start_ort 'start' -> er muss laufen

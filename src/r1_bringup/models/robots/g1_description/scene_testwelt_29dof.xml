@@ -4,7 +4,7 @@
        fuer das simulierte Lidar (nur group 2) erfassbar; die Roboter-Geoms liegen in group 0/1.
 
        Grundriss (x nach rechts, y nach oben), Meter:
-         Raum A: x -1.5 .. 4.5, y -3 .. 3        Raum B: x 4.5 .. 7, y -3 .. 3
+         Raum A: x -1.5 .. 4.5, y -2.95 .. 2.95   Raum B: x 4.5 .. 7, y -2.95 .. 2.95
          Trennwand bei x = 4.5 mit Tuer y -0.8 .. 0.8 (1.6 m breit)
          Hindernis: Quader 0.5 x 1.6 bei (1.5, 0)
        Mission 'testwelt.yaml': start (0,0), a (3,-1.5), b (5.8,1.5) - a und b liegen so, dass der
@@ -13,13 +13,13 @@
 
   <worldbody>
     <!-- Aussenwaende (Hoehe 1.6 m, damit das Lidar auf ~1.2 m sie trifft) -->
-    <geom name="wand_nord"  type="box" pos="2.75  3.05 0.8" size="4.35 0.05 0.8" group="2" rgba="0.75 0.75 0.7 1"/>
-    <geom name="wand_sued"  type="box" pos="2.75 -3.05 0.8" size="4.35 0.05 0.8" group="2" rgba="0.75 0.75 0.7 1"/>
+    <geom name="wand_nord"  type="box" pos="2.75  3.00 0.8" size="4.35 0.05 0.8" group="2" rgba="0.75 0.75 0.7 1"/>
+    <geom name="wand_sued"  type="box" pos="2.75 -3.00 0.8" size="4.35 0.05 0.8" group="2" rgba="0.75 0.75 0.7 1"/>
     <geom name="wand_west"  type="box" pos="-1.55 0    0.8" size="0.05 3.1 0.8"  group="2" rgba="0.75 0.75 0.7 1"/>
     <geom name="wand_ost"   type="box" pos="7.05  0    0.8" size="0.05 3.1 0.8"  group="2" rgba="0.75 0.75 0.7 1"/>
     <!-- Trennwand mit Tuer (Oeffnung y -0.8 .. 0.8) -->
-    <geom name="trenn_nord" type="box" pos="4.5  1.9 0.8" size="0.05 1.1 0.8" group="2" rgba="0.7 0.7 0.75 1"/>
-    <geom name="trenn_sued" type="box" pos="4.5 -1.9 0.8" size="0.05 1.1 0.8" group="2" rgba="0.7 0.7 0.75 1"/>
+    <geom name="trenn_nord" type="box" pos="4.5  1.875 0.8" size="0.05 1.075 0.8" group="2" rgba="0.7 0.7 0.75 1"/>
+    <geom name="trenn_sued" type="box" pos="4.5 -1.875 0.8" size="0.05 1.075 0.8" group="2" rgba="0.7 0.7 0.75 1"/>
     <!-- Hindernis -->
     <geom name="hindernis"  type="box" pos="1.5 0 0.7"    size="0.25 0.8 0.7"  group="2" rgba="0.85 0.45 0.2 1"/>
   </worldbody>

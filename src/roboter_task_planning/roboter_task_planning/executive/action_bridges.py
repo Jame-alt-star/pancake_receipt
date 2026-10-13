@@ -100,8 +100,19 @@ class NavigationBridge(IActionBridge):
             goal.pose.header.stamp = self.node.get_clock().now().to_msg()
             goal.pose.pose.position.x, goal.pose.pose.position.y = float(x), float(y)
             goal.pose.pose.orientation.w = 1.0
-            ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
+            ok, res, text = self._send_nav2(goal, cancel)
         return BridgeResult(bool(ok), text)
+
+    def _send_nav2(self, goal, cancel: threading.Event):
+        """Nav2-Ziel senden; ein sofortiger Abbruch (< 6 s, z.B. Planner/TF gerade noch nicht
+        bereit, CPU-Spitze beim Missionsstart) wird EINMAL still wiederholt, statt eine ganze
+        Neuplanung auszuloesen."""
+        t0 = time.monotonic()
+        ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
+        if not ok and not cancel.is_set() and time.monotonic() - t0 < 6.0 and "abgebrochen" not in text:
+            time.sleep(2.0)
+            ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
+        return ok, res, text
 
 
 class BalanceBridge(IActionBridge):
