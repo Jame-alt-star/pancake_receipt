@@ -31,6 +31,9 @@ def make(cmd_target=(0.0, 0.0, 0.0), rng=True):
     else:
         n.cmd_min = n.cmd_max = None
     n.wz_vx_ref = n.wz_at_vmax = None
+    n.cmd_vel_timeout_s = 0.0
+    n._last_cmd_vel_t = None
+    n._timeout_gemeldet = False
     n._log = _Log()
     n.get_logger = lambda: n._log
     return n
@@ -122,3 +125,17 @@ def test_kombigrenze_wz_bei_hoher_geschwindigkeit():
         n.cmd = np.array([vx, 0.0, wz], dtype=np.float32)
         n._clip_cmd()
         assert n.cmd[2] == pytest.approx(erwartet, abs=1e-5), (vx, wz, n.cmd.tolist())
+
+
+def test_cmd_vel_watchdog():
+    n = make(cmd_target=(0.4, 0.0, 0.1))
+    n.cmd_vel_timeout_s = 1.0
+    assert n._check_cmd_timeout(100.0) is False          # noch nie ein /cmd_vel empfangen
+    n._last_cmd_vel_t = 100.0
+    assert n._check_cmd_timeout(100.5) is False and n.cmd_target[0] == pytest.approx(0.4)
+    assert n._check_cmd_timeout(101.5) is True            # > 1 s ohne Nachricht
+    assert n.cmd_target.tolist() == [0.0, 0.0, 0.0] and len(n._log.warnungen) == 1
+    assert n._check_cmd_timeout(103.0) is False           # nichts mehr zu tun, keine neue Warnung
+    n.cmd_vel_timeout_s = 0.0
+    n.cmd_target = np.array([0.4, 0, 0], dtype=np.float32)
+    assert n._check_cmd_timeout(500.0) is False           # Watchdog aus

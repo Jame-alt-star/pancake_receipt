@@ -1,4 +1,5 @@
 import os
+import time
 import yaml
 import numpy as np
 import rclpy
@@ -195,6 +196,14 @@ class SteuereinheitNode(Node):
         self.wz_at_vmax = float(hs["wz_at_vmax"]) if hs else None
         self._cmd_clip_gemeldet = False
 
+        # NEU (13.10.2026): cmd_vel-Watchdog. Bleibt /cmd_vel laenger als cmd_vel_timeout_s aus
+        # (z.B. Nav2 faellt aus), wird cmd_target auf 0 gesetzt, statt dass der Roboter mit dem
+        # letzten Kommando weiterlaeuft. 0 = aus. Parameter ueberschreibt den Config-Wert.
+        self.declare_parameter("cmd_vel_timeout_s", float(self.config.get("cmd_vel_timeout_s", 0.0)))
+        self.cmd_vel_timeout_s = float(self.get_parameter("cmd_vel_timeout_s").value)
+        self._last_cmd_vel_t = None
+        self._timeout_gemeldet = False
+
         # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
         # BereitschaftState sofort anhand von cmd_target entscheiden -
         # und cmd_target startet mit cmd_init (haeufig != 0), der
@@ -304,6 +313,8 @@ class SteuereinheitNode(Node):
         self.cmd_target = np.array(
             [msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32
         )
+        self._last_cmd_vel_t = time.monotonic()
+        self._timeout_gemeldet = False
 
         # NEU (12.10.2026, Realismus-Fix): das Ankommen IRGENDEINER
         # /cmd_vel-Nachricht gilt als bewusste Freigabe durch einen
@@ -439,6 +450,21 @@ class SteuereinheitNode(Node):
         self.pos_hold_corr[1] = float(np.clip(
             POSITION_HOLD_KP * lateral_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED))
 
+    def _check_cmd_timeout(self, now: float) -> bool:
+        """True, wenn der Watchdog ausgeloest hat (cmd_target wurde auf 0 gesetzt)."""
+        if self.cmd_vel_timeout_s <= 0.0 or self._last_cmd_vel_t is None:
+            return False
+        if now - self._last_cmd_vel_t <= self.cmd_vel_timeout_s:
+            return False
+        if np.any(self.cmd_target != 0.0):
+            self.cmd_target = np.zeros(3, dtype=np.float32)
+            if not self._timeout_gemeldet:
+                self.get_logger().warn(
+                    f"/cmd_vel seit > {self.cmd_vel_timeout_s:.1f} s nicht empfangen - Kommando auf 0 gesetzt.")
+                self._timeout_gemeldet = True
+            return True
+        return False
+
     def _clip_cmd(self):
         """Begrenzt self.cmd auf cmd_training_range (falls konfiguriert) und
         warnt einmalig, wenn das angeforderte /cmd_vel ausserhalb liegt."""
@@ -478,6 +504,7 @@ class SteuereinheitNode(Node):
         if np.all(joint_pos == 0.0) and np.all(quat == 0.0):
             return
 
+        self._check_cmd_timeout(time.monotonic())
         self._ramp_cmd()
         self._apply_heading_hold(quat)
         self._clip_cmd()

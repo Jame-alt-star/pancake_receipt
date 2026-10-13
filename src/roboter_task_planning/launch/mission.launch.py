@@ -25,6 +25,8 @@ def generate_launch_description():
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
         DeclareLaunchArgument("headless", default_value="false",
                               description="MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher)"),
+        DeclareLaunchArgument("cmd_vel_timeout_s", default_value="1.0",
+                              description="cmd_vel-Watchdog in Layer 3 [s] (0 = aus)"),
         DeclareLaunchArgument("scene_file", default_value="",
                               description="MuJoCo-Szene (relativ zu r1_bringup), z.B. Testwelt"),
         DeclareLaunchArgument("nav2", default_value="false",
@@ -35,7 +37,8 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(os.path.join(steuer, "launch", "steuereinheit.launch.py")),
         launch_arguments={"config_file": LaunchConfiguration("config_file"),
                           "headless": LaunchConfiguration("headless"),
-                          "scene_file": LaunchConfiguration("scene_file")}.items())
+                          "scene_file": LaunchConfiguration("scene_file"),
+                          "cmd_vel_timeout_s": LaunchConfiguration("cmd_vel_timeout_s")}.items())
     balance = Node(package="roboter_steuerung", executable="balance_dienst_node", output="screen")
     double = Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen",
                   condition=IfCondition(LaunchConfiguration("nav_testdouble")))

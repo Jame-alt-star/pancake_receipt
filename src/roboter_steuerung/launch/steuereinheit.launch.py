@@ -46,6 +46,9 @@ def generate_launch_description():
         "headless", default_value="false",
         description="true = MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher, fuer Tests/Nav2).")
     headless = LaunchConfiguration("headless")
+    timeout_arg = DeclareLaunchArgument(
+        "cmd_vel_timeout_s", default_value="0.0",
+        description="cmd_vel-Watchdog [s]: ohne neue Nachricht wird das Kommando auf 0 gesetzt (0 = aus).")
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
@@ -65,13 +68,15 @@ def generate_launch_description():
         executable="steuereinheit_node",
         name="steuereinheit_node",
         output="screen",
-        parameters=[{"config_file": config_file}],
+        parameters=[{"config_file": config_file,
+                     "cmd_vel_timeout_s": LaunchConfiguration("cmd_vel_timeout_s")}],
     )
 
     return LaunchDescription([
         config_file_arg,
         headless_arg,
         scene_arg,
+        timeout_arg,
         mujoco_node,
         steuereinheit_node,
     ])
