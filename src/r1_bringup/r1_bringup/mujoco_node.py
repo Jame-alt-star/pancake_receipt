@@ -38,13 +38,38 @@ class MujocoBridgeNode(Node):
     def __init__(self):
         super().__init__("mujoco_bridge_node")
 
-        # 1. Config laden (gleiche g1_policy.yaml wie steuereinheit_node.py,
-        # damit z.B. simulation_dt/kps/kds an beiden Stellen zusammenpassen)
+        # 1. Config laden (gleiche Datei wie steuereinheit_node.py, damit
+        # z.B. simulation_dt/kps/kds an beiden Stellen zusammenpassen).
+        # NEU (DOF-Migration): Dateiname ueber den ROS2-Parameter
+        # "config_file" waehlbar (Default bleibt "g1_policy.yaml" - exakt
+        # das bisherige 12-DOF-Verhalten unveraendert), siehe
+        # steuereinheit_node.py fuer denselben Mechanismus und
+        # steuereinheit.launch.py fuer das Launch-Argument, das beide
+        # Knoten synchron umschaltet.
+        self.declare_parameter("config_file", "g1_policy.yaml")
+        config_file = self.get_parameter("config_file").get_parameter_value().string_value
+
+        # NEU (13.10.2026): Physik erst starten, wenn der Regler das erste
+        # /joint_commands gesendet hat. Gemessen: steuereinheit_node
+        # braucht ~7 s Wandzeit zum Hochfahren (Imports, ONNX-Laden); in
+        # der Zeit simulierte dieser Knoten schon mit reiner PD-Haltung auf
+        # default_angles, was nachweislich umkippt (siehe
+        # balancieren_state.py "Variante 2") - der Roboter lag schon, bevor
+        # die Policy ihr erstes Kommando senden konnte (z=0.096 bei
+        # simtime 1.9 s, ncmd=0). Zustaende werden waehrend der Pause
+        # weiter publiziert (der Regler braucht sie fuer sein Start-Gate).
+        self.declare_parameter("wait_for_controller", True)
+        self.wait_for_controller = self.get_parameter("wait_for_controller").get_parameter_value().bool_value
+        self.controller_connected = not self.wait_for_controller
+        self.declare_parameter("profile", False)
+        self.profile = self.get_parameter("profile").get_parameter_value().bool_value
+
         pkg_share = get_package_share_directory("r1_bringup")
-        config_path = os.path.join(pkg_share, "config", "g1_policy.yaml")
+        config_path = os.path.join(pkg_share, "config", config_file)
 
         with open(config_path, "r") as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
+        self.get_logger().info(f"[mujoco_bridge_node] aktive Config: {config_file} (xml_path={self.config.get('xml_path')})")
 
         # Pfade aufloesen (relativ zum Share-Verzeichnis)
         xml_rel_path = self.config["xml_path"]
@@ -107,8 +132,16 @@ class MujocoBridgeNode(Node):
         # Nachricht (z.B. durch einen Konfigurationsfehler) wird ignoriert,
         # statt die Simulation mit falsch vielen Werten zum Absturz zu bringen.
         cmd_data = np.array(msg.data, dtype=np.float32)
+        _now = time.perf_counter()
+        if getattr(self, "_prof_last_cmd", None) is not None:
+            self._prof_gap = max(getattr(self, "_prof_gap", 0.0), _now - self._prof_last_cmd)
+        self._prof_last_cmd = _now
+        self._prof_ncmd = getattr(self, "_prof_ncmd", 0) + 1
         if len(cmd_data) == len(self.target_dof_pos):
             self.target_dof_pos = cmd_data
+            if not self.controller_connected:
+                self.controller_connected = True
+                self.get_logger().info("[mujoco_bridge_node] Regler verbunden - Physik gestartet.")
 
     def _run_simulation(self):
         # BUGFIX (gemessen: /joint_states kam nur mit ~90 Hz statt der
@@ -130,6 +163,21 @@ class MujocoBridgeNode(Node):
         # Schleife so weit, dass sie near-Echtzeit auf ~500 Hz kommen sollte.
         RENDER_DECIMATION = 10
         render_counter = 0
+        # NEU (13.10.2026): Publish nur alle PUBLISH_DECIMATION Schritte
+        # (500/5 = 100 Hz). Gemessen: _publish_states() kostete ~1.1 ms pro
+        # Aufruf (3 Nachrichten, 29 Gelenke) - das war der groesste Posten
+        # der Schleife und liess die Simulation nur mit ~0.5x Echtzeit
+        # laufen. Die Policy laeuft mit 50 Hz (control_decimation=10), 100 Hz
+        # Sensordaten reichen also; zusaetzliche Latenz <= 10 ms.
+        PUBLISH_DECIMATION = 5
+        publish_counter = 0
+        # Absolute Zeitplanung: Verzoegerungen eines Schritts (Viewer-Sync,
+        # sleep-Overshoot) werden durch kuerzere Wartezeit der folgenden
+        # Schritte aufgeholt statt sich zu summieren.
+        next_deadline = time.perf_counter()
+        # TEMP-PROFILING (13.10.2026): Zeitanteile der Schleife, alle 2s geloggt
+        prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
+        prof_t0 = time.perf_counter()
 
         with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
             # NEU: freie Kamera mit groesserem Abstand, direkt von hinten
@@ -148,6 +196,15 @@ class MujocoBridgeNode(Node):
             while viewer.is_running() and self.is_running:
                 step_start = time.time()
 
+                if not self.controller_connected:
+                    # Pausiert: Pose einfrieren, aber Sensorwerte (100 Hz)
+                    # weiter senden und Fenster aktualisieren.
+                    self._publish_states()
+                    viewer.sync()
+                    time.sleep(0.01)
+                    next_deadline = time.perf_counter()
+                    continue
+
                 # Low-Level-PD-Regelung an Aktuatoren anwenden. qpos[7:]/
                 # qvel[6:]: die ersten 7 bzw. 6 Werte gehoeren zur
                 # "Floating Base" (qpos: 3 Position + 4 Quaternion = 7;
@@ -161,26 +218,53 @@ class MujocoBridgeNode(Node):
                 self.data.ctrl[:] = tau
 
                 # Physikschritt berechnen
+                _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
+                _t1 = time.perf_counter()
 
                 # Sensor-Zustaende publizieren - bei JEDEM Physikschritt,
                 # damit steuereinheit_node.py moeglichst aktuelle Daten
                 # bekommt (siehe Bugfix-Kommentar oben).
-                self._publish_states()
+                publish_counter += 1
+                if publish_counter >= PUBLISH_DECIMATION:
+                    self._publish_states()
+                    publish_counter = 0
+                _t2 = time.perf_counter()
+                prof["step"] += _t1 - _t0
+                prof["pub"] += _t2 - _t1
 
                 render_counter += 1
                 if render_counter >= RENDER_DECIMATION:
                     # Kamera folgt dem Roboter (nur Position - Abstand/
                     # Winkel bleiben manuell verstellbar, siehe oben).
                     viewer.cam.lookat[:] = self.data.qpos[0:3]
+                    _ts = time.perf_counter()
                     viewer.sync()
+                    prof["sync"] += time.perf_counter() - _ts
                     render_counter = 0
 
                 # Taktung drosseln (auf Physikzeitschritt), damit die
                 # Simulation nicht schneller als Echtzeit durchlaeuft
-                time_until_next = self.model.opt.timestep - (time.time() - step_start)
+                next_deadline += self.model.opt.timestep
+                time_until_next = next_deadline - time.perf_counter()
+                if time_until_next < -0.05:
+                    # >50 ms im Rueckstand (z.B. Fenster verschoben): nicht
+                    # endlos im Schnelldurchlauf aufholen
+                    next_deadline = time.perf_counter()
                 if time_until_next > 0:
+                    _tsl = time.perf_counter()
                     time.sleep(time_until_next)
+                    prof["sleep"] += time.perf_counter() - _tsl
+                prof["n"] += 1
+                if self.profile and time.perf_counter() - prof_t0 >= 2.0:
+                    el = time.perf_counter() - prof_t0
+                    n = prof["n"]
+                    self.get_logger().info(
+                        f"PROF {n/el:.0f} Hz | simtime={self.data.time:.2f}s | pro Schritt us: step={prof['step']/n*1e6:.0f} pub={prof['pub']/n*1e6:.0f} sync={prof['sync']/n*1e6:.0f} sleep={prof['sleep']/n*1e6:.0f} gesamt={el/n*1e6:.0f} | z={self.data.qpos[2]:.3f} ncmd={getattr(self,'_prof_ncmd',0)} maxgap={getattr(self,'_prof_gap',0.0)*1e3:.0f}ms")
+                    self._prof_ncmd = 0
+                    self._prof_gap = 0.0
+                    prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
+                    prof_t0 = time.perf_counter()
 
     def _publish_states(self):
         now = self.get_clock().now().to_msg()

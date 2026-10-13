@@ -10,6 +10,7 @@ from std_msgs.msg import Bool
 
 from r1_bringup.bridges.mujoco_bridge import MujocoBridge
 from roboter_steuerung.control.rl_locomotion_controller import RLLocomotionController
+from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
 from roboter_steuerung.states.start_state import StartState
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState
 from roboter_steuerung.states.not_aus_state import NotAusState
@@ -100,13 +101,29 @@ class SteuereinheitNode(Node):
     def __init__(self):
         super().__init__("steuereinheit_node")
 
-        # 1. Konfiguration laden - dieselbe g1_policy.yaml wie
-        # mujoco_node.py, damit z.B. simulation_dt/control_decimation
-        # an beiden Stellen zusammenpassen (siehe Taktung unten).
+        # 1. Konfiguration laden - dieselbe YAML-Datei wie mujoco_node.py
+        # (siehe dort), damit z.B. simulation_dt/control_decimation an
+        # beiden Stellen zusammenpassen (siehe Taktung unten).
+        # NEU (DOF-Migration): Dateiname jetzt ueber den ROS2-Parameter
+        # "config_file" waehlbar (Default bleibt "g1_policy.yaml", also
+        # exakt das bisherige 12-DOF-Verhalten unveraendert) - z.B.
+        #   ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
+        # schaltet auf die 29-DOF-Ganzkoerper-Policy um, siehe
+        # g1_policy_29dof.yaml. Beide Config-Dateien bleiben nebeneinander
+        # bestehen (siehe Projekt-Konvention: Alternativen zurueckstellen,
+        # nicht loeschen).
+        self.declare_parameter("config_file", "g1_policy.yaml")
+        config_file = self.get_parameter("config_file").get_parameter_value().string_value
+
         bringup_share = get_package_share_directory("r1_bringup")
-        config_path = os.path.join(bringup_share, "config", "g1_policy.yaml")
+        config_path = os.path.join(bringup_share, "config", config_file)
         with open(config_path, "r") as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
+        self.get_logger().info(
+            f"[steuereinheit_node] aktive Config: {config_file} "
+            f"(controller_type={self.config.get('controller_type', 'rl_locomotion')}, "
+            f"num_actions={self.config.get('num_actions')})"
+        )
 
         # NEU: policy_path in der YAML ist nur ein relativer String
         # ("models/policies/motion.pt"). BUGFIX: RLLocomotionController hat
@@ -128,7 +145,17 @@ class SteuereinheitNode(Node):
         # kommt aus num_actions in der YAML (Single Source of Truth) statt
         # hartkodiert zu sein - siehe mujoco_bridge.py.
         self.bridge = MujocoBridge(self, num_joints=self.config["num_actions"])
-        self.controller = RLLocomotionController(self.config)
+        # NEU (DOF-Migration): controller_type in der YAML waehlt die
+        # ILocomotionController-Implementierung (Single Source of Truth,
+        # wie num_actions) - fehlt der Schluessel (alte g1_policy.yaml),
+        # bleibt es beim bisherigen 12-DOF-TorchScript-Controller.
+        controller_type = self.config.get("controller_type", "rl_locomotion")
+        if controller_type == "rl_locomotion_29dof":
+            self.controller = RLLocomotionController29Dof(self.config)
+        elif controller_type == "rl_locomotion":
+            self.controller = RLLocomotionController(self.config)
+        else:
+            raise ValueError(f"Unbekannter controller_type in der Config: {controller_type!r}")
 
         # 3. Start-/Default-Geschwindigkeitskommando aus der YAML. Wird
         # weiter unten per /cmd_vel-Subscriber zur Laufzeit ueberschrieben,
@@ -138,7 +165,17 @@ class SteuereinheitNode(Node):
         # angeforderte Ziel, cmd der aktuell gerampte+korrigierte Wert -
         # beide starten gleich, es gibt also am Anfang nichts auszurampen.
         self.cmd_target = np.array(self.config.get("cmd_init", [0.5, 0.0, 0.0]), dtype=np.float32)
-        self.cmd = self.cmd_target.copy()
+        # BUGFIX (13.10.2026): getrennter Rampen-Zustand. Vorher lief die
+        # Rampe direkt auf self.cmd, und _apply_heading_hold() addierte
+        # seine Korrektur (bis +-0.3) JEDEN Takt auf self.cmd[2], waehrend
+        # die Rampe nur 0.02/Takt zurueckholen konnte -> unbegrenzter
+        # Integrator (im synchronen Test: cmd_wz = -572 rad/s nach 60 s
+        # Stehen; in Bereitschaft unsichtbar, weil dort cmd=0 an die Policy
+        # geht, aber beim Wechsel nach Balancieren sofort Sturz).
+        # self.cmd wird jetzt jeden Takt NEU aus cmd_ramped gebildet, die
+        # Korrekturen sind damit begrenzt und nicht akkumulierend.
+        self.cmd_ramped = self.cmd_target.copy()
+        self.cmd = self.cmd_ramped.copy()
 
         # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
         # BereitschaftState sofort anhand von cmd_target entscheiden -
@@ -272,10 +309,13 @@ class SteuereinheitNode(Node):
         Policy bleibt auch im Stillstand aktiv, nur das Kommando wird
         weich auf 0 heruntergefahren statt hart gestoppt).
         """
-        delta = self.cmd_target - self.cmd
+        delta = self.cmd_target - self.cmd_ramped
         max_step = CMD_RAMP_RATE * self.control_dt
         delta = np.clip(delta, -max_step, max_step)
-        self.cmd = self.cmd + delta
+        self.cmd_ramped = self.cmd_ramped + delta
+        # Korrekturen (Kurs-/Positionshaltung) kommen danach obendrauf und
+        # werden jeden Takt neu berechnet, nicht aufsummiert.
+        self.cmd = self.cmd_ramped.copy()
 
     @staticmethod
     def _yaw_from_quat(quat: np.ndarray) -> float:
