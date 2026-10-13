@@ -15,6 +15,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import Twist, Point
 from sensor_msgs.msg import Imu, JointState
+from nav_msgs.msg import Odometry
+from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Bool
 
 RESULTS = []
@@ -33,11 +35,19 @@ class Probe(Node):
                        durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.not_aus = self.create_publisher(Bool, "/not_aus", q)
         self.p = None; self.quat = None; self.dq = None
+        self.odom = None; self.tf_ok = False
+        self.create_subscription(Odometry, "/odom", lambda m: setattr(self, "odom", m), 10)
+        self.create_subscription(TFMessage, "/tf", self._tf, 10)
         self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
         self.create_subscription(Imu, "/imu", lambda m: setattr(self, "quat", (
             m.orientation.w, m.orientation.x, m.orientation.y, m.orientation.z)), 10)
         self.create_subscription(JointState, "/joint_states",
                                  lambda m: setattr(self, "dq", np.abs(np.array(m.velocity[:12])).mean()), 10)
+
+    def _tf(self, m):
+        for t in m.transforms:
+            if t.header.frame_id == "odom" and t.child_frame_id == "base_link":
+                self.tf_ok = True
 
     def spin(self, secs):
         end = time.time() + secs
@@ -98,6 +108,14 @@ def main():
         check("S1 Drift in Bereitschaft < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm, dyaw={pr.yaw()-yb:.1f}")
         check("S1 Regler verbunden/Physik gestartet", "Regler verbunden" in read_log(logfile))
 
+        print("== S1b Odometrie fuer Nav2 (/odom, TF odom->base_link)")
+        check("S1b /odom kommt an", pr.odom is not None)
+        check("S1b TF odom->base_link", pr.tf_ok)
+        if pr.odom is not None:
+            dpos = float(np.hypot(pr.odom.pose.pose.position.x - pr.p[0], pr.odom.pose.pose.position.y - pr.p[1]))
+            check("S1b /odom-Pose passt zu /base_position (<5 cm)", dpos < 0.05, f"d={dpos*100:.1f} cm")
+            check("S1b Frames odom/base_link", pr.odom.header.frame_id == "odom" and pr.odom.child_frame_id == "base_link")
+
         print("== S2 Freigabe + Stehen")
         pr.twist(0, 0, 0); pr.spin(8)
         check("S2 steht nach Freigabe", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
@@ -116,6 +134,8 @@ def main():
         check("S3 Strecke >= 3 m", dx > 3.0, f"dx={dx:.2f}")
         check("S3 geradeaus (|dyaw|<8 Grad)", abs(dyaw) < 8, f"dyaw={dyaw:.1f}")
         check("S3 Zustand Gehen", "-> Gehen" in read_log(logfile))
+        check("S3 /odom Twist linear.x > 0.2 (Koerper-Frame)", pr.odom is not None and pr.odom.twist.twist.linear.x > 0.2,
+              f"vx={pr.odom.twist.twist.linear.x:.2f}" if pr.odom else "")
 
         if has_clip:
             print("== S4 zu grosses cmd (vx=2.0, wz=1.0) -> Begrenzung")

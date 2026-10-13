@@ -48,8 +48,10 @@ Dieser Pfad ist **nicht getestet** (hier ist `nav2_msgs` nicht installiert).
 ## Nav2 (Layer 2): Schnittstelle zu uns
 Nav2 liefert `/cmd_vel` (`geometry_msgs/Twist`) an Layer 3. Layer 3 begrenzt auf den
 Trainingsbereich der Policy: vx −0,5…1,0, vy ±0,3, **wz ±0,2 rad/s**; unter ~0,3 m/s läuft der
-Roboter nicht an. Nav2 braucht `/odom` und TF (`odom→base_link`), die die Simulation derzeit
-**nicht** publiziert (nur `/base_position`, `/imu`) – offen mit dem Kollegen zu klären.
+Roboter nicht an. `mujoco_node` publiziert `/odom` (`nav_msgs/Odometry`, Frame `odom`, Child
+`base_link`, Twist im Körper-Frame) und TF `odom→base_link` als **Ground-Truth** (perfekte
+Odometrie, kein Drift). Parameter `publish_odom`, `publish_tf`, `odom_frame`, `base_frame`
+(abschaltbar, falls eine andere Quelle Odometrie/TF liefert). `map→odom` liefert Layer 2 (SLAM/AMCL).
 
 ## Tests
 ```bash

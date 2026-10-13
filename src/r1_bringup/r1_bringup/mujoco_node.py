@@ -10,7 +10,9 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, JointState
 from std_msgs.msg import Float32MultiArray
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, TransformStamped
+from nav_msgs.msg import Odometry
+from tf2_ros import TransformBroadcaster
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -23,6 +25,18 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     Zielposition angesteuert, keine Zielgeschwindigkeit.
     """
     return (target_q - q) * kp + (target_dq - dq) * kd
+
+
+def rotate_inverse(q, v):
+    """v (Weltkoordinaten) in das Koerper-Koordinatensystem mit Orientierung q=[w,x,y,z]."""
+    w, x, y, z = q
+    # R^T v  mit R aus Quaternion
+    r = np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+    ])
+    return r.T @ np.asarray(v, dtype=float)
 
 
 class MujocoBridgeNode(Node):
@@ -110,6 +124,19 @@ class MujocoBridgeNode(Node):
         # einfach so, dafuer braeuchte es echte Odometrie/Lokalisierung.
         # Bewusste Vereinfachung fuer den aktuellen Stand, kein Ersatz dafuer.
         self.pub_base_position = self.create_publisher(Point, "/base_position", 10)
+        # NEU (13.10.2026): /odom + TF (odom -> base_link) fuer Nav2 (Layer 2). Reiner
+        # Simulations-Ground-Truth (perfekte Odometrie, kein Drift/Rauschen). Abschaltbar, falls
+        # eine andere Quelle (z.B. robot_localization) Odometrie/TF liefert.
+        self.declare_parameter("publish_odom", True)
+        self.declare_parameter("publish_tf", True)
+        self.declare_parameter("odom_frame", "odom")
+        self.declare_parameter("base_frame", "base_link")
+        self.publish_odom = self.get_parameter("publish_odom").value
+        self.publish_tf = self.get_parameter("publish_tf").value
+        self.odom_frame = self.get_parameter("odom_frame").value
+        self.base_frame = self.get_parameter("base_frame").value
+        self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if self.publish_odom else None
+        self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
         self.sub_joint_commands = self.create_subscription(
             Float32MultiArray,
             "/joint_commands",
@@ -303,6 +330,40 @@ class MujocoBridgeNode(Node):
         pos.y = float(self.data.qpos[1])
         pos.z = float(self.data.qpos[2])
         self.pub_base_position.publish(pos)
+
+        # Odometrie (Ground-Truth): Pose im odom-Frame, Twist im Koerper-Frame (ROS-Konvention)
+        quat = self.data.qpos[3:7]
+        if self.pub_odom is not None:
+            od = Odometry()
+            od.header.stamp = now
+            od.header.frame_id = self.odom_frame
+            od.child_frame_id = self.base_frame
+            od.pose.pose.position.x = float(self.data.qpos[0])
+            od.pose.pose.position.y = float(self.data.qpos[1])
+            od.pose.pose.position.z = float(self.data.qpos[2])
+            od.pose.pose.orientation.w = float(quat[0])
+            od.pose.pose.orientation.x = float(quat[1])
+            od.pose.pose.orientation.y = float(quat[2])
+            od.pose.pose.orientation.z = float(quat[3])
+            v_body = rotate_inverse(quat, self.data.qvel[0:3])
+            od.twist.twist.linear.x, od.twist.twist.linear.y, od.twist.twist.linear.z = map(float, v_body)
+            od.twist.twist.angular.x = float(self.data.qvel[3])    # MuJoCo: Winkelgeschw. im Koerper-Frame
+            od.twist.twist.angular.y = float(self.data.qvel[4])
+            od.twist.twist.angular.z = float(self.data.qvel[5])
+            self.pub_odom.publish(od)
+        if self.tf_broadcaster is not None:
+            t = TransformStamped()
+            t.header.stamp = now
+            t.header.frame_id = self.odom_frame
+            t.child_frame_id = self.base_frame
+            t.transform.translation.x = float(self.data.qpos[0])
+            t.transform.translation.y = float(self.data.qpos[1])
+            t.transform.translation.z = float(self.data.qpos[2])
+            t.transform.rotation.w = float(quat[0])
+            t.transform.rotation.x = float(quat[1])
+            t.transform.rotation.y = float(quat[2])
+            t.transform.rotation.z = float(quat[3])
+            self.tf_broadcaster.sendTransform(t)
 
     def destroy_node(self):
         # Hintergrund-Thread aktiv stoppen, bevor der Knoten zerstoert wird -

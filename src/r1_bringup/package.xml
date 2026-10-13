@@ -20,6 +20,8 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>  <!-- NEU (12.10.2026): fuer /base_position (geometry_msgs/Point), siehe mujoco_node.py -->
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>  <!-- /odom (Nav2, Layer 2) -->
+  <exec_depend>tf2_ros</exec_depend>    <!-- TF odom -> base_link -->
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
