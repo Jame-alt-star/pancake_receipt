@@ -1,0 +1,71 @@
+# G1-Humanoid: autonome Pipeline (Simulation)
+
+Unitree G1 (29 DOF) in MuJoCo mit RL-Lauf-Policy (ONNX), Navigation (Nav2/SLAM) und symbolischer
+Missionsplanung (PDDL/Fast Downward). Aufbau nach dem 4-Schichtenmodell der Software-Architektur.
+
+```
+Layer 1  Deliberative   roboter_task_planning   Mission (YAML) -> PDDL -> Fast Downward -> Dispatcher (ROS-2-Actions)
+Layer 2  Executive/Nav  roboter_navigation      Nav2 (+ optional slam_toolbox), Lidar-Costmaps       [Variante des Kollegen ersetzbar]
+Layer 3  Reactive       roboter_steuerung       Zustandsautomat (State Pattern), RL-Controller, Kurs-/Positionshaltung, NotAus, Watchdog
+Layer 4  HAL            r1_bringup              IRobotHardwareBridge, mujoco_node (Physik, Lidar, Odometrie, TF)
+```
+
+Schnittstellen: Layer 2 -> 3 per `/cmd_vel`; Layer 1 -> 2 per `NavigateToPose` (Nav2) bzw. `GehAktion`;
+Layer 1 -> 3 per `BalancierAktion`; Sicherheit per `/not_aus` (latched).
+
+## Schnellstart
+```bash
+source /opt/ros/jazzy/setup.bash && colcon build && source install/setup.bash
+
+# Roboter allein (Viewer-Fenster), Steuerung per /cmd_vel
+ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
+
+# Komplettes System in der Testwelt: Nav2 + SLAM + Mission (headless, wenig RAM)
+ros2 launch roboter_task_planning mission.launch.py nav2:=true slam:=true headless:=true \
+     config_file:=g1_policy_29dof.yaml \
+     scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml \
+     mission_file:=$(ros2 pkg prefix roboter_task_planning)/share/roboter_task_planning/missions/patrouille.yaml
+ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten
+ros2 topic echo /mission/status                           # Fortschritt
+ros2 topic pub --once /not_aus std_msgs/msg/Bool "{data: true}"   # NotAus
+```
+Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml` (Ziele `besucht`,
+`balanciert`, `gewartet`, `am_ort`).
+
+## Voraussetzungen
+ROS 2 Jazzy, `ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`, `ros-jazzy-slam-toolbox`;
+Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter `~/tools/downward`
+(Anleitung: `src/roboter_task_planning/README.md`). Auf WSL2 mit ~2,8 GB RAM Simulation mit
+`headless:=true` betreiben.
+
+## Tests (alle bestanden, Stand siehe `statusupdate_g1_projekt.md`)
+| Aufruf | Umfang |
+|---|---|
+| `cd tests && python3 -m pytest -q` | Regelkreis ohne ROS, Knoten-Logik, Greif-Machbarkeit (~40 s) |
+| `python3 -m pytest src/roboter_task_planning/test/test_layer1.py` | Planer/Dispatcher-Kern (braucht Fast Downward) |
+| `python3 tests/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
+| `python3 tests/integration_watchdog.py` | `cmd_vel`-Watchdog |
+| `python3 tests/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte |
+
+Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist eine Kopie).
+
+## Wichtige Eigenschaften und Grenzen
+- **Kommandobereich** (Layer 3 clippt): vx −0,5…1,0, vy ±0,3, wz ±1,0 m/s bzw. rad/s; oberhalb vx 0,7
+  sinkt die erlaubte Drehrate linear auf 0,5. Unter ~0,3 m/s läuft der Roboter nicht an; kleine `wz`
+  werden im Stand fast ignoriert (Drehen auf der Stelle braucht |wz| ≳ 0,8).
+- **Stehen:** Drift < 1 cm in 120 s (Kurshaltung auch in Bereitschaft), Positionshaltung gegen Störungen.
+- **Greifen:** gemessener Betriebspunkt (Arme per IK, Policy „blind“ für Arme, Taille −0,15 rad,
+  0,30 m Reichweite, ≤ 1 kg je Hand); `Manipulieren`-Zustand und Hand-Modell sind **nicht** umgesetzt.
+- **Ground-Truth:** `/odom`, `/base_position` stammen aus der Simulation; auf echter Hardware braucht
+  es Odometrie/Lokalisierung. Lidar ist ein Raycast-Modell (2D, 360°, 10 Hz).
+- **Nicht umgesetzt:** Zustände AkkuSchwach/Laden (keine echten Batteriedaten), gelernte Greif-Policy,
+  Wahrnehmung per Kamera, echte Hardware.
+
+## Versionen (Git-Tags)
+`git tag` listet die Rücksprungpunkte, z. B. `stand-2026-10-13-nav2-grundlage`, `v0.8-testwelt-nav2-lidar`,
+`v0.9-patrouille`, `v0.10-slam`, `v1.0`. Zurück: `git checkout <tag>`.
+
+## Weitere Dokumente
+`statusupdate_g1_projekt.md` (Verlauf mit allen Messwerten), `STATUSUPDATE_fuer_cowork.md`,
+`src/roboter_task_planning/README.md`, `src/roboter_navigation/README.md`, `tests/README.md`.
