@@ -101,6 +101,11 @@ def main():
         check("S2 steht nach Freigabe", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         check("S2 Zustand Balancieren", "Bereitschaft -> Balancieren" in read_log(logfile))
 
+        print("== S2b Positionshaltung: 30 s Stehen ohne Wegdriften")
+        pp = pr.p; pr.spin(30)
+        drift = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))
+        check("S2b Drift im Stand < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm")
+
         print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
         pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t0 = time.time()
         pr.spin(12)

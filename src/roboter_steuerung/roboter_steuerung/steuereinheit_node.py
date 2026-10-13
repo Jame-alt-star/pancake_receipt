@@ -45,7 +45,7 @@ POSITION_HOLD_KP = 1.0
 # fuehrt, die die Policy destabilisieren koennte - bewusst klein
 # gegenueber echten Bewegungs-Kommandos.
 HEADING_HOLD_MAX_YAW_RATE = 0.3
-POSITION_HOLD_MAX_SPEED = 0.2
+POSITION_HOLD_MAX_SPEED = 0.15
 
 
 class SteuereinheitNode(Node):
@@ -209,6 +209,17 @@ class SteuereinheitNode(Node):
         # in mujoco_bridge.py).
         self.target_yaw = None
         self.target_position = None
+        # NEU (13.10.2026): Positionshaltung im Stand (nur Zustand
+        # Balancieren). Schalter in der YAML (position_hold: true). Die
+        # Korrektur wird NICHT auf self.cmd addiert, sondern getrennt in
+        # self.pos_hold_corr [vx, vy] abgelegt und von BalancierenState
+        # an die Policy gegeben. Grund fuer das fruehere Scheitern (12.10.)
+        # war sehr wahrscheinlich dieselbe Akkumulation wie bei der
+        # Kurshaltung (cmd[0] = cmd[0] + correction jeden Takt).
+        # ACHTUNG: nutzt /base_position (Simulations-Ground-Truth); auf
+        # echter Hardware braeuchte es Odometrie/Lokalisierung.
+        self.position_hold_aktiv = bool(self.config.get("position_hold", False))
+        self.pos_hold_corr = np.zeros(2, dtype=np.float32)
 
         # NEU: /cmd_vel-Subscriber (Standard-ROS2-Konvention, geometry_msgs/
         # Twist) - ersetzt das bisherige "self.cmd wird nur einmal beim
@@ -390,62 +401,37 @@ class SteuereinheitNode(Node):
 
     def _apply_position_hold(self, base_position: np.ndarray, quat: np.ndarray):
         """
-        NEU (12.10.2026): Hintergrund - zusaetzlich zum Drehungs-Drift
-        (siehe _apply_heading_hold()) wurde beim Stehen auch reines
-        seitliches Wegrutschen OHNE Drehung beobachtet (der Roboter bleibt
-        gleich ausgerichtet, "marschiert" aber auf der Stelle leicht nach
-        links weg - vermutlich weil der Gang-Phasen-Zaehler auch bei
-        cmd=0 weiterlaeuft, siehe balancieren_state.py). Analog zu
-        _apply_heading_hold(), aber auf der Position statt der
-        Ausrichtung: Fehler zwischen Soll- und Ist-Position (Weltkoordinaten,
-        aus base_position) wird mit dem aktuellen Yaw in Koerper-Koordinaten
-        (vorwaerts/seitwaerts) umgerechnet und als P-Korrektur auf
-        self.cmd[0]/self.cmd[1] angewendet.
-
-        OFFENER PUNKT/RISIKO: anders als beim bisherigen "Variante 4"-
-        Ansatz (vx/vy hart auf 0) wird hier jetzt aktiv ein kleines,
-        von Null verschiedenes vx/vy an die Policy gegeben. Variante 1/4
-        wurde urspruenglich gerade WEIL cmd=[0,0,0] (hart) als einzige
-        Variante NIE umgefallen ist. Es ist nicht auszuschliessen, dass
-        eine aktive, wenn auch kleine Geschwindigkeitskorrektur die
-        Policy wieder naeher an ihre Stabilitaetsgrenze bringt - deshalb
-        bewusst kleine Verstaerkung/Begrenzung (POSITION_HOLD_KP/
-        POSITION_HOLD_MAX_SPEED) und explizit als zu beobachtender
-        Testpunkt markiert, nicht als sichere Verbesserung vorausgesetzt.
+        Positionshaltung im Stand: P-Regler auf dem Weltpositionsfehler,
+        in Koerperkoordinaten (vorwaerts/seitwaerts) umgerechnet. Ergebnis
+        in self.pos_hold_corr (vx, vy), von BalancierenState an die Policy
+        uebergeben. Das Ziel wird erst erfasst, wenn kein Kommando mehr
+        ansteht UND die Rampe abgeklungen ist (cmd_ramped ~ 0), und bei
+        jedem Verlassen von Balancieren verworfen (siehe _control_loop).
+        Gemessen (13.10.2026, synchroner Kreis, 29-DOF): Abweichung ~1 cm
+        ueber 60 s statt 32 cm Drift; seitlicher Stoss 0.3 m/s -> max 4 cm.
         """
-        current_xy = base_position[:2]
+        self.pos_hold_corr[:] = 0.0
+        current_xy = np.asarray(base_position[:2], dtype=np.float32)
+
+        if (
+            np.any(np.abs(self.cmd_target[:2]) >= LIN_CMD_SCHWELLE)
+            or np.any(np.abs(self.cmd_ramped[:2]) >= LIN_CMD_SCHWELLE)
+        ):
+            self.target_position = None
+            return
 
         if self.target_position is None:
-            # Erster Takt mit gueltiger Positions-Messung: die aktuelle
-            # Position wird zur Soll-Position, nichts zu korrigieren.
             self.target_position = current_xy.copy()
             return
 
-        if abs(float(self.cmd_target[0])) >= LIN_CMD_SCHWELLE or abs(float(self.cmd_target[1])) >= LIN_CMD_SCHWELLE:
-            # Explizite Translation angefordert - Positions-Haltung greift
-            # hier NICHT ein, sondern verfolgt laufend die aktuelle
-            # Position, damit nach Ende der Bewegung genau DIESE (neue)
-            # Position gehalten wird, statt zur alten zurueckzulaufen.
-            self.target_position = current_xy.copy()
-            return
-
-        # Fehler in Weltkoordinaten (Soll minus Ist) ...
         dx, dy = self.target_position - current_xy
-        # ... in Koerper-Koordinaten umrechnen (vorwaerts/seitwaerts
-        # relativ zur aktuellen Ausrichtung) - Standard-Rotation um den
-        # aktuellen Yaw-Winkel.
         yaw = self._yaw_from_quat(quat)
         forward_error = np.cos(yaw) * dx + np.sin(yaw) * dy
         lateral_error = -np.sin(yaw) * dx + np.cos(yaw) * dy
-
-        correction_vx = float(np.clip(
-            POSITION_HOLD_KP * forward_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED
-        ))
-        correction_vy = float(np.clip(
-            POSITION_HOLD_KP * lateral_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED
-        ))
-        self.cmd[0] = self.cmd[0] + correction_vx
-        self.cmd[1] = self.cmd[1] + correction_vy
+        self.pos_hold_corr[0] = float(np.clip(
+            POSITION_HOLD_KP * forward_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED))
+        self.pos_hold_corr[1] = float(np.clip(
+            POSITION_HOLD_KP * lateral_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED))
 
     def _clip_cmd(self):
         """Begrenzt self.cmd auf cmd_training_range (falls konfiguriert) und
@@ -489,7 +475,13 @@ class SteuereinheitNode(Node):
         # unten, der sich damit bestaetigt hat). Methode bleibt im Code
         # erhalten (fuer eine spaetere, vorsichtiger abgestimmte Variante
         # oder eine andere Policy), wird aber aktuell NICHT aufgerufen.
-        # self._apply_position_hold(self.bridge.read_base_position(), quat)
+        if self.position_hold_aktiv:
+            from roboter_steuerung.states.balancieren_state import BalancierenState
+            if isinstance(self.state, BalancierenState):
+                self._apply_position_hold(self.bridge.read_base_position(), quat)
+            else:
+                self.target_position = None
+                self.pos_hold_corr[:] = 0.0
 
         # NEU (12.10.2026): Not-Aus unterbricht JEDEN Zustand, nicht nur
         # Gehen/Balancieren - deshalb zentral hier, VOR dem normalen

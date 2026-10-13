@@ -185,3 +185,15 @@ Damit ist die finale NotAus-Variante (Policy aktiv, cmd=0) und die bewusste Frei
 ## Testsuite (13.10.2026)
 
 Neuer Ordner `tests/` (Details in `tests/README.md`): `test_closed_loop.py` (11 Tests, ~20 s, ohne ROS2), `test_node_logic.py` (5 Tests, ~5 s) und `integration_ros.py` (21 Prüfungen gegen die echte Pipeline, ~2,5 min). Stand: alle bestanden, 29-DOF 21/21 und 12-DOF-Regression 18/18 (strenger Stillstand nur für 29-DOF). Gegenprobe: der alte Integrator-Code der Kurshaltung liefert im Knoten-Test −840 rad/s und würde vom Test abgelehnt. Zusätzlich wurde die cmd-Begrenzung als Methode `_clip_cmd()` herausgezogen (testbar) und `MUJOCO_LOG.TXT` in `.gitignore` aufgenommen.
+
+## Positionshaltung im Stand (13.10.2026)
+
+**Problem:** Der Roboter driftet im Stand (~0,3 m pro Minute) und dreht sich. Für Manipulation im Stehen ist das nicht tragbar (Objekt wandert relativ zur Hand).
+
+**Lösung:** `_apply_position_hold()` wieder aktiviert, jetzt für den Zustand Balancieren (Schalter `position_hold: true` in `g1_policy_29dof.yaml`). P-Regler (kp 1,0, max 0,15 m/s) auf dem Weltpositionsfehler in Körperkoordinaten; das Ziel wird erst erfasst, wenn kein Kommando mehr ansteht und die Rampe abgeklungen ist, und beim Verlassen von Balancieren verworfen. Die Korrektur liegt getrennt in `pos_hold_corr` und geht über `BalancierenState` an die Policy (nicht mehr auf `self.cmd` addiert). Das frühere Scheitern (12.10.) lag sehr wahrscheinlich an derselben Akkumulation wie bei der Kurshaltung.
+
+**Gemessen:** synchroner Kreis, 60 s: Abweichung ~1 cm (ohne Positionshaltung 32 cm); seitlicher Stoß 0,3 m/s bei t = 30 s: max. 3,9 cm, danach wieder ~1 cm. Echte Pipeline: 0,3 cm Drift in 30 s Stehen. Integrationstest 22/22, Knoten-Tests grün.
+
+**Einschränkung:** nutzt `/base_position` (Simulations-Ground-Truth). Auf echter Hardware braucht es Odometrie/Lokalisierung. Das Gieren stellt sich bei ~6° Restfehler ein (P-Regler ohne Integralanteil), für Greifen unkritisch.
+
+**Entscheidung (Nutzer, 13.10.2026):** Das Projekt wird zeitnah komplett auf 29-DOF umgestellt; der 12-DOF-Pfad wird nicht mehr getestet.

@@ -94,3 +94,7 @@ cmd_training_range:
   lin_vel_x: [-0.5, 1.0]
   lin_vel_y: [-0.3, 0.3]
   ang_vel_z: [-0.2, 0.2]
+
+# Positionshaltung im Stand (Zustand Balancieren), siehe steuereinheit_node.py
+# _apply_position_hold(). Nutzt /base_position (Simulations-Ground-Truth).
+position_hold: true

@@ -83,7 +83,12 @@ class BalancierenState(IRobotState):
         # Umfallen - vx/vy daher wieder hart auf 0, nur die Drehrate
         # (node.cmd[2], Heading-Hold) bleibt durchgereicht, da die beim
         # Testen NICHT zum Umfallen gefuehrt hat. Siehe Docstring oben.
-        cmd_fuer_policy = np.array([0.0, 0.0, float(node.cmd[2])], dtype=np.float32)
+        # vx/vy: nur die Positionshaltungs-Korrektur (0, solange diese aus ist);
+        # die Rampen-Restwerte vom Gehen bleiben bewusst draussen (Variante 4).
+        cmd_fuer_policy = np.array(
+            [float(node.pos_hold_corr[0]), float(node.pos_hold_corr[1]), float(node.cmd[2])],
+            dtype=np.float32,
+        )
         target_positions = node.controller.compute_joint_targets(
             joint_positions=joint_pos,
             joint_velocities=joint_vel,

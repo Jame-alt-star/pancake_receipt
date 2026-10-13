@@ -22,6 +22,8 @@ def make(cmd_target=(0.0, 0.0, 0.0), rng=True):
     n.cmd = n.cmd_ramped.copy()
     n.control_dt = 0.02
     n.target_yaw = None
+    n.target_position = None
+    n.pos_hold_corr = np.zeros(2, dtype=np.float32)
     n._cmd_clip_gemeldet = False
     if rng:
         n.cmd_min = np.array([-0.5, -0.3, -0.2], dtype=np.float32)
@@ -80,3 +82,30 @@ def test_kurshaltung_aus_bei_explizitem_drehkommando():
     n._ramp_cmd()
     n._apply_heading_hold(quat_yaw(30))
     assert n.target_yaw == pytest.approx(np.radians(30), abs=1e-3)   # Ziel folgt der Ausrichtung
+
+
+def test_positionshaltung_koerperkoordinaten_und_begrenzung():
+    n = make()
+    n._apply_position_hold(np.array([0.0, 0.0, 0.79]), quat_yaw(0))     # Ziel erfassen
+    assert n.target_position is not None and n.pos_hold_corr.tolist() == [0.0, 0.0]
+    # Roboter 0.1 m hinter dem Ziel (Welt -x), Yaw 0 -> soll vorwaerts (vx > 0)
+    n._apply_position_hold(np.array([-0.1, 0.0, 0.79]), quat_yaw(0))
+    assert n.pos_hold_corr[0] == pytest.approx(0.1, abs=1e-5) and n.pos_hold_corr[1] == pytest.approx(0.0, abs=1e-5)
+    # gleiche Weltabweichung, Roboter um 90 Grad gedreht -> Ziel liegt rechts vom Roboter (vy < 0)
+    n._apply_position_hold(np.array([-0.1, 0.0, 0.79]), quat_yaw(90))
+    assert abs(n.pos_hold_corr[0]) < 1e-5 and n.pos_hold_corr[1] == pytest.approx(-0.1, abs=1e-5)
+    # grosse Abweichung wird auf POSITION_HOLD_MAX_SPEED begrenzt
+    n._apply_position_hold(np.array([-2.0, 0.0, 0.79]), quat_yaw(0))
+    assert n.pos_hold_corr[0] == pytest.approx(nodemod.POSITION_HOLD_MAX_SPEED)
+
+
+def test_positionshaltung_aus_bei_kommando_oder_laufender_rampe():
+    n = make()
+    n._apply_position_hold(np.array([0.0, 0.0, 0.79]), quat_yaw(0))
+    n.cmd_target = np.array([0.4, 0, 0], dtype=np.float32)          # Nutzer will gehen
+    n._apply_position_hold(np.array([-0.1, 0.0, 0.79]), quat_yaw(0))
+    assert n.target_position is None and n.pos_hold_corr.tolist() == [0.0, 0.0]
+    n.cmd_target = np.zeros(3, dtype=np.float32)                    # Rampe noch nicht abgeklungen
+    n.cmd_ramped = np.array([0.3, 0, 0], dtype=np.float32)
+    n._apply_position_hold(np.array([-0.1, 0.0, 0.79]), quat_yaw(0))
+    assert n.target_position is None
