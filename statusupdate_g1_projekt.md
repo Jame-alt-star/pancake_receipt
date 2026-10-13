@@ -155,3 +155,13 @@ pip install onnxruntime --break-system-packages
 - `mujoco_node.py` enthält jetzt eine per Parameter `profile:=true` zuschaltbare Zeitmessung (Default aus).
 - Noch offen: `cmd`-Begrenzung auf den Trainingsbereich ist nicht im Code erzwungen; `onnxruntime` fehlt weiterhin in `package.xml`; erneuter Test der finalen NotAus-Variante; Forschungsfrage 29-DOF vs. 12-DOF (Kipp-Robustheit) ist jetzt untersuchbar, aber noch nicht ausgewertet.
 - Geänderte Dateien: `r1_bringup/r1_bringup/mujoco_node.py`, `roboter_steuerung/roboter_steuerung/steuereinheit_node.py`, `roboter_steuerung/roboter_steuerung/control/rl_locomotion_controller_29dof.py`. Noch nicht committet.
+
+## NotAus mit den neuen Fixes getestet (13.10.2026) – bestanden (29-DOF-Pfad)
+
+Testablauf in einem persistenten ROS2-Prozess (`/not_aus` mit TRANSIENT_LOCAL-QoS wie im Knoten): Gehen 0,4 m/s (10 s, 3,5 m) → `/not_aus=true` während des Gehens (20 s) → `/not_aus=false` ohne neue Freigabe (10 s) → neue `/cmd_vel` 0,4 (10 s) → Stopp.
+
+Ergebnis (gemessen): kein Sturz in irgendeiner Phase (z = 0,78–0,79 m durchgehend). Nach NotAus kommt der Roboter innerhalb ca. 2–3 s zum Stehen (x bleibt bei 3,55 m, Drift danach ≤ 1 cm in 17 s). Nach Aufhebung bleibt er in Bereitschaft stehen und läuft **nicht** von selbst wieder an; erst die neue `/cmd_vel` löst über Bereitschaft → Gehen die Bewegung aus (3,54 → 7,4 m). Zustandslog passt: Bereitschaft/Freigabe → Gehen → NOT-AUS ausgelöst → aufgehoben → Bereitschaft (warte auf Freigabe) → Freigabe → Gehen → Balancieren.
+
+Damit ist die finale NotAus-Variante (Policy aktiv, cmd=0) und die bewusste Freigabe nach Entwarnung im echten Lauf bestätigt. Nicht getestet: NotAus im 12-DOF-Pfad, NotAus direkt in Start/Bereitschaft.
+
+`onnxruntime` ist als Hinweis-Kommentar in `roboter_steuerung/package.xml` ergänzt (kein rosdep-Schlüssel vorhanden, `<depend>` würde `rosdep install` brechen; Muster wie bei `mujoco`).
