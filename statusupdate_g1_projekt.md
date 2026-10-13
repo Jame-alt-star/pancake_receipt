@@ -181,3 +181,7 @@ Damit ist die finale NotAus-Variante (Policy aktiv, cmd=0) und die bewusste Frei
 **Mit Kurshaltung (Simulation, 40 s):** 0,6 m/s: y = 0,02 m; 1,0 m/s: Yaw +1,6°, seitlicher Versatz ~2 m (Positions-Drift, nur mit Positionsregelung behebbar, die früher instabil war); Stehen: Yaw stabil bei ~3,5°.
 
 **Änderung:** Die Zielrichtung der Kurshaltung (`target_yaw`) wird bei jeder (Neu-)Freigabe auf die aktuelle Ausrichtung gesetzt, nicht mehr auf den Wert vom Hochfahren. Vorher drehte der Roboter nach dem Stehen beim ersten Kommando erst um ~10° zurück (im ROS-Lauf −9,7°), jetzt −2,7° bei 15,8° Stand-Yaw. In Weltkoordinaten läuft er entlang seiner aktuellen Blickrichtung geradeaus (y/x entspricht dem Yaw).
+
+## Testsuite (13.10.2026)
+
+Neuer Ordner `tests/` (Details in `tests/README.md`): `test_closed_loop.py` (11 Tests, ~20 s, ohne ROS2), `test_node_logic.py` (5 Tests, ~5 s) und `integration_ros.py` (21 Prüfungen gegen die echte Pipeline, ~2,5 min). Stand: alle bestanden, 29-DOF 21/21 und 12-DOF-Regression 18/18 (strenger Stillstand nur für 29-DOF). Gegenprobe: der alte Integrator-Code der Kurshaltung liefert im Knoten-Test −840 rad/s und würde vom Test abgelehnt. Zusätzlich wurde die cmd-Begrenzung als Methode `_clip_cmd()` herausgezogen (testbar) und `MUJOCO_LOG.TXT` in `.gitignore` aufgenommen.

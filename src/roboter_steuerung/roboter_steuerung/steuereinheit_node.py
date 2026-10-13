@@ -447,6 +447,21 @@ class SteuereinheitNode(Node):
         self.cmd[0] = self.cmd[0] + correction_vx
         self.cmd[1] = self.cmd[1] + correction_vy
 
+    def _clip_cmd(self):
+        """Begrenzt self.cmd auf cmd_training_range (falls konfiguriert) und
+        warnt einmalig, wenn das angeforderte /cmd_vel ausserhalb liegt."""
+        if self.cmd_min is None:
+            return
+        if not self._cmd_clip_gemeldet and np.any(
+            (self.cmd_target < self.cmd_min) | (self.cmd_target > self.cmd_max)
+        ):
+            self.get_logger().warn(
+                f"cmd_vel {self.cmd_target.tolist()} liegt ausserhalb des Trainingsbereichs "
+                f"[{self.cmd_min.tolist()} .. {self.cmd_max.tolist()}] - wird begrenzt."
+            )
+            self._cmd_clip_gemeldet = True
+        self.cmd = np.clip(self.cmd, self.cmd_min, self.cmd_max)
+
     def _control_loop(self):
         # Start-Gate bleibt hier im Node und ist bewusst zustands-
         # unabhaengig: direkt nach dem Start dieses Knotens sind die
@@ -465,16 +480,7 @@ class SteuereinheitNode(Node):
 
         self._ramp_cmd()
         self._apply_heading_hold(quat)
-        if self.cmd_min is not None:
-            if not self._cmd_clip_gemeldet and np.any(
-                (self.cmd_target < self.cmd_min) | (self.cmd_target > self.cmd_max)
-            ):
-                self.get_logger().warn(
-                    f"cmd_vel {self.cmd_target.tolist()} liegt ausserhalb des Trainingsbereichs "
-                    f"[{self.cmd_min.tolist()} .. {self.cmd_max.tolist()}] - wird begrenzt."
-                )
-                self._cmd_clip_gemeldet = True
-            self.cmd = np.clip(self.cmd, self.cmd_min, self.cmd_max)
+        self._clip_cmd()
         # ZURUECKGEBAUT (12.10.2026): _apply_position_hold() wurde testweise
         # aktiviert, hat beim Stehen-Test aber zum Umfallen gefuehrt - die
         # aktive vx/vy-Korrektur hat die bisher stabile Variante (cmd hart

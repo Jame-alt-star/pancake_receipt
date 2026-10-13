@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Integrationstest der echten ROS2-Pipeline (mujoco_node + steuereinheit_node).
+
+Voraussetzung: ROS2 und Workspace gesourct, WSLg/Display fuer das MuJoCo-Fenster.
+Aufruf:   python3 tests/integration_ros.py [--config g1_policy_29dof.yaml] [--keep-log DIR]
+
+Startet die Pipeline selbst (ros2 launch), fuehrt die Szenarien nacheinander in
+EINEM persistenten ROS-Prozess aus (viele kurzlebige ros2-CLI-Aufrufe stoeren die
+Simulation) und beendet die Pipeline am Ende. Exit-Code 0 = alle bestanden.
+"""
+import argparse, os, re, signal, subprocess, sys, tempfile, time
+import numpy as np
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
+from geometry_msgs.msg import Twist, Point
+from sensor_msgs.msg import Imu, JointState
+from std_msgs.msg import Bool
+
+RESULTS = []
+
+
+def check(name, ok, detail=""):
+    RESULTS.append((name, bool(ok), detail))
+    print(f"  [{'PASS' if ok else 'FAIL'}] {name}  {detail}", flush=True)
+
+
+class Probe(Node):
+    def __init__(self):
+        super().__init__("integration_probe")
+        self.cmd = self.create_publisher(Twist, "/cmd_vel", 10)
+        q = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.not_aus = self.create_publisher(Bool, "/not_aus", q)
+        self.p = None; self.quat = None; self.dq = None
+        self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
+        self.create_subscription(Imu, "/imu", lambda m: setattr(self, "quat", (
+            m.orientation.w, m.orientation.x, m.orientation.y, m.orientation.z)), 10)
+        self.create_subscription(JointState, "/joint_states",
+                                 lambda m: setattr(self, "dq", np.abs(np.array(m.velocity[:12])).mean()), 10)
+
+    def spin(self, secs):
+        end = time.time() + secs
+        while time.time() < end:
+            rclpy.spin_once(self, timeout_sec=0.02)
+
+    def yaw(self):
+        w, x, y, z = self.quat
+        return float(np.degrees(np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))))
+
+    def twist(self, vx=0.0, vy=0.0, wz=0.0):
+        m = Twist(); m.linear.x = float(vx); m.linear.y = float(vy); m.angular.z = float(wz)
+        self.cmd.publish(m)
+
+    def wait_data(self, timeout=60):
+        end = time.time() + timeout
+        while time.time() < end and (self.p is None or self.quat is None):
+            self.spin(0.1)
+        return self.p is not None
+
+
+def read_log(path):
+    try:
+        return open(path, errors="replace").read()
+    except OSError:
+        return ""
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="g1_policy_29dof.yaml")
+    ap.add_argument("--keep-log", default=None)
+    a = ap.parse_args()
+    has_clip = "29dof" in a.config
+    # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
+    # cmd=0 dauerhaft auf der Stelle (dokumentiertes Verhalten) - dort nur "kein Sturz, kaum Drift".
+    strict = has_clip
+    tol = 0.05 if strict else 0.3
+    logdir = a.keep_log or tempfile.mkdtemp(prefix="itest_")
+    os.makedirs(logdir, exist_ok=True)
+    logfile = os.path.join(logdir, "launch.log")
+    proc = subprocess.Popen(["ros2", "launch", "roboter_steuerung", "steuereinheit.launch.py",
+                             f"config_file:={a.config}"], stdout=open(logfile, "w"),
+                            stderr=subprocess.STDOUT, start_new_session=True)
+    rclpy.init()
+    pr = Probe()
+    try:
+        print(f"== Pipeline gestartet ({a.config}), Log: {logfile}")
+        ok = pr.wait_data(90)
+        check("S0 Sensordaten kommen an", ok)
+        if not ok:
+            raise SystemExit(1)
+
+        print("== S1 Start: Stehen in Bereitschaft ohne Kommando (Startrennen)")
+        pr.spin(25)
+        check("S1 steht nach Hochfahren (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        check("S1 Regler verbunden/Physik gestartet", "Regler verbunden" in read_log(logfile))
+
+        print("== S2 Freigabe + Stehen")
+        pr.twist(0, 0, 0); pr.spin(8)
+        check("S2 steht nach Freigabe", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        check("S2 Zustand Balancieren", "Bereitschaft -> Balancieren" in read_log(logfile))
+
+        print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
+        pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t0 = time.time()
+        pr.spin(12)
+        dx = float(np.hypot(pr.p[0] - p0[0], pr.p[1] - p0[1])); dyaw = pr.yaw() - y0
+        check("S3 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        check("S3 Strecke >= 3 m", dx > 3.0, f"dx={dx:.2f}")
+        check("S3 geradeaus (|dyaw|<8 Grad)", abs(dyaw) < 8, f"dyaw={dyaw:.1f}")
+        check("S3 Zustand Gehen", "-> Gehen" in read_log(logfile))
+
+        if has_clip:
+            print("== S4 zu grosses cmd (vx=2.0, wz=1.0) -> Begrenzung")
+            pr.twist(2.0, 0.0, 1.0); pr.spin(8)
+            check("S4 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+            check("S4 Warnung ausserhalb Trainingsbereich", "ausserhalb des Trainingsbereichs" in read_log(logfile))
+
+        print("== S5 NOT-AUS waehrend Gehen")
+        pr.twist(0.4); pr.spin(6)
+        pr.not_aus.publish(Bool(data=True)); pr.spin(6)
+        px = pr.p[0]; pr.spin(5)
+        check("S5 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        check(f"S5 steht (x-Aenderung < {tol*100:.0f} cm in 5 s)", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
+        if strict:
+            check("S5 Beine still (|dq| < 0.05 rad/s)", pr.dq is not None and pr.dq < 0.05, f"dq={pr.dq:.4f}")
+        check("S5 NOT-AUS im Log", "NOT-AUS ausgeloest" in read_log(logfile))
+
+        print("== S6 Entwarnung ohne Freigabe -> bleibt stehen")
+        pr.not_aus.publish(Bool(data=False)); px = pr.p[0]; pr.spin(6)
+        check("S6 laeuft nicht von selbst an", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
+        check("S6 wartet auf Freigabe", "NOT-AUS aufgehoben" in read_log(logfile))
+
+        print("== S7 neue Freigabe -> Gehen, dann Stopp")
+        pp = pr.p; pr.twist(0.4); pr.spin(8)
+        dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))   # Richtung egal (S4 hat gedreht)
+        check("S7 geht wieder (>1.5 m)", dist > 1.5, f"dist={dist:.2f}")
+        pr.twist(0, 0, 0); pr.spin(8); px = pr.p[0]; pr.spin(4)
+        check("S7 steht nach Stopp", pr.p[2] > 0.7 and abs(pr.p[0] - px) < tol, f"z={pr.p[2]:.3f}")
+
+        log = read_log(logfile)
+        check("S8 keine MuJoCo-Instabilitaetswarnung", "simulation is unstable" not in log)
+        check("S8 keine Python-Tracebacks", "Traceback" not in log)
+    finally:
+        pr.destroy_node(); rclpy.shutdown()
+        try:
+            os.killpg(proc.pid, signal.SIGINT); proc.wait(timeout=15)
+        except Exception:
+            try: os.killpg(proc.pid, signal.SIGKILL)
+            except Exception: pass
+
+    fails = [r for r in RESULTS if not r[1]]
+    print(f"\n== {len(RESULTS)-len(fails)}/{len(RESULTS)} bestanden")
+    for n, _, d in fails:
+        print(f"   FAIL: {n} {d}")
+    sys.exit(1 if fails else 0)
+
+
+if __name__ == "__main__":
+    main()
