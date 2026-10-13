@@ -297,6 +297,14 @@ class SteuereinheitNode(Node):
         # Zuruecksetzen hier) - wird NUR beim Ausloesen von Not-Aus
         # wieder auf False gesetzt (siehe _control_loop()), damit nach
         # einer Entwarnung wieder eine bewusste Freigabe noetig ist.
+        # NEU (13.10.2026): bei der (Neu-)Freigabe die Zielrichtung der
+        # Kurshaltung auf die aktuelle Ausrichtung setzen (wird im
+        # naechsten Takt in _apply_heading_hold() neu erfasst). Gemessen:
+        # der Roboter dreht sich schon im Stand um ~0.5 deg/s nach links;
+        # mit dem Startwert als Ziel drehte er beim ersten Kommando erst
+        # wieder zurueck (nach ~10 s Stehen ~9 deg).
+        if not self.bewegung_freigegeben:
+            self.target_yaw = None
         self.bewegung_freigegeben = True
 
     def _not_aus_callback(self, msg: Bool):

@@ -171,3 +171,13 @@ Damit ist die finale NotAus-Variante (Policy aktiv, cmd=0) und die bewusste Frei
 **cmd-Begrenzung umgesetzt und getestet:** `steuereinheit_node.py` begrenzt `self.cmd` nach Rampe und Kurshaltung per `np.clip` auf `cmd_training_range` aus der YAML (vx −0,5…1,0, vy ±0,3, wz ±0,2) und warnt einmalig, wenn `/cmd_vel` außerhalb liegt. Ohne den Schlüssel (12-DOF-Config) unverändert. Test im echten Lauf mit `vx=2,0 / wz=1,0`: Warnung erscheint, Roboter bleibt stabil (z ≈ 0,77), läuft ~0,7 m/s und dreht langsam (wz auf 0,2 begrenzt). Hinweis: die Kurshaltung (bis ±0,3) wird dadurch ebenfalls auf ±0,2 begrenzt.
 
 **NotAus: Beine stehen im 29-DOF-Pfad still (gemessen).** Mittlere Beingelenk-Geschwindigkeit nach NotAus aus dem Gehen: ~0,7 rad/s (Gehen) → 0,017 nach ~2 s → 0,002 rad/s ab ~4 s, beide Füße flach am Boden (z = 0,034 m, konstant); im synchronen Kreis identisch (0,002 rad/s). Das „Auf-der-Stelle-Traben“ aus dem Statusupdate vom 12.10. betraf den 12-DOF-Pfad und tritt mit der 29-DOF-Policy nicht auf. Die Bewegung der ersten 2–3 s ist das Abbremsen des Gehens, kein Trippeln.
+
+## Links-Drall untersucht (13.10.2026)
+
+**Messung (synchroner Kreis, ohne Kurshaltung, Yaw positiv = links):** Stehen +0,5°/s (+14° nach 30 s); Gehen 0,4 m/s +3,6° / 40 s; 0,6 m/s −14° / 40 s (rechts); 1,0 m/s +52° / 40 s (links); rückwärts −0,3 m/s +10° / 40 s. Der Drall hat also kein festes Vorzeichen, er hängt von der Geschwindigkeit ab.
+
+**Kein Modellfehler:** `g1_29dof.xml` ist in Massen, Körperpositionen und Fuß-Geoms links/rechts symmetrisch, die Ruhepose ist symmetrisch (Arme spiegelverkehrt). Die Stand-Drehung kippt das Vorzeichen mit dem Simulationszeitschritt (dt 0,002: +14° / 30 s, dt 0,005 wie im Training: −45° / 30 s) und ändert sich stark mit der Bodenreibung (Reibung 2,0: +40°, der Roboter driftet 17 m ab). Das ist eine Eigenheit der Policy (schwach gedämpfte Gier-Mode, sehr sensitiv gegenüber Physikparametern), kein Bias im Code oder Modell. Die Kurshaltung ist die richtige Schicht dafür.
+
+**Mit Kurshaltung (Simulation, 40 s):** 0,6 m/s: y = 0,02 m; 1,0 m/s: Yaw +1,6°, seitlicher Versatz ~2 m (Positions-Drift, nur mit Positionsregelung behebbar, die früher instabil war); Stehen: Yaw stabil bei ~3,5°.
+
+**Änderung:** Die Zielrichtung der Kurshaltung (`target_yaw`) wird bei jeder (Neu-)Freigabe auf die aktuelle Ausrichtung gesetzt, nicht mehr auf den Wert vom Hochfahren. Vorher drehte der Roboter nach dem Stehen beim ersten Kommando erst um ~10° zurück (im ROS-Lauf −9,7°), jetzt −2,7° bei 15,8° Stand-Yaw. In Weltkoordinaten läuft er entlang seiner aktuellen Blickrichtung geradeaus (y/x entspricht dem Yaw).
