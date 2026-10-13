@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Integrationstest Layer 1 + 3 + 4 in der Simulation (Nav2-TESTDOUBLE statt Layer 2).
 
-Aufruf: python3 tests/integration_mission.py     (ROS2 + Workspace gesourct, Display noetig)
+Aufruf: python3 tests/integration_mission.py [--nav2]   (ROS2 + Workspace gesourct, Display noetig)
+        --nav2: echtes Nav2 aus roboter_navigation (ros-jazzy-navigation2 muss installiert sein)
 Szenarien: (1) Mission laeuft komplett durch, (2) NotAus waehrend der Mission bricht ab.
 """
 import json, os, signal, subprocess, sys, tempfile, time
@@ -56,10 +57,14 @@ class Probe(Node):
         return f.result(), n0
 
 
+NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
+
+
 def launch(logfile):
     env = dict(os.environ)
+    nav = ["nav2:=true"] if NAV2 else ["nav_testdouble:=true"]
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
-                             "nav_testdouble:=true", "config_file:=g1_policy_29dof.yaml"],
+                             *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)
 
 
@@ -82,7 +87,7 @@ def main():
         while time.time() < e and not (pr.p and pr.start.service_is_ready()):
             pr.spin(0.2)
         check("S0 System bereit (Position + /mission/start)", pr.p is not None and pr.start.service_is_ready())
-        pr.spin(25)
+        pr.spin(60 if NAV2 else 25)     # Nav2-Lifecycle braucht laenger
         check("S0 Roboter steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
 
         print("== S1 Mission komplett: start -> a -> b, balanciere b, warte b")

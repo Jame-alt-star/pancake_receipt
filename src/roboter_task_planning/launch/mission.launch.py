@@ -14,7 +14,8 @@ def generate_launch_description():
 
         ros2 launch roboter_task_planning mission.launch.py \
             config_file:=g1_policy_29dof.yaml nav_testdouble:=true auto_start:=true
-    nav_testdouble:=false -> Navigation kommt von Nav2 (Layer 2, Kollege), nav_backend=nav2.
+    nav2:=true            -> Nav2 (roboter_navigation) wird mitgestartet, nav_backend=nav2
+    nav_testdouble:=false -> Navigation kommt von aussen (Nav2 des Kollegen), nav_backend=nav2.
     """
     share = get_package_share_directory("roboter_task_planning")
     steuer = get_package_share_directory("roboter_steuerung")
@@ -22,6 +23,8 @@ def generate_launch_description():
         DeclareLaunchArgument("config_file", default_value="g1_policy_29dof.yaml"),
         DeclareLaunchArgument("mission_file", default_value=os.path.join(share, "missions", "beispiel.yaml")),
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
+        DeclareLaunchArgument("nav2", default_value="false",
+                              description="Nav2 (roboter_navigation, Layer 2) mitstarten"),
         DeclareLaunchArgument("auto_start", default_value="false"),
     ]
     layer3 = IncludeLaunchDescription(
@@ -30,6 +33,10 @@ def generate_launch_description():
     balance = Node(package="roboter_steuerung", executable="balance_dienst_node", output="screen")
     double = Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen",
                   condition=IfCondition(LaunchConfiguration("nav_testdouble")))
+    navigation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory("roboter_navigation"), "launch", "navigation.launch.py")),
+        condition=IfCondition(LaunchConfiguration("nav2")))
     mission = Node(package="roboter_task_planning", executable="mission_node", output="screen",
                    parameters=[{
                        "mission_file": LaunchConfiguration("mission_file"),
@@ -37,4 +44,4 @@ def generate_launch_description():
                            ["'gehaktion' if '", LaunchConfiguration("nav_testdouble"), "' == 'true' else 'nav2'"]),
                        "auto_start": LaunchConfiguration("auto_start"),
                    }])
-    return LaunchDescription(args + [layer3, balance, double, mission])
+    return LaunchDescription(args + [layer3, balance, double, navigation, mission])

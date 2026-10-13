@@ -251,3 +251,9 @@ Werkzeug: `tests/arm_feasibility.py` (synchroner Kreis, ohne ROS2). Die Policy h
 
 ## /odom und TF für Nav2 (13.10.2026)
 `mujoco_node` publiziert jetzt `/odom` (`nav_msgs/Odometry`, `odom`→`base_link`, Pose aus der Floating Base, Twist im Körper-Frame) und die TF `odom→base_link` (Simulations-Ground-Truth, perfekte Odometrie). Parameter `publish_odom`/`publish_tf`/`odom_frame`/`base_frame`; `map→odom` bleibt bei Layer 2. Integrationstest erweitert (S1b: `/odom`, TF, Pose = `/base_position` auf 0,0 cm, Frames; S3: Twist linear.x = 0,40 m/s beim Gehen), 28/28 bestanden. Damit ist Punkt (1) aus der Liste „Offen / für den Kollegen“ (Layer 1) erledigt.
+
+## Nav2 anbinden: Paket `roboter_navigation` vorbereitet (13.10.2026) – NICHT getestet
+
+Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des Kollegen kommt): `config/nav2_params.yaml` (RegulatedPurePursuit, NavFn, velocity_smoother mit Policy-Grenzen vx ≤ 0,6 / wz ≤ 0,2 rad/s, Mindestgeschwindigkeit 0,3, kein Hindernis-Layer, rollende Costmaps im `odom`-Frame), `launch/navigation.launch.py` (statisches `map→odom`, `navigation_launch.py` von nav2_bringup, `params_file` übergebbar). `mission.launch.py` hat das Argument `nav2:=true`; `tests/integration_mission.py --nav2` testet es mit echtem Nav2.
+
+**Stand:** `ros-jazzy-navigation2`/`nav2-bringup` sind hier NICHT installiert (113 Pakete, `sudo` nötig). Konfiguration und Launch sind angelegt und gebaut, YAML ist syntaktisch gültig, aber **gegen echtes Nav2 ungeprüft**. Der Testdouble-Pfad ist unverändert grün (14/14). Einschränkung: nur ~2,8 GB RAM in WSL2 (Simulation allein ~1,1 GB), Nav2 läuft mit `use_composition=True` (ein Prozess).
