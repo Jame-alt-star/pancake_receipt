@@ -5,7 +5,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Imu, JointState
 from std_msgs.msg import Float32MultiArray
 
-from r1_bringup.bridges.i_hardware_bridge import IRobotHardwareBridge
+from roboter_simulation.bridges.i_hardware_bridge import IRobotHardwareBridge
 
 
 class MujocoBridge(IRobotHardwareBridge):

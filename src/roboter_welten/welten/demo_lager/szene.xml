@@ -9,8 +9,8 @@
        Alle Hindernisse in geom group 2 (kollidierend UND fuer das Lidar sichtbar; der Lidar sitzt auf
        ~1.24 m, daher sind Hindernisse hoeher). Dekoration (Markierungen, Laderstation, Kisten auf den
        Regalen) ohne Kollision (contype/conaffinity 0) in group 0. -->
-  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus r1_bringup) haengt die Simulation beim Laden
-       dazu (r1_bringup/szene.py). Orte fuer Missionen: orte.yaml in diesem Ordner. -->
+  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus roboter_simulation) haengt die Simulation beim Laden
+       dazu (roboter_simulation/szene.py). Orte fuer Missionen: orte.yaml in diesem Ordner. -->
 
   <asset>
     <material name="wand"     rgba="0.86 0.86 0.82 1"/>

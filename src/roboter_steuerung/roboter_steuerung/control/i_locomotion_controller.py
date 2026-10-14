@@ -8,7 +8,7 @@ class ILocomotionController(ABC):
 
     Definiert nur den "Vertrag" (eine Methode: aus Sensordaten + Kommando
     werden Ziel-Gelenkwinkel), keine Umsetzung - nach demselben Muster
-    wie IRobotHardwareBridge (siehe r1_bringup/bridges/i_hardware_bridge.py).
+    wie IRobotHardwareBridge (siehe roboter_simulation/bridges/i_hardware_bridge.py).
 
     Zweck: steuereinheit_node.py kennt nur diese eine Methode, nicht WIE
     die Ziel-Gelenkwinkel berechnet werden. Dadurch kann der eigentliche

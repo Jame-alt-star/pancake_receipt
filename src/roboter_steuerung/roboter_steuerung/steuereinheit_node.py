@@ -10,7 +10,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 
-from r1_bringup.bridges.mujoco_bridge import MujocoBridge
+from roboter_simulation.bridges.mujoco_bridge import MujocoBridge
 from roboter_steuerung.states.start_state import StartState
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState
 from roboter_steuerung.states.not_aus_state import NotAusState
@@ -118,7 +118,7 @@ class SteuereinheitNode(Node):
         self.declare_parameter("config_file", "g1_policy_29dof.yaml")
         config_file = self.get_parameter("config_file").get_parameter_value().string_value
 
-        bringup_share = get_package_share_directory("r1_bringup")
+        bringup_share = get_package_share_directory("roboter_simulation")
         config_path = os.path.join(bringup_share, "config", config_file)
         with open(config_path, "r") as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)

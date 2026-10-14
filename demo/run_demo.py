@@ -17,10 +17,8 @@ from std_srvs.srv import Trigger
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
 einfach = "--einfach" in sys.argv
-share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
-args = ["ros2", "launch", "roboter_task_planning", "mission.launch.py", "nav2:=true", "headless:=true",
-        "config_file:=g1_policy_29dof.yaml",
-        f"mission_file:={share}/share/roboter_task_planning/missions/demo_lager.yaml",
+args = ["ros2", "launch", "roboter_system", "system.launch.py", "mission:=demo_lager", "navigation:=nav2",
+        "headless:=true",
         f"record_path:={out}/pose.npz"]
 if not einfach:
     args += ["slam:=true", "realistic_sensors:=true", "odom_quelle:=beinodometrie"]

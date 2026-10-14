@@ -121,7 +121,7 @@ if DREI_D or NUR_2D:
 
 def launch(logfile):
     env = dict(os.environ)
-    nav = ["nav2:=true", "headless:=true"] if NAV2 else ["nav_testdouble:=true"]   # Nav2 + Viewer: zu wenig RAM
+    nav = ["navigation:=nav2", "headless:=true"] if NAV2 else ["navigation:=testdouble"]   # Nav2 + Viewer: zu wenig RAM
     if SLAM:
         nav += ["slam:=true"]
     if "--realistisch" in sys.argv:
@@ -130,12 +130,9 @@ def launch(logfile):
         nav += ["odom_quelle:=beinodometrie"]
     if NUR_2D:
         nav += ["lidar_modus:=2d"]
-    if WELT:
-        share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
-        # Die Simulation uebernimmt die Welt aus der Missionsdatei (Schluessel welt).
-        nav += [f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else ('testwelt3d' if (DREI_D or NUR_2D) else 'testwelt')}.yaml"]
-    return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
-                             *nav, "config_file:=g1_policy_29dof.yaml"],
+    # Die Simulation uebernimmt die Welt aus der Missionsdatei (Schluessel welt).
+    mission = ("patrouille" if PATROUILLE else ("testwelt3d" if (DREI_D or NUR_2D) else "testwelt")) if WELT else "beispiel"
+    return subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py", f"mission:={mission}", *nav],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)
 
 

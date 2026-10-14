@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>roboter_system</name>
+  <version>0.1.0</version>
+  <description>
+    Gesamtsystem: setzt die Schichten zusammen (launch/system.launch.py). Jede Schicht startet sich selbst
+    ueber die Launch-Datei ihres Pakets; hier wird nur entschieden, welche Schichten mit welchen Schaltern laufen.
+    Dazu die RViz-Ansicht des Gesamtsystems.
+  </description>
+  <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>roboter_simulation</exec_depend>     <!-- Layer 4 -->
+  <exec_depend>roboter_steuerung</exec_depend>      <!-- Layer 3 -->
+  <exec_depend>roboter_sensorik</exec_depend>
+  <exec_depend>roboter_navigation</exec_depend>     <!-- Layer 2 (Platzhalter, Variante des Kollegen ersetzbar) -->
+  <exec_depend>roboter_task_planning</exec_depend>  <!-- Layer 1 -->
+  <exec_depend>roboter_welten</exec_depend>
+  <exec_depend>rviz2</exec_depend>                  <!-- nur rviz:=true -->
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -14,7 +14,6 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
-        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -22,7 +21,4 @@ setup(
     maintainer_email='pascalfranz02@gmail.com',
     description='Layer 2: generische Nav2-Konfiguration (Platzhalter)',
     license='Apache-2.0',
-    entry_points={'console_scripts': [
-        'punktwolke_zu_scan = roboter_navigation.punktwolke_zu_scan:main',
-    ]},
 )

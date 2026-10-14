@@ -20,7 +20,7 @@ Eine Mission ist nur der **Auftrag**: `welt` (Name einer Welt aus `roboter_welte
 GehAktion-Backend/Testdouble – mit Nav2 gelten dessen Parameter).
 Die **Orte** (x/y in m, Frame `map`) und **Verbindungen** (ungerichtet; fehlt = vollvernetzt) stehen in
 `roboter_welten/welten/<welt>/orte.yaml`, weil sie zur Umgebung gehören: mehrere Missionen in derselben Halle
-nutzen dieselben Orte, und `mission.launch.py` startet die Simulation mit derselben Welt.
+nutzen dieselben Orte, und `system.launch.py` (Paket `roboter_system`) startet die Simulation mit derselben Welt.
 Ortsnamen: ASCII, Buchstaben/Ziffern/`_`; werden beim Laden kleingeschrieben, `pos_aktuell` ist reserviert.
 
 ```yaml
@@ -43,15 +43,19 @@ parameter: {warte_s: 2.0, max_replans: 2}
 
 ## Starten
 ```bash
-ros2 launch roboter_task_planning mission.launch.py config_file:=g1_policy_29dof.yaml \
-     nav_testdouble:=true            # Nav2 durch Testdouble ersetzen (nur Test!)
-ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten
+# Gesamtsystem mit Mission (Layer 1-4), Testdouble statt Nav2:
+ros2 launch roboter_system system.launch.py mission:=beispiel navigation:=testdouble
+# mit Nav2 in der Testwelt (Welt kommt aus der Mission):
+ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 headless:=true
+ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten (oder auto_start:=true)
 ros2 topic echo /mission/status                           # JSON-Status
 ros2 service call /mission/abort std_srvs/srv/Trigger
 ```
-Produktiv: `nav2:=true` → `nav_backend=nav2`, Navigation liefert Nav2 (Layer 2); getestet mit der
-Platzhalter-Konfiguration aus `roboter_navigation` (`tests/system/integration_mission.py --welt/--slam`).
-Beim Missionsstart gibt der Knoten die Bewegung über `/freigabe` frei.
+`roboter_task_planning/launch/mission.launch.py` startet nur den Missionsknoten (Layer 1).
+`navigation:=testdouble` → `nav_backend=gehaktion` (nur Test!), `navigation:=nav2` → `nav_backend=nav2`;
+Navigation des Kollegen: `nav2_params:=<datei>` oder Nav2 extern starten und `navigation:=aus` mit
+`ros2 launch roboter_task_planning mission.launch.py`. Beim Missionsstart gibt der Knoten die Bewegung über
+`/freigabe` frei.
 
 ## Voraussetzungen
 - **Fast Downward** (nicht über rosdep verfügbar), gebaut außerhalb des Repos:

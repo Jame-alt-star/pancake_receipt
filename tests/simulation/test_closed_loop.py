@@ -92,7 +92,7 @@ def test_welten_laden_roboter_plus_umgebung():
     import mujoco
     from sim_helpers import load_config, BRINGUP, WS
     sys.path.insert(0, BRINGUP)
-    from r1_bringup.szene import lade_modell
+    from roboter_simulation.szene import lade_modell
     roboter = BRINGUP + load_config()["xml_path"]
     nur_roboter = mujoco.MjModel.from_xml_path(roboter)
     welten = WS + "roboter_welten/welten/"

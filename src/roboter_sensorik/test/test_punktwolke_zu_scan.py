@@ -1,4 +1,4 @@
-"""Scan-Ableitung aus der Punktwolke (roboter_navigation/punktwolke_zu_scan.py), ohne ROS."""
+"""Scan-Ableitung aus der Punktwolke (roboter_sensorik/punktwolke_zu_scan.py), ohne ROS."""
 import math
 import os
 import sys
@@ -6,7 +6,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from roboter_navigation.punktwolke_zu_scan import scan_aus_punkten  # noqa: E402
+from roboter_sensorik.punktwolke_zu_scan import scan_aus_punkten  # noqa: E402
 
 H0 = 1.24
 
@@ -61,7 +61,7 @@ def test_gierwinkel_bleibt_im_sensorframe():
 
 
 def test_ausduennen_und_hoehenband():
-    from roboter_navigation.punktwolke_zu_scan import ausduennen, hoehenband_maske
+    from roboter_sensorik.punktwolke_zu_scan import ausduennen, hoehenband_maske
     pts = np.array([[2.0, 0.0, -H0], [2.0, 0.0, 0.3 - H0], [2.01, 0.01, 0.3 - H0], [3.0, 1.0, 0.0]])
     mask, _ = hoehenband_maske(pts, quat_rpy(), H0, 0.12, 1.9, 0.2, 10.0)
     assert mask.tolist() == [False, True, True, True]          # Boden raus

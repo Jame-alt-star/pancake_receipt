@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 
 WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src") + "/"
-BRINGUP = WS + "r1_bringup/"
+BRINGUP = WS + "roboter_simulation/"
 STEUER = WS + "roboter_steuerung/"
 
 

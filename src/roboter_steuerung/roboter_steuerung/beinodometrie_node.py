@@ -2,7 +2,7 @@
 
 Ersetzt die Ground-Truth-Odometrie der Simulation: liest /joint_states und /imu (wie auf echter
 Hardware) und publiziert /odom (nav_msgs/Odometry, odom->base_link) sowie die TF odom->base_link.
-Start ueber steuereinheit.launch.py odom_quelle:=beinodometrie (mujoco_node publiziert dann kein /odom).
+Start ueber steuerung.launch.py bzw. system.launch.py odom_quelle:=beinodometrie (mujoco_node publiziert dann kein /odom).
 """
 import math
 import os
@@ -27,7 +27,7 @@ class BeinodometrieNode(Node):
         self.declare_parameter("start_position", [0.0, 0.0, -1.0])   # z < 0: aus Config (becken_hoehe_stand)
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
-        share = get_package_share_directory("r1_bringup")
+        share = get_package_share_directory("roboter_simulation")
         with open(os.path.join(share, "config", self.get_parameter("config_file").value)) as f:
             cfg = yaml.safe_load(f)
         xml = os.path.join(share, cfg["xml_path"])

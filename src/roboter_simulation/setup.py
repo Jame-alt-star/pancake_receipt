@@ -3,7 +3,7 @@ from glob import glob
 
 from setuptools import find_packages, setup
 
-package_name = 'r1_bringup'
+package_name = 'roboter_simulation'
 
 setup(
     name=package_name,
@@ -13,6 +13,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'models/policies'), glob('models/policies/*')),
         (os.path.join('share', package_name, 'models/robots/g1_description'), glob('models/robots/g1_description/*.*')),
@@ -31,7 +32,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'mujoco_node = r1_bringup.mujoco_node:main',
+            'mujoco_node = roboter_simulation.mujoco_node:main',
         ],
     },
 )

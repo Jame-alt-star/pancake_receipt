@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>r1_bringup</name>
+  <name>roboter_simulation</name>
   <version>0.0.1</version>
   <description>
     Layer 4 (HAL): MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik (IMU, Gelenke, 3D-Lidar,
@@ -21,6 +21,8 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>roboter_welten</exec_depend>  <!-- Umgebungen (Parameter welt) -->
   <!-- HINWEIS: "mujoco" (das Python-Paket der MuJoCo-Physik-Engine) fehlt
        hier bewusst - das ist kein ROS2-Paket mit eigenem rosdep-Key,

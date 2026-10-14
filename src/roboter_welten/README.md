@@ -8,7 +8,7 @@ Je Umgebung ein Ordner `welten/<name>/`:
 | `orte.yaml` | Missionsplanung (Layer 1) | benannte Orte `{x, y}` im map-Frame und ungerichtete Verbindungen |
 
 Missionen (`roboter_task_planning/missions/*.yaml`) enthalten nur noch Ziele und Parameter und verweisen mit
-`welt: <name>` auf die Welt. `mission.launch.py` startet die Simulation automatisch mit derselben Welt.
+`welt: <name>` auf die Welt. `roboter_system/launch/system.launch.py` startet die Simulation automatisch mit derselben Welt.
 
 | Welt | Inhalt |
 |---|---|

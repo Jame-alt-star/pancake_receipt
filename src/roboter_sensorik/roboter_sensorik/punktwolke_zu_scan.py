@@ -97,7 +97,7 @@ class PunktwolkeZuScan(Node):
         import os
         import yaml
         from ament_index_python.packages import get_package_share_directory
-        with open(os.path.join(get_package_share_directory("r1_bringup"), "config", config_file)) as f:
+        with open(os.path.join(get_package_share_directory("roboter_simulation"), "config", config_file)) as f:
             c = yaml.safe_load(f)
         return float(c.get("becken_hoehe_stand", 0.793)) + float(c.get("lidar_hoehe_ueber_becken", 0.45))
 

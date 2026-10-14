@@ -15,10 +15,10 @@ RUN, OUT = sys.argv[1], sys.argv[2]
 PROBE = float(sys.argv[sys.argv.index("--probe") + 1]) if "--probe" in sys.argv else None
 W, H, FPS = 1280, 720, 25
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")   # relativ zum Repo
-ROBOTER = os.path.join(SRC, "r1_bringup", "models", "robots", "g1_description", "g1_29dof.xml")
+ROBOTER = os.path.join(SRC, "roboter_simulation", "models", "robots", "g1_description", "g1_29dof.xml")
 WELT = os.path.join(SRC, "roboter_welten", "welten", "demo_lager", "szene.xml")
-sys.path.insert(0, os.path.join(SRC, "r1_bringup"))
-from r1_bringup.szene import lade_modell  # noqa: E402  (Roboter + Welt wie in der Simulation)
+sys.path.insert(0, os.path.join(SRC, "roboter_simulation"))
+from roboter_simulation.szene import lade_modell  # noqa: E402  (Roboter + Welt wie in der Simulation)
 
 pose = np.load(f"{RUN}/pose.npz")
 events = json.load(open(f"{RUN}/ereignisse.json"))

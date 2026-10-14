@@ -16,8 +16,8 @@ def check(n, ok, d=""):
 
 def main():
     log = os.path.join(tempfile.mkdtemp(prefix="iwd_"), "launch.log")
-    proc = subprocess.Popen(["ros2", "launch", "roboter_steuerung", "steuereinheit.launch.py",
-                             "config_file:=g1_policy_29dof.yaml", "headless:=true", "cmd_vel_timeout_s:=1.0"],
+    proc = subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py",
+                             "headless:=true", "cmd_vel_timeout_s:=1.0"],
                             stdout=open(log, "w"), stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init(); n = Node("wd_probe"); pub = n.create_publisher(Twist, "/cmd_vel", 10); s = {}
     fpub = n.create_publisher(Bool, "/freigabe", 10)

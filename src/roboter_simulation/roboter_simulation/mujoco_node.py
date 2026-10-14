@@ -17,7 +17,7 @@ from nav_msgs.msg import Odometry
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from ament_index_python.packages import get_package_share_directory
 
-from r1_bringup.szene import lade_welt
+from roboter_simulation.szene import lade_welt
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
@@ -108,7 +108,7 @@ class MujocoBridgeNode(Node):
         self.declare_parameter("profile", False)
         self.profile = self.get_parameter("profile").get_parameter_value().bool_value
 
-        pkg_share = get_package_share_directory("r1_bringup")
+        pkg_share = get_package_share_directory("roboter_simulation")
         config_path = os.path.join(pkg_share, "config", config_file)
 
         with open(config_path, "r") as f:
@@ -207,8 +207,8 @@ class MujocoBridgeNode(Node):
 
         # Simuliertes Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2 = Welt-Hindernisse). Frame lidar_link
         # an base_link (0,0,lidar_z), kippt mit dem Roboter wie ein am Torso montierter Sensor.
-        # lidar_2d: eine Scanebene /scan (alter Modus); lidar_3d: Punktwolke /points (Standard in
-        # mission.launch, /scan wird dann von roboter_navigation/punktwolke_zu_scan abgeleitet).
+        # lidar_2d: eine Scanebene /scan (alter Modus); lidar_3d: Punktwolke /points (Standard mit
+        # Navigation, /scan wird dann von roboter_sensorik/punktwolke_zu_scan abgeleitet).
         # Takt: der Lidar-Zaehler laeuft in _publish_states (100 Hz bei simulation_dt 0.002 und
         # PUBLISH_DECIMATION 5); lidar_rate_hz bezieht sich auf diese 100 Hz.
         self.declare_parameter("lidar", False)   # an per Launch-Argument lidar:=true (Nav2/SLAM)

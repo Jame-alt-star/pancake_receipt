@@ -2,7 +2,7 @@
 """Integrationstest der echten ROS2-Pipeline (mujoco_node + steuereinheit_node).
 
 Voraussetzung: ROS2 und Workspace gesourct, WSLg/Display fuer das MuJoCo-Fenster.
-Aufruf:   python3 tests/system/integration_ros.py [--config g1_policy_29dof.yaml] [--keep-log DIR]
+Aufruf:   python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie] [--keep-log DIR]
 
 Startet die Pipeline selbst (ros2 launch), fuehrt die Szenarien nacheinander in
 EINEM persistenten ROS-Prozess aus (viele kurzlebige ros2-CLI-Aufrufe stoeren die
@@ -89,12 +89,11 @@ def read_log(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="g1_policy_29dof.yaml")
     ap.add_argument("--keep-log", default=None)
     ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
     ap.add_argument("--beinodometrie", action="store_true", help="odom_quelle:=beinodometrie (Schaetzer statt Ground-Truth)")
     a = ap.parse_args()
-    has_clip = "29dof" in a.config
+    has_clip = True        # 29-DOF-Policy mit Kommandobegrenzung (12-DOF liegt im Archiv)
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
     # cmd=0 dauerhaft auf der Stelle (dokumentiertes Verhalten) - dort nur "kein Sturz, kaum Drift".
     strict = has_clip
@@ -102,14 +101,14 @@ def main():
     logdir = a.keep_log or tempfile.mkdtemp(prefix="itest_")
     os.makedirs(logdir, exist_ok=True)
     logfile = os.path.join(logdir, "launch.log")
-    proc = subprocess.Popen(["ros2", "launch", "roboter_steuerung", "steuereinheit.launch.py",
-                             f"config_file:={a.config}"] + (["realistic_sensors:=true"] if a.realistisch else [])
+    proc = subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py"]
+                            + (["realistic_sensors:=true"] if a.realistisch else [])
                             + (["odom_quelle:=beinodometrie"] if a.beinodometrie else []), stdout=open(logfile, "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init()
     pr = Probe()
     try:
-        print(f"== Pipeline gestartet ({a.config}), Log: {logfile}")
+        print(f"== Pipeline gestartet, Log: {logfile}")
         ok = pr.wait_data(90)
         check("S0 Sensordaten kommen an", ok)
         if not ok:
