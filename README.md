@@ -89,7 +89,10 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
 `git tag` listet die Rücksprungpunkte, z. B. `v1.0` (Pipeline), `v1.9-review-abgeschlossen` (letzter Stand vor dem
 Strukturumbau), `v2.0`–`v2.4` (Strukturumbau je Schritt). Zurück: `git checkout <tag>` (danach `colcon build`;
 beim Sprung über v2.2 die Ordner `build/` und `install/` vorher leeren, weil Pakete umbenannt wurden).
+**Alter Stand vollständig unter Tag `v1.9-review-abgeschlossen`:** 12-DOF-Pfad, Gazebo/R1-Launches, alte Übergaben
+und die Review-Unterlagen wurden am 15.10.2026 aus dem aktuellen Stand gelöscht und sind nur noch dort (und in der
+git-Historie) enthalten.
 
 ## Weitere Dokumente
 `docs/stand_fuer_kollegen.md` (was seit dem 10.10. neu ist, für den Nav2-Kollegen), `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
-Messwerten), `STATUSUPDATE_fuer_cowork.md`, `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`, `archiv/README.md`.
+Messwerten), `STATUSUPDATE_fuer_cowork.md`, `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`.

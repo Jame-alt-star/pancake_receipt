@@ -30,7 +30,6 @@
        deshalb nicht in diese Liste, muss aber weiterhin manuell
        installiert sein, damit mujoco_node.py importierbar ist. -->
 
-  <!-- Die alte R1/Gazebo-Phase liegt seit 15.10.2026 in archiv/gazebo_r1/. -->
 
   <test_depend>python3-pytest</test_depend>
 

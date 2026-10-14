@@ -69,7 +69,7 @@ class RLLocomotionController29Dof(ILocomotionController):
     """
     ONNX-Controller fuer Unitree's vortrainierte 29-DOF-Ganzkoerper-Policy aus unitree_rl_lab
     (Isaac-Lab-basiert); loeste die 12-DOF-nur-Beine-TorchScript-Policy aus unitree_rl_gym ab
-    (archiv/12dof/rl_locomotion_controller.py). Schnittstelle ILocomotionController (Layer 3),
+    (nur noch unter Tag v1.9-review-abgeschlossen). Schnittstelle ILocomotionController (Layer 3),
     Auswahl ueber controller_type in config/policy_29dof.yaml (siehe steuereinheit_node.py).
 
     Zwei grundlegende Unterschiede zur 12-DOF-Variante:

@@ -98,7 +98,7 @@ def main():
     ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
     ap.add_argument("--beinodometrie", action="store_true", help="odom_quelle:=beinodometrie (Schaetzer statt Ground-Truth)")
     a = ap.parse_args()
-    has_clip = True        # 29-DOF-Policy mit Kommandobegrenzung (12-DOF liegt im Archiv)
+    has_clip = True        # 29-DOF-Policy mit Kommandobegrenzung (12-DOF entfernt)
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
     # cmd=0 dauerhaft auf der Stelle (dokumentiertes Verhalten) - dort nur "kein Sturz, kaum Drift".
     strict = has_clip

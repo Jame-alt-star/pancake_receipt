@@ -108,11 +108,11 @@ Wenn du in deinem Stand nach einer Datei suchst, steht hier, wo sie jetzt liegt.
 |---|---|---|
 | Paket `r1_bringup` | `roboter_simulation` | Name passte nicht mehr (R1/Gazebo → G1/MuJoCo) |
 | `r1_bringup/models/robots/g1_description/` | `roboter_beschreibung/modelle/g1_description/` | Das Robotermodell braucht nicht nur die Simulation |
-| `r1_bringup/config/g1_policy.yaml` (12 DOF) | `roboter_steuerung/config/policy_29dof.yaml` | Die Policy gehört zur Steuerung; 12 DOF liegt im Archiv |
+| `r1_bringup/config/g1_policy.yaml` (12 DOF) | `roboter_steuerung/config/policy_29dof.yaml` | Die Policy gehört zur Steuerung; 12 DOF ist entfernt (Tag `v1.9-review-abgeschlossen`) |
 | `r1_bringup/models/policies/motion.pt` | `roboter_steuerung/modelle/policy_29dof.onnx` | neue Policy (29 DOF, ONNX) |
 | `r1_bringup/bridges/` | `roboter_steuerung/hardware/` | Die Steuerung legt fest, was sie von der Hardware braucht |
 | `roboter_steuerung/launch/steuereinheit.launch.py` | `roboter_steuerung/launch/steuerung.launch.py` + `roboter_system/launch/system.launch.py` | Jede Schicht startet nur sich selbst |
-| Gazebo-Launches, `r1_welt.sdf`, 12-DOF-Teile | `archiv/` | nicht gelöscht, nur aus dem aktiven Projekt genommen |
+| Gazebo-Launches, `r1_welt.sdf`, 12-DOF-Teile | entfernt | nicht mehr gebaut/getestet; vollständig unter Tag `v1.9-review-abgeschlossen` |
 
 **Ganz neue Pakete**
 

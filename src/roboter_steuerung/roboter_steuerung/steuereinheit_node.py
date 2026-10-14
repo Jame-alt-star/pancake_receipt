@@ -52,7 +52,7 @@ def lade_policy(share: str, datei: str) -> dict:
 
 
 def erzeuge_controller(config: dict):
-    """ILocomotionController nach controller_type (der 12-DOF-Controller liegt in archiv/12dof/)."""
+    """ILocomotionController nach controller_type (der 12-DOF-Controller ist entfernt, Tag v1.9-review-abgeschlossen)."""
     typ = config.get("controller_type", "rl_locomotion_29dof")
     if typ == "rl_locomotion_29dof":
         from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof

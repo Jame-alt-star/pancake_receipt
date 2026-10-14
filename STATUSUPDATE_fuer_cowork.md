@@ -1,7 +1,7 @@
 # Statusupdate G1-Humanoid-Projekt für Cowork — Stand 15.10.2026 (v2.4)
 
 Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen), Aufbau und Schnittstellen:
-`docs/architektur.md`. Verlauf mit allen Messwerten: `docs/statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
+`docs/architektur.md`. Verlauf mit allen Messwerten: `docs/statusupdate_g1_projekt.md`. Alte Übergaben, Review-Unterlagen und Altcode: nur noch unter Tag `v1.9-review-abgeschlossen`.
 Git: `main`, Rücksprungpunkte siehe `git tag`.
 
 ## Rahmen
@@ -33,7 +33,7 @@ Patrouille, 3D-Palette), SLAM realistisch. Aufrufe und Ablage: `tests/README.md`
 - Offen: Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code; vorgesehen: `modell/`).
 
 ## Strukturumbau 15.10.2026 (v2.0–v2.4)
-Aufräumen (Altbestand nach `archiv/`, Tests nach Art) → Welten (`roboter_welten`) → Launch je Schicht (`roboter_system`,
+Aufräumen (Altbestand zunächst archiviert, inzwischen gelöscht – siehe Tag `v1.9-review-abgeschlossen`; Tests nach Art) → Welten (`roboter_welten`) → Launch je Schicht (`roboter_system`,
 `roboter_sensorik`, `r1_bringup` → `roboter_simulation`) → Config/Bridge entflechten (`roboter_beschreibung`, Policy und
 Bridge in Layer 3, `/antrieb/parameter`, Parameterdateien je Schicht) → große Knoten zerlegt. Verhalten unverändert (gleiche Tests, gleiche Messwerte).
 

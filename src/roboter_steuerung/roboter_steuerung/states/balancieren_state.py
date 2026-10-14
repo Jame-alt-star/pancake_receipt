@@ -49,7 +49,7 @@ class BalancierenState(IRobotState):
     Gemessen (29-DOF): mit Kurshaltung < 1 cm Drift in 120 s, Beine praktisch still (0.0004 rad/s);
     die Positionshaltung hilft gegen Stoesse (0.6 m/s seitlich: 6 cm statt 24 cm Endabweichung).
 
-    Der fruehere PBalanceController (Ankle-Strategy, 12-DOF-Gelenkindizes) liegt in archiv/12dof/.
+    Der fruehere PBalanceController (Ankle-Strategy, 12-DOF-Gelenkindizes) ist entfernt (Tag v1.9-review-abgeschlossen).
     Eine aktive Stoerungsausgleichsregelung fuer echte Stoesse waere ein moeglicher Ausbau
     (zusaetzlich zur Policy, nicht als Ersatz).
 
