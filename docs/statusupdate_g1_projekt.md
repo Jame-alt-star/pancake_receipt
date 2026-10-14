@@ -387,3 +387,29 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 - **Nur dokumentiert:** L6 (Start-Gate: NotAus wird mit den ersten Sensordaten wirksam), L8 (BackUp-Recovery unter der Totzone; sauberer Weg: eigener BT), U8 (Testdouble dreht bewusst mit 0,2).
 - **Tests:** pytest 33, Layer-1 18, Pipeline 32/32, Pipeline realistisch+Beinodometrie 2× 32/32 (Schätzfehler 20–22 cm), Watchdog 5/5, Missionen 14/14 (Testdouble, Testwelt, Patrouille, 3D-Palette 0,36 m), SLAM realistisch 2× 22/22.
 - **Damit ist das Code-Review vom 14.10. bis auf Kategorie 5 (SysML-Dateien nicht im Repo) abgearbeitet.**
+
+## Strukturumbau (15.10.2026) – v2.0 bis v2.4
+Anlass: zu viel Inhalt in zu wenigen Dateien, Schichtgrenzen verwischt (Welt/Orte in der Missionsdatei, Szenen im
+Unitree-Herstellerordner, eine Config für drei Schichten, Layer 3 importierte die Simulation, Launch-Dateien
+starteten fremde Schichten, Scan-Ableitung im Paket des Kollegen). Umbau in fünf Schritten, jeder mit eigener
+kompletter Testserie (`tests/alle_tests.sh`), Commit und Tag. Verhalten unverändert.
+- **v2.0 Aufräumen:** 12-DOF- und Gazebo-Altbestand nach `archiv/` (mit README), nie grüne ament-Lint-Vorlagen
+  archiviert, Review-Dateien und Verlauf nach `docs/`, Tests nach Art (Paket-Unit-Tests, `tests/simulation`,
+  `tests/system`, `experimente`), `pytest.ini`, `tests/alle_tests.sh`.
+- **v2.1 Welten:** Paket `roboter_welten` (je Welt `szene.xml` ohne Roboter + `orte.yaml`); Missionen enthalten nur
+  noch den Auftrag und verweisen per `welt:`; die Simulation setzt Roboter und Welt per `MjSpec` zusammen (vorab
+  geprüft: Geom für Geom identisch zu den alten `scene_*.xml`) und startet in der Welt der Mission.
+- **v2.2 Launch je Schicht:** `r1_bringup` → `roboter_simulation`; Launch-Datei je Paket; `roboter_system/system.launch.py`
+  setzt zusammen; `roboter_sensorik` (Scan-Ableitung aus dem Navigationspaket heraus).
+- **v2.3 Config/Bridge:** `roboter_beschreibung` (G1-Modell + Geometrie), Policy (ONNX + `policy_29dof.yaml`) und
+  Bridge-Schnittstelle in Layer 3; die Simulation bekommt kp/kd/Ruhepose zur Laufzeit über `/antrieb/parameter`
+  (latched) und startet erst danach; Parameterdateien je Schicht, `test_konfiguration.py` prüft sie gegen die Knoten.
+- **v2.4 Knoten zerlegt:** `mujoco_node` 640 → 429 Zeilen (+ `sensormodell`, `lidar`, `aufnahme`, `geometrie`),
+  `steuereinheit_node` 603 → 242 Zeilen (+ `kommando.py`, `haltung.py` als reine Logik); Unit-Tests der Bausteine;
+  Simulationsthread endet beim Beenden ohne Ausnahme; `docs/architektur.md`.
+- **Beobachtung (Schritt 3):** im Pipeline-Test realistisch + Beinodometrie lag ein **einzelner** `/odom`-Wert bei
+  0,05 m/s (S3, Gehen mit 0,4 m/s). Diagnose: 3 × 800 Werte gleichmäßigen Gehens, Minimum 0,27–0,28, Median 0,37 –
+  nicht reproduziert, Ursache offen. Die Prüfung nutzt seitdem den Median über 6 s und gibt das Minimum aus
+  (danach: Median 0,35–0,36, Minimum 0,23–0,28).
+- **Tests v2.4:** pytest 64, Pipeline 32/32, Pipeline realistisch + Beinodometrie 32/32, Watchdog 5/5, Missionen 14/14
+  (Testdouble, Testwelt, Patrouille, 3D-Palette 0,43 m), SLAM realistisch 22/22.

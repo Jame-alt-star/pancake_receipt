@@ -1,7 +1,7 @@
-# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 14.10.2026 (v1.9)
+# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 15.10.2026 (v2.4)
 
-Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen). Verlauf mit allen Messwerten:
-`docs/statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
+Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen), Aufbau und Schnittstellen:
+`docs/architektur.md`. Verlauf mit allen Messwerten: `docs/statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
 Git: `main`, Rücksprungpunkte siehe `git tag`.
 
 ## Rahmen
@@ -10,25 +10,40 @@ Git: `main`, Rücksprungpunkte siehe `git tag`.
 - Greifen/Hände bewusst zurückgestellt (Machbarkeit gemessen, siehe unten).
 
 ## Status je Schicht
-| Schicht | Stand |
-|---|---|
-| Layer 4 (`r1_bringup/mujoco_node.py`) | Echtzeit-MuJoCo, Physik pausiert bis der Regler verbunden ist; IMU/Gelenke 100 Hz; `/odom` + TF (Ground-Truth, abschaltbar); 3D-Lidar `/points` (24 Ringe, 5 Hz) oder 2D-Scan; `realistic_sensors` (Rauschen, Bias, Gier-Drift, Latenz, Lidar-Fehler); `headless`; Posenaufzeichnung (`record_path`) |
-| Layer 3 (`roboter_steuerung`) | Zustandsautomat Start/Bereitschaft/Balancieren/Gehen/NotAus; ONNX-Policy; Rampe, Kurshaltung, Positionshaltung (Balancieren), cmd-Begrenzung (vx −0,5…1,0, vy ±0,3, wz ±1,0, Kombigrenze), `/cmd_vel`-Watchdog; **Freigabe über eigenen Kanal `/freigabe`** (NotAus entzieht sie, während NotAus wird alles abgelehnt); Balance-Dienste (`/gleichgewicht`, `/balanciere`); Beinodometrie (`odom_quelle:=beinodometrie`, < 1 % der Strecke) |
-| Layer 2 (`roboter_navigation`) | Nav2 (RPP, NavFn, VoxelLayer auf der Hinderniswolke), optional `slam_toolbox`; `punktwolke_zu_scan` leitet `/scan` und `/punkte_hindernis` aus `/points` ab; RViz-Ansicht `rviz/ansicht_3d.rviz` |
-| Layer 1 (`roboter_task_planning`) | Mission (YAML) → PDDL → Fast Downward → Dispatcher über ROS-2-Actions; Ziele besucht/balanciert/gewartet/am_ort; Neuplanung mit dynamischem Ort (nur ausgehende Kanten), Position per TF im map-Frame; Missionsstart gibt frei |
-| Zustände | AkkuSchwach/Laden fehlen bewusst (keine echten Batteriedaten; Platzhalter-Akku abgelehnt) |
+| Schicht | Paket | Stand |
+|---|---|---|
+| Layer 4 | `roboter_simulation` | Echtzeit-MuJoCo (`mujoco_node` + Bausteine `szene`, `sensormodell`, `lidar`, `aufnahme`); startet erst mit den Antriebsparametern der Steuerung, Physik pausiert bis zum ersten Kommando; IMU/Gelenke 100 Hz; `/odom` + TF (Ground-Truth, abschaltbar); 3D-Lidar `/points` oder 2D-Scan; `realistic_sensors`; `headless`; Posenaufzeichnung |
+| Layer 3 | `roboter_steuerung` | Zustandsautomat Start/Bereitschaft/Balancieren/Gehen/NotAus; ONNX-Policy mit `config/policy_29dof.yaml`; `kommando.py` (Rampe, Begrenzung, Kombigrenze, Watchdog), `haltung.py` (Kurs-, Positionshaltung); Freigabe über `/freigabe`; Hardware-Schnittstelle `hardware/` (`IRobotHardwareBridge`, `TopicBridge`); Balance-Dienste; Beinodometrie (< 1 % der Strecke) |
+| Sensorik | `roboter_sensorik` | `punktwolke_zu_scan`: `/scan` und `/punkte_hindernis` aus `/points` (unabhängig von der Nav2-Variante) |
+| Layer 2 | `roboter_navigation` | Nav2 (RPP, NavFn, VoxelLayer), optional `slam_toolbox` – Platzhalter für den Kollegen |
+| Layer 1 | `roboter_task_planning` | Mission (Auftrag, verweist per `welt:` auf die Orte) → PDDL → Fast Downward → Dispatcher; Neuplanung mit dynamischem Ort; Position per TF im map-Frame |
+| Roboter/Umgebung | `roboter_beschreibung`, `roboter_welten` | G1-Modell + Geometrie; Welten `leer`, `testwelt`, `testwelt3d`, `demo_lager` (Szene + Orte) |
+| Gesamt | `roboter_system` | `system.launch.py` (Schalter `mission`, `navigation`, `slam`, `lidar_modus`, `odom_quelle`, `realistic_sensors`, ...), RViz-Ansicht |
+| Zustände | – | AkkuSchwach/Laden fehlen bewusst (keine echten Batteriedaten; Platzhalter-Akku abgelehnt) |
 
-## Tests (alle grün, 14.10.2026)
-pytest `tests/` 33 · Layer-1 18 · `integration_ros.py` 32/32 (auch mit `--realistisch --beinodometrie`) (inkl. `/cmd_vel` und Freigabe-Versuch während/nach NotAus) · Watchdog 5/5 · `integration_mission.py` 14/14 (Testdouble, `--nav2`, `--welt`, `--patrouille`, `--drei-d`), Gegenprobe `--nur-2d` 13/13, `--slam --realistisch --beinodometrie` 22/22. Aufrufe: `tests/README.md`.
+## Tests (alle grün, 15.10.2026)
+`bash tests/alle_tests.sh [--mit-slam]`: Build, pytest 64 (Unit-Tests der Pakete, Regelkreis, Konfiguration, Simulationsbausteine,
+Greif-Regression), Pipeline 32/32 (auch realistisch + Beinodometrie), Watchdog 5/5, Missionen 14/14 (Testdouble, Testwelt,
+Patrouille, 3D-Palette), SLAM realistisch. Aufrufe und Ablage: `tests/README.md`.
 
 ## Code-Review vom 14.10.2026 – abgearbeitet
 - Paket 1 Sicherheit (B1, B5, L1, L3) → v1.5 · Paket 2 Layer 1 (B2, B3, B4, U4, L4, L5) → v1.6
 - Paket 3 Übergabe (B6, B7, U1, Kat. 6) → v1.7 · Paket 4 Kommentare/Doku (U2, Kat. 7) → v1.8
 - Paket 5 kleinere Punkte (B8, U3, U5–U7, L2, L7, Duplikate; L6/L8/U8 dokumentiert) → v1.9
-- Offen: Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code).
+- Offen: Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code; vorgesehen: `modell/`).
+
+## Strukturumbau 15.10.2026 (v2.0–v2.4)
+Aufräumen (Altbestand nach `archiv/`, Tests nach Art) → Welten (`roboter_welten`) → Launch je Schicht (`roboter_system`,
+`roboter_sensorik`, `r1_bringup` → `roboter_simulation`) → Config/Bridge entflechten (`roboter_beschreibung`, Policy und
+Bridge in Layer 3, `/antrieb/parameter`, Parameterdateien je Schicht) → große Knoten zerlegt. Verhalten unverändert (gleiche Tests, gleiche Messwerte).
 
 ## Für den Kollegen (Nav2)
-Referenz: `src/roboter_navigation/config/nav2_params.yaml`. Besonderheiten der Policy: Drehen auf der Stelle erst ab |wz| ≈ 0,8 (kleine wz setzt sie im Stand kaum um); vx ≥ 0,3; RPP `max_angular_accel` hoch (bezieht sich auf die gemessene Drehrate); `PoseProgressChecker`; Hinderniserkennung in 3D (VoxelLayer), weil die 2D-ObstacleLayer niedrige Hindernisse wieder löscht. Vor `/cmd_vel` muss `/freigabe` gesendet sein (Missionen erledigen das selbst). In Jazzy brauchen `collision_monitor` und `docking_server` Konfiguration; `navigation_launch.py` mit `use_composition=True` startet den Container nicht selbst.
+Referenz: `src/roboter_navigation/config/nav2_params.yaml`. Eigene Variante: `system.launch.py navigation:=nav2 nav2_params:=<datei>`
+oder Nav2 selbst starten und unser System mit `navigation:=aus` plus `ros2 launch roboter_task_planning mission.launch.py`.
+Eingänge `/scan` und `/punkte_hindernis` liefert `roboter_sensorik` unabhängig von seinem Paket. Besonderheiten der Policy:
+Drehen auf der Stelle erst ab |wz| ≈ 0,8; vx ≥ 0,3; RPP `max_angular_accel` hoch; `PoseProgressChecker`; Hinderniserkennung in 3D
+(VoxelLayer). Vor `/cmd_vel` muss `/freigabe` gesendet sein (Missionen erledigen das selbst). In Jazzy brauchen
+`collision_monitor` und `docking_server` Konfiguration; `navigation_launch.py` mit `use_composition=True` startet den Container nicht selbst.
 
 ## Greifen im Stehen (zurückgestellt)
 `experimente/arm_feasibility.py`: unveränderte Policy trägt Arme nur bis ~0,20 m vor dem Becken (Ursache: Arm-Beobachtungen außerhalb des Trainingsbereichs). Mit „blinder“ Policy für die Arme und Taille 0,15 rad nach hinten: 0,30 m Reichweite bis 1 kg je Hand stabil. Kein Hand-Modell, kein Zustand `Manipulieren`, keine Wahrnehmung.

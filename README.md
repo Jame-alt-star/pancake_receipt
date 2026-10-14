@@ -85,9 +85,10 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
   Wahrnehmung per Kamera, echte Hardware.
 
 ## Versionen (Git-Tags)
-`git tag` listet die Rücksprungpunkte, z. B. `stand-2026-10-13-nav2-grundlage`, `v0.8-testwelt-nav2-lidar`,
-`v0.9-patrouille`, `v0.10-slam`, `v1.0`. Zurück: `git checkout <tag>`.
+`git tag` listet die Rücksprungpunkte, z. B. `v1.0` (Pipeline), `v1.9-review-abgeschlossen` (letzter Stand vor dem
+Strukturumbau), `v2.0`–`v2.4` (Strukturumbau je Schritt). Zurück: `git checkout <tag>` (danach `colcon build`;
+beim Sprung über v2.2 die Ordner `build/` und `install/` vorher leeren, weil Pakete umbenannt wurden).
 
 ## Weitere Dokumente
-`docs/statusupdate_g1_projekt.md` (Verlauf mit allen Messwerten), `STATUSUPDATE_fuer_cowork.md`,
-`src/roboter_task_planning/README.md`, `src/roboter_navigation/README.md`, `tests/README.md`.
+`docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
+Messwerten), `STATUSUPDATE_fuer_cowork.md`, `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`, `archiv/README.md`.
