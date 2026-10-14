@@ -1,4 +1,7 @@
-# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 15.10.2026 (v2.4)
+# Projektstand aktuell — G1-Humanoid (Stand 15.10.2026, v2.5)
+
+**Wozu diese Datei:** der aktuelle Stand in Kurzform, für Übergaben und für jeden, der neu einsteigt. Sie wird bei jedem
+größeren Schritt aktualisiert. Was sich seit dem 10.10. geändert hat, steht in `NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`.
 
 Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen), Aufbau und Schnittstellen:
 `docs/architektur.md`. Verlauf mit allen Messwerten: `docs/statusupdate_g1_projekt.md`. Alte Übergaben, Review-Unterlagen und Altcode: nur noch unter Tag `v1.9-review-abgeschlossen`.

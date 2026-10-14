@@ -1,6 +1,9 @@
 # Was ist neu seit dem Stand vom 10.10.2026?
 
-Übersicht für den Nav2-Kollegen · Stand 15.10.2026 (`v2.4-struktur-abgeschlossen`) · Branch `pascal/pipeline-v2.4`
+Übersicht für den Nav2-Kollegen · Stand 15.10.2026 (`v2.5`) · Branch `pascal/pipeline-v2.4`
+
+**Wozu diese Datei:** einmaliger Vergleich „dein Stand vom 10.10. → jetzt“, damit du nicht die ganze Historie lesen musst.
+Den laufend aktualisierten Stand findest du in `PROJEKTSTAND_AKTUELL.md`.
 
 Dein Repo `pancake_receipt` (`main`) zeigt das Projekt vom 10.10.: Der G1 lief mit **12 Gelenken**, startete mit einem
 festen Gehbefehl, und vieles war erst als leere Datei angelegt (Zustände, PDDL, Planer, Dispatcher). Seitdem ist

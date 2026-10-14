@@ -4,6 +4,15 @@ Unitree G1 (29 DOF) in MuJoCo mit RL-Lauf-Policy (ONNX), Navigation (Nav2/SLAM) 
 Missionsplanung (PDDL/Fast Downward). Aufbau nach dem 4-Schichtenmodell der Software-Architektur;
 Paketübersicht, Schnittstellen und Abhängigkeitsregeln: `docs/architektur.md`.
 
+## Womit anfangen?
+| Datei | Für wen | Inhalt |
+|---|---|---|
+| **`NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`** | Nav2-Kollege | einmalige Übersicht: was seit dem Stand vom 10.10. neu, fertig und umbenannt ist, und was das für Nav2 bedeutet |
+| **`PROJEKTSTAND_AKTUELL.md`** | alle, Übergaben | der aktuelle Stand in Kurzform (wird laufend aktualisiert) |
+| `README.md` (diese Datei) | alle | Starten, Schalter, Tests |
+| `docs/architektur.md` | wer am Code arbeitet | Pakete, Schnittstellen, wer worauf zugreifen darf |
+| `docs/statusupdate_g1_projekt.md` | bei Detailfragen | ausführlicher Verlauf mit allen Messwerten |
+
 ```
 Layer 1  Deliberative   roboter_task_planning   Mission (Auftrag) -> PDDL -> Fast Downward -> Dispatcher (ROS-2-Actions)
 Layer 2  Navigation     roboter_navigation      Nav2 (+ optional slam_toolbox)                       [Variante des Kollegen ersetzbar]
@@ -94,5 +103,5 @@ und die Review-Unterlagen wurden am 15.10.2026 aus dem aktuellen Stand gelöscht
 git-Historie) enthalten.
 
 ## Weitere Dokumente
-`docs/stand_fuer_kollegen.md` (was seit dem 10.10. neu ist, für den Nav2-Kollegen), `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
-Messwerten), `STATUSUPDATE_fuer_cowork.md`, `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`.
+`NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`, `PROJEKTSTAND_AKTUELL.md`, `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
+Messwerten), `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`.
