@@ -33,7 +33,8 @@ ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 ros2 launch roboter_system system.launch.py mission:=patrouille navigation:=nav2 slam:=true headless:=true
 ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten (oder auto_start:=true)
 ros2 topic echo /mission/status                           # Fortschritt
-ros2 topic pub --once /not_aus std_msgs/msg/Bool "{data: true}"   # NotAus
+# NotAus: /not_aus ist latched (TRANSIENT_LOCAL), der Sender muss dieselbe QoS haben, sonst wartet er ewig
+ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /not_aus std_msgs/msg/Bool "{data: true}"
 ```
 `system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/testdouble), `nav2_params`,
 `slam`, `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`, `record_path`, `cmd_vel_timeout_s`,
