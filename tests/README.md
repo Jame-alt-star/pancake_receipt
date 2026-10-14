@@ -15,7 +15,6 @@ Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`).
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
 cd tests && python3 -m pytest -q                      # schnelle Tests
 cd .. && python3 tests/integration_ros.py             # 29-DOF-Pipeline
-python3 tests/integration_ros.py --config g1_policy.yaml   # 12-DOF-Regression
 ```
 
 Hinweise:

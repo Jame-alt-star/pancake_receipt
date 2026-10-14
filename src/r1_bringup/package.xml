@@ -4,12 +4,9 @@
   <name>r1_bringup</name>
   <version>0.0.1</version>
   <description>
-    Bringt das Unitree-R1-URDF (aus dem offiziellen unitreerobotics/unitree_ros
-    Repo, Ordner r1_description -- nicht Teil dieses Pakets, siehe README) in
-    RViz und Gazebo zur Anzeige. Erster Schritt der Unitree-R1-Spezialisierung
-    fuer die MBSE-Pipeline SysML v2 -> ROS2 -> Simulation: liefert die
-    konkreten Massen/Traegheiten/Geometrie, die das generische SysML-Modell
-    bewusst nicht enthaelt.
+    Layer 4 (HAL): MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik (IMU, Gelenke, 3D-Lidar,
+    Odometrie), Hardware-Bridge-Interface und Policy-/Modell-Dateien. Die alten R1/Gazebo-Launches
+    sind Altbestand (siehe Kommentar unten).
   </description>
   <maintainer email="pascalfranz02@gmail.com">Pascal</maintainer>
   <license>Apache-2.0</license>
@@ -38,21 +35,12 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
-  <!-- Offener Punkt: die folgenden Abhaengigkeiten stammen noch aus der
-       alten R1/Gazebo-Phase (RViz-Anzeige, ros2_control + Gazebo-
-       Simulation). Der aktuelle MuJoCo-Pfad (mujoco_node.py) braucht
-       sie nicht mehr - bewusst noch nicht entfernt, falls die alten
-       RViz/Gazebo-Launch-Dateien (siehe launch/) noch gebraucht werden.
-       Siehe Entscheidung "Gazebo-Anbindung behalten oder nicht". -->
-  <exec_depend>robot_state_publisher</exec_depend>
-  <exec_depend>joint_state_publisher_gui</exec_depend>
-  <exec_depend>rviz2</exec_depend>
-  <exec_depend>ros_gz_sim</exec_depend>
-  <exec_depend>ros_gz_bridge</exec_depend>
-  <exec_depend>controller_manager</exec_depend>
-  <exec_depend>joint_state_broadcaster</exec_depend>
-  <exec_depend>joint_trajectory_controller</exec_depend>
-  <exec_depend>gz_ros2_control</exec_depend>
+  <!-- Alte R1/Gazebo-Phase (launch/*gazebo*, anzeigen_rviz, bridges/gazebo_bridge.py): deren
+       Abhaengigkeiten (robot_state_publisher, joint_state_publisher_gui, ros_gz_sim, ros_gz_bridge,
+       controller_manager, joint_state_broadcaster, joint_trajectory_controller, gz_ros2_control)
+       sind seit 14.10.2026 KEINE Pflicht mehr (Review Kat. 6: rosdep zog viele unnoetige Pakete).
+       Wer die alten Gazebo-Launches nutzt, installiert sie bei Bedarf manuell. -->
+  <exec_depend>nav_msgs</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

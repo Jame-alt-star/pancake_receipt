@@ -14,7 +14,8 @@ os.environ.setdefault("MUJOCO_GL", "glfw")
 RUN, OUT = sys.argv[1], sys.argv[2]
 PROBE = float(sys.argv[sys.argv.index("--probe") + 1]) if "--probe" in sys.argv else None
 W, H, FPS = 1280, 720, 25
-XML = os.path.expanduser("~/humanoid_robot/src/r1_bringup/models/robots/g1_description/scene_demo_lager_29dof.xml")
+XML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "r1_bringup", "models", "robots",
+                   "g1_description", "scene_demo_lager_29dof.xml")      # relativ zum Repo, nicht ~/humanoid_robot
 
 pose = np.load(f"{RUN}/pose.npz")
 events = json.load(open(f"{RUN}/ereignisse.json"))

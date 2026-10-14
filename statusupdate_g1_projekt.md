@@ -353,3 +353,15 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 - **Test-Korrektur:** „steht nach NotAus“ im Missionstest misst jetzt nach der Bremsphase (wie im Pipeline-Test); vorher zählte der Bremsweg aus voller Fahrt mit (einmaliger Fehlschlag bei z = 0,79, also nicht gestürzt).
 - **Tests:** 6 neue Layer-1-Tests (u. a. Neuplanung in einer reinen Kette ohne Durchqueren von `pos_aktuell`, Großbuchstaben, Ausnahme in Bridge, fehlender Startort) → 18/18. Missionen 14/14 (Testdouble, Testwelt, Patrouille, 3D-Palette), SLAM realistisch 2× 22/22.
 - **Offen beobachtet:** In 1 von 5 SLAM-realistisch-Läufen brach Nav2 die Etappe a→b ab, bei der Neuplanung streifte der Roboter die Tür (0,20 m) und stürzte. Nicht reproduziert; vermutlich Last/Timing. Wird weiter beobachtet.
+
+
+## Review-Paket 3: Übergabe und Reproduzierbarkeit (14.10.2026) – v1.7
+- **B6:** Controller werden erst bei Bedarf importiert; der 29-DOF-Pfad braucht kein PyTorch mehr (geprüft: `steuereinheit_node` importiert mit gesperrtem `torch`).
+- **B7:** `slam_toolbox` wird nur bei `slam:=true` aufgelöst (OpaqueFunction).
+- **U1:** Standard-Config überall `g1_policy_29dof.yaml` (`steuereinheit_node`, `mujoco_node`, `steuereinheit.launch`); geprüft: Start ohne Argumente nimmt 29-DOF.
+- **Pfade:** harte Rückfälle auf `~/humanoid_robot` in `steuereinheit_node`/`mujoco_node` durch klare Fehlermeldungen ersetzt; `demo/render_demo.py` relativ zum Repo.
+- **package.xml/setup.py:** Gazebo/ros2_control-Altlasten keine Pflicht mehr (Kommentar statt `exec_depend`); `nav_msgs`, `nav2_msgs`, `slam_toolbox`, `rviz2`, `tf2_ros` ergänzt; Maintainer/Lizenz statt `TODO`-Platzhaltern (Lizenz Apache-2.0 wie bereits in `r1_bringup` eingetragen), Beschreibungen aktualisiert.
+- **requirements.txt** mit getesteten Versionen (mujoco 3.13.0, onnxruntime 1.31.0, numpy 1.26.4, PyYAML 6.0.1; optional torch, imageio-ffmpeg).
+- **Ballast entfernt** (in Git abrufbar): `src/_backup_vor_lockstep_*`, `g1_29dof.xml.bak_vor_armature_fix`, leere `task_planner_node.py`, `standalone_test.py`; `.pytest_cache/` ignoriert.
+- **B8 teilweise:** Fast Downward: `.py` mit python3, Wrapper aus PATH direkt; Dateien mit Kontextmanager.
+- **Tests:** pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14, SLAM realistisch 22/22. (Ein erster Pipeline-Lauf scheiterte, weil eine Simulation aus einem Vortest noch lief – Testumgebung, nicht Code; sauber wiederholt 32/32.)

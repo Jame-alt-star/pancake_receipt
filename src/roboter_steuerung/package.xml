@@ -3,9 +3,9 @@
 <package format="3">
   <name>roboter_steuerung</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="yassi@todo.todo">yassi</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Layer 3 (Reactive): Zustandsautomat, RL-Lauf-Controller (29-DOF ONNX), Kurs-/Positionshaltung, NotAus/Freigabe, Balance-Dienste, Beinodometrie.</description>
+  <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
+  <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
   <depend>r1_bringup</depend>
@@ -23,8 +23,9 @@
        importiert) hat KEINEN rosdep-Schluessel (geprueft: "rosdep resolve
        python3-onnxruntime" -> no rule) und kann deshalb nicht als
        <depend>/<exec_depend> deklariert werden, ohne "rosdep install" zu
-       brechen. Muss separat installiert sein, genau wie "mujoco"/"torch"
-       (siehe r1_bringup/package.xml):
+       brechen. Muss separat installiert sein, ebenso "mujoco" (Beinodometrie nutzt das MuJoCo-
+       Modell fuer die Vorwaertskinematik) und - nur fuer den alten 12-DOF-Pfad - "torch".
+       Versionen: requirements.txt im Projekt-Root:
            pip install onnxruntime (mit Option break-system-packages unter Ubuntu 24.04) -->
 
   <test_depend>ament_copyright</test_depend>

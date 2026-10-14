@@ -19,10 +19,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='yassi',
-    maintainer_email='yassi@todo.todo',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='Pascal Franz',
+    maintainer_email='pascalfranz02@gmail.com',
+    description='G1-Humanoid-Pipeline (siehe README.md)',
+    license='Apache-2.0',
     extras_require={
         'test': [
             'pytest',

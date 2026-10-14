@@ -79,12 +79,12 @@ class MujocoBridgeNode(Node):
         # 1. Config laden (gleiche Datei wie steuereinheit_node.py, damit
         # z.B. simulation_dt/kps/kds an beiden Stellen zusammenpassen).
         # NEU (DOF-Migration): Dateiname ueber den ROS2-Parameter
-        # "config_file" waehlbar (Default bleibt "g1_policy.yaml" - exakt
+        # "config_file" waehlbar (Standard seit 14.10.2026 g1_policy_29dof.yaml; 12-DOF: g1_policy.yaml - vorher
         # das bisherige 12-DOF-Verhalten unveraendert), siehe
         # steuereinheit_node.py fuer denselben Mechanismus und
         # steuereinheit.launch.py fuer das Launch-Argument, das beide
         # Knoten synchron umschaltet.
-        self.declare_parameter("config_file", "g1_policy.yaml")
+        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
         config_file = self.get_parameter("config_file").get_parameter_value().string_value
 
         # NEU (13.10.2026): Physik erst starten, wenn der Regler das erste
@@ -116,11 +116,8 @@ class MujocoBridgeNode(Node):
         xml_rel_path = scene_file or self.config["xml_path"]
         xml_path = os.path.join(pkg_share, xml_rel_path)
         if not os.path.exists(xml_path):
-            # Fallback, falls colcon den Share-Ordner (noch) nicht gefuellt
-            # hat. ACHTUNG: geht hart davon aus, dass der Workspace exakt
-            # unter ~/humanoid_robot liegt - offener Punkt, falls der
-            # Workspace-Ordner mal anders benannt/liegt, bricht das hier.
-            xml_path = os.path.expanduser(f"~/humanoid_robot/src/r1_bringup/{xml_rel_path}")
+            # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
+            raise FileNotFoundError(f"MuJoCo-Szene nicht gefunden: {xml_path} - 'colcon build' ausgefuehrt?")
 
         # Parameter initialisieren
         self.simulation_dt = float(self.config["simulation_dt"])

@@ -47,10 +47,14 @@ class FastDownwardPlanner(IPlanner):
         fd = self.fd_path or find_fast_downward()
         with tempfile.TemporaryDirectory(prefix="fd_") as tmp:
             dpath, ppath = os.path.join(tmp, "domain.pddl"), os.path.join(tmp, "problem.pddl")
-            open(dpath, "w").write(domain_pddl)
-            open(ppath, "w").write(problem_pddl)
+            with open(dpath, "w") as f:
+                f.write(domain_pddl)
+            with open(ppath, "w") as f:
+                f.write(problem_pddl)
+            # fast-downward.py mit python3 starten; ein Wrapper aus PATH (fast-downward) direkt (Review B8)
+            aufruf = ["python3", fd] if fd.endswith(".py") else [fd]
             try:
-                r = subprocess.run(["python3", fd, "--plan-file", os.path.join(tmp, "sas_plan"),
+                r = subprocess.run(aufruf + ["--plan-file", os.path.join(tmp, "sas_plan"),
                                     "--sas-file", os.path.join(tmp, "output.sas"),
                                     dpath, ppath, "--search", self.search],
                                    cwd=tmp, capture_output=True, text=True, timeout=self.timeout_s)
@@ -60,4 +64,5 @@ class FastDownwardPlanner(IPlanner):
             if r.returncode != 0 or not os.path.exists(plan_file):
                 raise PlanningFailed(f"kein Plan (Fast Downward Exit {r.returncode}): "
                                      f"{(r.stdout + r.stderr).strip().splitlines()[-1:]}")
-            return parse_plan(open(plan_file).read())
+            with open(plan_file) as f:
+                return parse_plan(f.read())

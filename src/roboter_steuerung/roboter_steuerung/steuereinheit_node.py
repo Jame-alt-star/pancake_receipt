@@ -11,8 +11,6 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 
 from r1_bringup.bridges.mujoco_bridge import MujocoBridge
-from roboter_steuerung.control.rl_locomotion_controller import RLLocomotionController
-from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
 from roboter_steuerung.states.start_state import StartState
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState
 from roboter_steuerung.states.not_aus_state import NotAusState
@@ -107,14 +105,14 @@ class SteuereinheitNode(Node):
         # (siehe dort), damit z.B. simulation_dt/control_decimation an
         # beiden Stellen zusammenpassen (siehe Taktung unten).
         # NEU (DOF-Migration): Dateiname jetzt ueber den ROS2-Parameter
-        # "config_file" waehlbar (Default bleibt "g1_policy.yaml", also
+        # "config_file" waehlbar (Standard seit 14.10.2026: g1_policy_29dof.yaml; 12-DOF: g1_policy.yaml; also
         # exakt das bisherige 12-DOF-Verhalten unveraendert) - z.B.
         #   ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
         # schaltet auf die 29-DOF-Ganzkoerper-Policy um, siehe
         # g1_policy_29dof.yaml. Beide Config-Dateien bleiben nebeneinander
         # bestehen (siehe Projekt-Konvention: Alternativen zurueckstellen,
         # nicht loeschen).
-        self.declare_parameter("config_file", "g1_policy.yaml")
+        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
         config_file = self.get_parameter("config_file").get_parameter_value().string_value
 
         bringup_share = get_package_share_directory("r1_bringup")
@@ -140,7 +138,8 @@ class SteuereinheitNode(Node):
         policy_rel_path = self.config["policy_path"]
         policy_path = os.path.join(bringup_share, policy_rel_path)
         if not os.path.exists(policy_path):
-            policy_path = os.path.expanduser(f"~/humanoid_robot/src/r1_bringup/{policy_rel_path}")
+            # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
+            raise FileNotFoundError(f"Policy nicht gefunden: {policy_path} - 'colcon build' ausgefuehrt?")
         self.config["policy_path"] = policy_path
 
         # 2. Hardware-Bridge und RL-Controller initialisieren. num_joints
@@ -152,9 +151,14 @@ class SteuereinheitNode(Node):
         # wie num_actions) - fehlt der Schluessel (alte g1_policy.yaml),
         # bleibt es beim bisherigen 12-DOF-TorchScript-Controller.
         controller_type = self.config.get("controller_type", "rl_locomotion")
+        # Controller erst bei Bedarf importieren (Review B6): der 12-DOF-Controller braucht
+        # PyTorch, der 29-DOF-Controller nur onnxruntime. Vorher wurden beide immer importiert,
+        # damit war torch auch fuer den 29-DOF-Pfad Pflicht (ImportError auf frischen Rechnern).
         if controller_type == "rl_locomotion_29dof":
+            from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
             self.controller = RLLocomotionController29Dof(self.config)
         elif controller_type == "rl_locomotion":
+            from roboter_steuerung.control.rl_locomotion_controller import RLLocomotionController
             self.controller = RLLocomotionController(self.config)
         else:
             raise ValueError(f"Unbekannter controller_type in der Config: {controller_type!r}")

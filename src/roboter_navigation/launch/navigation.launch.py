@@ -2,7 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -32,12 +32,17 @@ def generate_launch_description():
     static_tf = Node(package="tf2_ros", executable="static_transform_publisher", name="map_to_odom",
                      arguments=["--frame-id", "map", "--child-frame-id", "odom"],
                      condition=UnlessCondition(LaunchConfiguration("slam")))
-    slam_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(
-            get_package_share_directory("slam_toolbox"), "launch", "online_async_launch.py")),
-        launch_arguments={"slam_params_file": LaunchConfiguration("slam_params_file"),
-                          "use_sim_time": "false", "autostart": "true"}.items(),
-        condition=IfCondition(LaunchConfiguration("slam")))
+    def _slam(context):
+        # slam_toolbox nur aufloesen, wenn slam:=true (Review B7) - sonst brach nav2:=true auch ohne
+        # SLAM ab, wenn slam_toolbox nicht installiert war.
+        if LaunchConfiguration("slam").perform(context).lower() not in ("true", "1"):
+            return []
+        return [IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(
+                get_package_share_directory("slam_toolbox"), "launch", "online_async_launch.py")),
+            launch_arguments={"slam_params_file": LaunchConfiguration("slam_params_file"),
+                              "use_sim_time": "false", "autostart": "true"}.items())]
+    slam_launch = OpaqueFunction(function=_slam)
     # navigation_launch.py laedt bei use_composition=True die Knoten nur in einen BEREITS
     # laufenden Container (den startet sonst bringup_launch.py) - also hier selbst starten.
     container = Node(
