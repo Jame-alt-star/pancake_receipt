@@ -91,5 +91,5 @@ Strukturumbau), `v2.0`–`v2.4` (Strukturumbau je Schritt). Zurück: `git checko
 beim Sprung über v2.2 die Ordner `build/` und `install/` vorher leeren, weil Pakete umbenannt wurden).
 
 ## Weitere Dokumente
-`docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
+`docs/stand_fuer_kollegen.md` (was seit dem 10.10. neu ist, für den Nav2-Kollegen), `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
 Messwerten), `STATUSUPDATE_fuer_cowork.md`, `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`, `archiv/README.md`.
