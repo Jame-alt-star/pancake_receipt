@@ -1,0 +1,21 @@
+# Mission fuer die Testwelt 3D (scene_testwelt3d_29dof.xml): zwei Raeume, Tuer bei x=4.5, Hindernis bei (1.5, 0).
+# Der direkte Weg start->a kreuzt das Hindernis, a->b muss durch die Tuer.
+orte:
+  start: {x: 0.0, y: 0.0}
+  a:     {x: 3.0, y: -1.5}
+  b:     {x: 5.8, y: 1.5}
+verbindungen:
+  - [start, a]
+  - [a, b]
+  - [start, b]
+start_ort: start
+ziele:
+  - {art: besucht,    ort: a}
+  - {art: balanciert, ort: b}
+  - {art: gewartet,   ort: b}
+parameter:
+  warte_s: 2.0
+  balancier_toleranz_grad: 5.0
+  nav_toleranz_m: 0.3
+  nav_geschwindigkeit: 0.4
+  max_replans: 2

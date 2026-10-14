@@ -26,4 +26,4 @@ Hinweise:
 ## Hilfsmittel
 `bash tests/stop_all.sh` beendet Pipeline, Nav2/SLAM und Hilfsknoten nach abgebrochenen Tests (als eigener
 Befehl ausfuehren). `integration_mission.py` kennt `--nav2`, `--welt`, `--patrouille`, `--slam`
-(Nav2 laeuft headless; WSL2 hat nur ~2,8 GB RAM, Testserien daher einzeln und nacheinander starten).
+(`--drei-d`: 3D-Lidar + niedrige Palette, `--nur-2d`: Gegenprobe, `--realistisch`, `--beinodometrie`; Nav2 laeuft headless; WSL2 hat nur ~2,8 GB RAM, Testserien daher einzeln und nacheinander starten).

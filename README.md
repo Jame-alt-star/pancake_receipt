@@ -39,6 +39,10 @@ Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml` (Z
   `slam:=true` korrigiert SLAM die Drift über `map→odom`. Das ist die Konfiguration, die der echten
   Hardware am nächsten kommt.
 
+- `lidar_3d:=true`: zusätzlich 3D-Lidar als `PointCloud2` (`/points`); mit `nav2_params:=.../nav2_params_3d.yaml`
+  sieht Nav2 auch niedrige Hindernisse unter der 2D-Scanebene (Test: `integration_mission.py --drei-d`).
+- Demo-Video "Kontrollrundgang im Lager": `demo/README.md`.
+
 ## Voraussetzungen
 ROS 2 Jazzy, `ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`, `ros-jazzy-slam-toolbox`;
 Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter `~/tools/downward`

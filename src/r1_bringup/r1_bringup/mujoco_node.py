@@ -10,7 +10,7 @@ import mujoco
 import mujoco.viewer
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Imu, JointState, LaserScan
+from sensor_msgs.msg import Imu, JointState, LaserScan, PointCloud2, PointField
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Point, TransformStamped
 from nav_msgs.msg import Odometry
@@ -224,6 +224,23 @@ class MujocoBridgeNode(Node):
         self.lidar_mask = np.zeros(6, dtype=np.uint8)
         self.lidar_mask[int(self.get_parameter("lidar_geomgroup").value)] = 1
         self._lidar_count = 0
+        # NEU (14.10.2026): optionales 3D-Lidar als PointCloud2 (/points, Frame lidar_link): 24 Ringe
+        # (-40..+10 Grad) x 360 Azimutwerte, 5 Hz. Ground-Truth-Raycast wie der 2D-Scan.
+        self.declare_parameter("lidar_3d", False)
+        self.declare_parameter("lidar_3d_rings", 24)
+        self.declare_parameter("lidar_3d_elev_min_deg", -40.0)
+        self.declare_parameter("lidar_3d_elev_max_deg", 10.0)
+        self.lidar3d_on = bool(self.get_parameter("lidar_3d").value) and self.lidar_on
+        self._cloud_count = 0
+        if self.lidar3d_on:
+            nr = int(self.get_parameter("lidar_3d_rings").value)
+            el = np.radians(np.linspace(float(self.get_parameter("lidar_3d_elev_min_deg").value),
+                                        float(self.get_parameter("lidar_3d_elev_max_deg").value), nr))
+            az = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
+            E, A = np.meshgrid(el, az, indexing="ij")
+            self.cloud_dirs_local = np.stack([np.cos(E) * np.cos(A), np.cos(E) * np.sin(A), np.sin(E)],
+                                             axis=-1).reshape(-1, 3)
+            self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
         a = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
         self.lidar_dirs_local = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
         if self.lidar_on:
@@ -491,6 +508,11 @@ class MujocoBridgeNode(Node):
             if self._lidar_count >= self.lidar_period:
                 self._lidar_count = 0
                 self._publish_scan(now, quat)
+                if self.lidar3d_on:
+                    self._cloud_count += 1
+                    if self._cloud_count >= 2:                  # 5 Hz
+                        self._cloud_count = 0
+                        self._publish_cloud(now, quat)
 
     def _sensor_model(self, q, dq, quat, omega):
         """Latenz (Ringpuffer nach Sim-Zeit) + Rauschen/Bias, wie sie ein echter Sensor liefert."""
@@ -518,6 +540,36 @@ class MujocoBridgeNode(Node):
             quat = np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
                              w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
         return q, dq, quat, omega
+
+    def _publish_cloud(self, now, quat):
+        w, x, y, z = quat
+        R = np.array([
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ])
+        origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
+        dirs = self.cloud_dirs_local @ R.T
+        n = len(dirs)
+        dist = np.zeros(n, dtype=np.float64)
+        geomid = np.zeros(n, dtype=np.int32)
+        mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
+                           geomid, dist, None, n, self.lidar_rmax)
+        ok = (geomid >= 0) & (dist > 0.15) & (dist < self.lidar_rmax)
+        d_ok = dist[ok]
+        if self.realistic and len(d_ok):
+            d_ok = d_ok + self._rng.normal(0.0, self.n_lidar, len(d_ok))
+        pts = (self.cloud_dirs_local[ok] * d_ok[:, None]).astype(np.float32)     # im lidar_link-Frame
+        msg = PointCloud2()
+        msg.header.stamp = now
+        msg.header.frame_id = "lidar_link"
+        msg.height, msg.width = 1, int(len(pts))
+        msg.fields = [PointField(name=nme, offset=4 * i, datatype=PointField.FLOAT32, count=1)
+                      for i, nme in enumerate(("x", "y", "z"))]
+        msg.is_bigendian, msg.point_step, msg.row_step = False, 12, 12 * len(pts)
+        msg.data = pts.tobytes()
+        msg.is_dense = True
+        self.pub_cloud.publish(msg)
 
     def _publish_scan(self, now, quat):
         w, x, y, z = quat

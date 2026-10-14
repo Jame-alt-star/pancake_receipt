@@ -106,13 +106,17 @@ class Probe(Node):
 
 
 NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
+DREI_D = "--drei-d" in sys.argv       # 3D-Lidar (/points) + niedrige Palette in der Welt (impliziert --welt)
+NUR_2D = "--nur-2d" in sys.argv        # Gegenprobe: dieselbe Welt nur mit 2D-Lidar (Kontakt erwartet)
 SLAM = "--slam" in sys.argv       # slam_toolbox (impliziert --welt); prueft /map und map->odom
 PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
-WELT = "--welt" in sys.argv or PATROUILLE or SLAM   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
+WELT = "--welt" in sys.argv or PATROUILLE or SLAM or DREI_D or NUR_2D   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
 if WELT:
     NAV2 = True
 # Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
 BOXEN = [(1.25, 1.75, -0.8, 0.8), (4.45, 4.55, 0.8, 2.95), (4.45, 4.55, -2.95, -0.8)]
+if DREI_D or NUR_2D:
+    BOXEN = BOXEN + [(2.0, 2.8, -1.5, -0.7)]     # niedrige Palette (0.45 m)
 
 
 def launch(logfile):
@@ -124,10 +128,14 @@ def launch(logfile):
         nav += ["realistic_sensors:=true"]
     if "--beinodometrie" in sys.argv:
         nav += ["odom_quelle:=beinodometrie"]
+    if DREI_D:
+        prefix = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_navigation"], text=True).strip()
+        nav += ["lidar_3d:=true", f"nav2_params:={prefix}/share/roboter_navigation/config/nav2_params_3d.yaml"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
-        nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",
-                f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else 'testwelt'}.yaml"]
+        szene = "scene_testwelt3d_29dof.xml" if (DREI_D or NUR_2D) else "scene_testwelt_29dof.xml"
+        nav += [f"scene_file:=models/robots/g1_description/{szene}",
+                f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else ('testwelt3d' if (DREI_D or NUR_2D) else 'testwelt')}.yaml"]
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
                              *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)
@@ -161,9 +169,18 @@ def main():
         end = pr.wait_end(300)
         check("S1 Mission beendet", end is not None)
         if end:
-            check("S1 Status erfolg", end.get("status") == "erfolg", str(end))
+            if not NUR_2D:
+                check("S1 Status erfolg", end.get("status") == "erfolg", str(end))
         plans = [s for s in pr.status[n0:] if s.get("phase") == "plan"]
-        if WELT:
+        if NUR_2D:
+            # Gegenprobe: ohne 3D-Lidar ist die niedrige Palette unsichtbar -> Kontakt erwartet
+            kontakt = pr.min_clear < 0.20
+            check("S1 KONTROLLE: 2D-Lidar sieht die niedrige Palette nicht (Roboter kommt ihr zu nah)",
+                  kontakt, f"min_abstand={pr.min_clear:.2f} m (Koerperhalbbreite ~0.2: darunter Kontakt)")
+        elif DREI_D:
+            check("S1 3D-Lidar: niedrige Palette umfahren, kein Kontakt (Abstand > 0.20 m)", pr.min_clear > 0.20,
+                  f"min_abstand={pr.min_clear:.2f} m")
+        elif WELT:
             check("S1 kein Kontakt mit Hindernis/Waenden (Abstand > 0.2 m)", pr.min_clear > 0.2,
                   f"min_abstand={pr.min_clear:.2f} m")
         else:

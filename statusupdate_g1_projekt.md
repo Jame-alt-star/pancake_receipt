@@ -306,3 +306,17 @@ Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des 
 
 ## Demo-Szenario "Kontrollrundgang im Lager" (14.10.2026)
 Szene `scene_demo_lager_29dof.xml` (Halle mit Regalen und Kistenstapeln, Büro mit 1,6 m breiter Tür, Ladestation), Mission `demo_lager.yaml`: K1 (Regalgang) → K2 (Hallenecke) → K3 (Büro) → balancieren → warten → Ladestation; danach NOT-AUS-Sequenz. Lauf in der realistischsten Konfiguration (SLAM, realistische Sensorik, Beinodometrie): **Mission erfolgreich in ~100 s, ohne Neuplanung**. Video (127 s, Verfolgerkamera, Lidar-Treffer, Leitstand-Karte, Auftragsliste) wird offline aus der aufgezeichneten Pose gerendert; Skripte in `demo/` (`run_demo.py`, `render_demo.py`, `README.md`). `mujoco_node` hat dafür den Parameter `record_path`.
+
+
+## 3D-Lidar (Punktwolke) und Gegenprobe mit niedrigem Hindernis (14.10.2026) – v1.3
+
+**Umgesetzt:** `mujoco_node` kann zusätzlich zum 2D-Scan ein 3D-Lidar als `PointCloud2` (`/points`, Frame `lidar_link`, 24 Ringe von −40° bis +10°, 360 Azimutwerte, 5 Hz, Raycast, mit `realistic_sensors` verrauscht) publizieren (`lidar_3d:=true`). Nav2-Variante `nav2_params_3d.yaml` nutzt `/points` als zweite Hindernisquelle (Mindesthöhe 0,12 m blendet den Boden aus); Roboterradius dort 0,36 m. Szene `scene_testwelt3d_29dof.xml` (Testwelt plus niedrige Palette 0,45 m und ein nur für das Lidar sichtbarer Boden), Mission `testwelt3d.yaml`.
+
+**Gegenprobe (`tests/integration_mission.py --nur-2d` / `--drei-d`):** Die 0,45 m hohe Palette liegt unter der 2D-Scanebene (1,24 m) und ist für den 2D-Lidar unsichtbar.
+- nur 2D: Roboter kommt der Palette konsistent bis **0,14–0,15 m** nahe (3 Läufe) – Kontakt (Körperhalbbreite ~0,2 m), Mission wird trotzdem erreicht.
+- mit 3D: **0,21–0,33 m** (7 Läufe), Mission 14/14 ohne Neuplanung.
+- Die Marge ist knapp: niedrige Hindernisse bekommen wenige Punkte, die Pfadfolge weicht ±0,1 m ab. Wirksam war das Abschalten des `clearing` für den 2D-Scan (seine Strahlen gehen über das Hindernis und löschten dessen Marken aus der Punktwolke ständig wieder).
+
+**Regression:** pytest 26, `integration_ros` 29/29, Mission (Testdouble) 14/14, `--welt` 14/14, `--slam --realistisch --beinodometrie` 22/22.
+
+**Grenzen:** SLAM bleibt 2D (`slam_toolbox`); die Punktwolke dient nur der Hinderniserkennung. Keine Kamera. Das Lidar sieht den eigenen Körper nicht (nur Welt-Geoms der Gruppe 2).

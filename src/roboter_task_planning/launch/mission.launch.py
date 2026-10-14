@@ -31,6 +31,10 @@ def generate_launch_description():
                               description="ground_truth oder beinodometrie"),
         DeclareLaunchArgument("realistic_sensors", default_value="false",
                               description="Sensorrauschen, Latenz, Lidar-Ausfaelle in der Simulation"),
+        DeclareLaunchArgument("lidar_3d", default_value="false",
+                              description="3D-Lidar als PointCloud2 (/points) zusaetzlich zum 2D-Scan"),
+        DeclareLaunchArgument("nav2_params", default_value="",
+                              description="eigene Nav2-Parameterdatei (leer = Standard aus roboter_navigation)"),
         DeclareLaunchArgument("lidar", default_value="true",
                               description="simuliertes Lidar (/scan) in der Simulation"),
         DeclareLaunchArgument("slam", default_value="false",
@@ -49,6 +53,7 @@ def generate_launch_description():
                           "headless": LaunchConfiguration("headless"),
                           "scene_file": LaunchConfiguration("scene_file"),
                           "lidar": LaunchConfiguration("lidar"),
+                          "lidar_3d": LaunchConfiguration("lidar_3d"),
                           "realistic_sensors": LaunchConfiguration("realistic_sensors"),
                           "odom_quelle": LaunchConfiguration("odom_quelle"),
                           "record_path": LaunchConfiguration("record_path"),
@@ -59,7 +64,11 @@ def generate_launch_description():
     navigation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory("roboter_navigation"), "launch", "navigation.launch.py")),
-        launch_arguments={"slam": LaunchConfiguration("slam")}.items(),
+        launch_arguments={"slam": LaunchConfiguration("slam"),
+                          "params_file": PythonExpression([
+                              "'", LaunchConfiguration("nav2_params"), "' if '", LaunchConfiguration("nav2_params"),
+                              "' else '", os.path.join(get_package_share_directory("roboter_navigation"),
+                                                       "config", "nav2_params.yaml"), "'"])}.items(),
         condition=IfCondition(LaunchConfiguration("nav2")))
     mission = Node(package="roboter_task_planning", executable="mission_node", output="screen",
                    parameters=[{
