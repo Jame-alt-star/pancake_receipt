@@ -154,6 +154,8 @@ class MujocoBridgeNode(Node):
         # eine andere Quelle (z.B. robot_localization) Odometrie/TF liefert.
         # NEU (13.10.2026): headless=True -> kein Viewer-Fenster. Spart bei Tests/Nav2-Betrieb
         # viel CPU und Speicher (Rendering war der groesste Posten der Sim-Schleife).
+        self.declare_parameter("render_decimation", 25)
+        self.render_decimation = max(1, int(self.get_parameter("render_decimation").value))
         self.declare_parameter("headless", False)
         self.headless = self.get_parameter("headless").value
         self.declare_parameter("publish_odom", True)
@@ -248,7 +250,9 @@ class MujocoBridgeNode(Node):
         # Bildwiederholung reicht fuers Auge voellig aus), mj_step()/
         # _publish_states() bleiben bei jedem Schritt - das entlastet die
         # Schleife so weit, dass sie near-Echtzeit auf ~500 Hz kommen sollte.
-        RENDER_DECIMATION = 10
+        # Rendern nur alle N Physikschritte; viewer.sync() kostet ~16 ms (Software-GL unter WSLg)
+        # und bremst die Echtzeitschleife. Default 25 = 20 Hz Bild bei 500 Hz Physik (vorher 10).
+        RENDER_DECIMATION = self.render_decimation
         render_counter = 0
         # NEU (13.10.2026): Publish nur alle PUBLISH_DECIMATION Schritte
         # (500/5 = 100 Hz). Gemessen: _publish_states() kostete ~1.1 ms pro
