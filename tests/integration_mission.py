@@ -219,9 +219,11 @@ def main():
         pr.not_aus.publish(Bool(data=True))
         end = pr.wait_end(40)
         check("S2 Status abgebrochen", end is not None and end.get("status") == "abgebrochen", str(end))
-        px = pr.p; pr.spin(6)
-        check("S2 Roboter steht nach NotAus", pr.p[2] > 0.7 and np.hypot(pr.p[0]-px[0], pr.p[1]-px[1]) < 0.1,
-              f"z={pr.p[2]:.3f}")
+        pr.spin(3)                                   # Bremsphase aus voller Fahrt abwarten
+        px = pr.p; pr.spin(5)
+        dxy = float(np.hypot(pr.p[0] - px[0], pr.p[1] - px[1]))
+        check("S2 Roboter steht nach NotAus (nach Bremsphase < 0.1 m in 5 s)", pr.p[2] > 0.7 and dxy < 0.1,
+              f"z={pr.p[2]:.3f}, Strecke={dxy:.3f} m")
         r, _ = pr.start_mission()
         check("S2 Start bei aktivem NotAus abgelehnt", not r.success, r.message)
 

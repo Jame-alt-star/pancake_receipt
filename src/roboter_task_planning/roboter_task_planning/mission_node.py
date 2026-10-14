@@ -9,8 +9,12 @@ Parameter: mission_file, nav_backend ('nav2'|'gehaktion'), auto_start (bool)
 """
 import json
 import threading
+import time
 
 import rclpy
+import tf2_ros
+from rclpy.duration import Duration
+from rclpy.time import Time
 from nav_msgs.msg import Odometry
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -58,8 +62,28 @@ class MissionNode(Node):
 
     # ---- Eingaenge ----
     def _locate(self, timeout_s: float = 1.5):
-        """Aktuelle Roboterposition auf Abruf (einmaliges Abo auf /odom; laeuft mit 100 Hz, ein
-        Dauerabo kostete im Leerlauf ~30 % CPU)."""
+        """Aktuelle Roboterposition im map-Frame (wie die Missionsorte), auf Abruf.
+
+        Review U4: vorher kam die Position aus /odom (odom-Frame). Mit SLAM liegen map und odom
+        bis ~0,75 m auseinander, damit waren naechster Ort und pos_aktuell falsch. Jetzt per TF
+        map->base_link; nur wenn das nicht verfuegbar ist, Rueckfall auf /odom.
+        Abos nur auf Abruf: ein dauerhafter TF-Listener bzw. ein Dauerabo auf 100-Hz-Topics
+        kostete im Leerlauf ~30 % CPU (Python-Deserialisierung).
+        """
+        buf = tf2_ros.Buffer()
+        listener = tf2_ros.TransformListener(buf, self)
+        try:
+            # lookup_transform(Time()) wartet in rclpy nicht auf einen frisch angelegten Listener,
+            # sondern scheitert sofort -> selbst warten, bis die Kette map->base_link vorliegt.
+            t_end = time.monotonic() + timeout_s
+            while not buf.can_transform("map", "base_link", Time()) and time.monotonic() < t_end:
+                time.sleep(0.05)
+            t = buf.lookup_transform("map", "base_link", Time())
+            return (t.transform.translation.x, t.transform.translation.y)
+        except Exception as e:      # TF fehlt (z. B. ohne Nav2) -> /odom
+            self.get_logger().info(f"Position per TF map->base_link nicht verfuegbar ({type(e).__name__}), nutze /odom")
+        finally:
+            listener.unregister()
         got = {}
         ev = threading.Event()
 
@@ -103,9 +127,18 @@ class MissionNode(Node):
         self.pub_freigabe.publish(Bool(data=True))
         ex = MissionExecutor(FastDownwardPlanner(), self.bridges, locator=self._locate,
                              log=lambda m: self.get_logger().info(m), status_cb=self._publish)
-        self._thread = threading.Thread(target=ex.run, args=(mission, self._abort), daemon=True)
+        self._thread = threading.Thread(target=self._run_mission, args=(ex, mission), daemon=True)
         self._thread.start()
         return True, f"Mission gestartet ({path})"
+
+    def _run_mission(self, ex, mission):
+        """Thread-Rumpf. MissionExecutor.run faengt selbst alle Ausnahmen ab; dieser Rahmen ist die
+        letzte Sicherung, damit /mission/status immer einen Endstatus bekommt (Review B3)."""
+        try:
+            ex.run(mission, self._abort)
+        except Exception as e:
+            self.get_logger().error(f"Mission abgestuerzt: {type(e).__name__}: {e}")
+            self._publish({"phase": "ende", "status": "fehlgeschlagen", "meldung": f"interner Fehler: {e}"})
 
     def _start(self, req, resp):
         resp.success, resp.message = self._start_mission()

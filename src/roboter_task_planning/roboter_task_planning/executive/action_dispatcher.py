@@ -39,14 +39,28 @@ class MissionExecutor:
         self.status_cb(kw)
 
     def run(self, mission: Mission, abort: threading.Event) -> MissionResult:
+        """Plant und fuehrt die Mission aus. Ablauf: planen -> Schritte ausfuehren -> bei einem
+        Fehlschlag Position bestimmen, dynamischen Ort einfuegen, neu planen (hoechstens
+        max_replans-mal). Abbruch (NotAus/Service) beendet ohne Neuplanung. Jede unerwartete
+        Ausnahme beendet die Mission mit Status 'fehlgeschlagen' (Review B3: vorher starb der
+        Thread stumm, ohne Endstatus auf /mission/status)."""
+        res = MissionResult(FEHLGESCHLAGEN)
+        try:
+            return self._run(mission, abort, res)
+        except Exception as e:      # bewusst breit: der Missions-Thread darf nie stumm sterben
+            return self._finish(res, FEHLGESCHLAGEN, f"interner Fehler: {type(e).__name__}: {e}")
+
+    def _run(self, mission: Mission, abort: threading.Event, res: MissionResult) -> MissionResult:
         pos = self.locator()
         start = mission.start_ort
         if start is None:
-            start = (WorldKnowledge.naechster_ort(mission.orte, pos) if pos
-                     else next(iter(mission.orte)))
+            if not pos:
+                # Review L5: vorher wurde stillschweigend der erste Ort angenommen
+                return self._finish(res, FEHLGESCHLAGEN,
+                                    "Startort unbekannt: weder start_ort in der Mission noch eine Position")
+            start = WorldKnowledge.naechster_ort(mission.orte, pos)
         world = WorldKnowledge(mission, start)
         domain = self.domain or read_domain()
-        res = MissionResult(FEHLGESCHLAGEN)
         max_replans = int(mission.param("max_replans"))
         self.log(f"Mission startet bei '{start}', Ziele: {mission.ziele}")
 
@@ -63,6 +77,7 @@ class MissionExecutor:
             self._status(phase="plan", plan=[str(s) for s in plan.schritte], replans=res.replans)
 
             fehler = None
+            fehl_ziel = None
             for i, s in enumerate(plan.schritte):
                 if abort.is_set():
                     return self._finish(res, ABGEBROCHEN, f"abgebrochen vor {s}")
@@ -71,7 +86,7 @@ class MissionExecutor:
                     return self._finish(res, FEHLGESCHLAGEN, f"keine Bridge fuer Aktion '{s.name}'")
                 self._status(phase="schritt", schritt=str(s), index=i, von=len(plan.schritte))
                 self.log(f"[{i + 1}/{len(plan.schritte)}] {s}")
-                r = bridge.execute(s, mission, abort)
+                r = bridge.execute(s, mission, abort, orte=dict(world.orte))
                 if abort.is_set():
                     return self._finish(res, ABGEBROCHEN, f"abgebrochen waehrend {s}")
                 if r.erfolg:
@@ -79,6 +94,7 @@ class MissionExecutor:
                     res.ausgefuehrt.append(str(s))
                 else:
                     fehler = f"{s} fehlgeschlagen: {r.meldung}"
+                    fehl_ziel = s.args[-1] if s.args else None
                     break
 
             if fehler is None and not world.offene_ziele():
@@ -90,7 +106,10 @@ class MissionExecutor:
             self.log(f"Neuplanung {res.replans}/{max_replans}: {fehler}")
             p = self.locator()
             if p:
-                world.aktualisiere_position(p)
+                world.aktualisiere_position(p, gescheitertes_ziel=fehl_ziel)
+            else:
+                self.log("Position unbekannt - Neuplanung vom letzten bekannten Ort "
+                         f"'{world.current_ort}' (kann ungenau sein)")
 
     def _finish(self, res: MissionResult, status: str, meldung: str) -> MissionResult:
         res.status, res.meldung = status, meldung

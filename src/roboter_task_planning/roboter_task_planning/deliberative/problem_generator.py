@@ -1,7 +1,7 @@
 """Erzeugt aus Weltwissen + Mission ein PDDL-Problem (Layer 1)."""
 import os
 
-from roboter_task_planning.executive.world_knowledge import WorldKnowledge
+from roboter_task_planning.executive.world_knowledge import DYNAMISCHER_ORT, WorldKnowledge
 
 
 def domain_path() -> str:
@@ -34,6 +34,9 @@ def generate_problem(world: WorldKnowledge) -> str:
         c = world.strecke_cm(a, b)
         lines.append(f"    (= (strecke {a} {b}) {c})")
         lines.append(f"    (= (strecke {b} {a}) {c})")
+    for ziel in sorted(world.dyn_ziele):             # nur ausgehend vom dynamischen Ort
+        lines.append(f"    (verbunden {DYNAMISCHER_ORT} {ziel})")
+        lines.append(f"    (= (strecke {DYNAMISCHER_ORT} {ziel}) {world.strecke_cm(DYNAMISCHER_ORT, ziel)})")
     lines.append("  )")
     # am_ort (Endposition) entspricht dem Praedikat (at ort)
     goals = [f"(at {ort})" if art == "am_ort" else f"({art} {ort})" for art, ort in world.mission.ziele]

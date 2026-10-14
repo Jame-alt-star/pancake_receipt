@@ -11,7 +11,7 @@ class WarteBridge(IActionBridge):
     """'warte(ort)': feste Zeit warten, abbrechbar."""
     aktionen = ("warte",)
 
-    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event) -> BridgeResult:
+    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event, orte=None) -> BridgeResult:
         dauer = float(mission.param("warte_s"))
         ende = time.monotonic() + dauer
         while time.monotonic() < ende:

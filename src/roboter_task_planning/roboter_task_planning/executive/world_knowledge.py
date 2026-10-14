@@ -28,12 +28,22 @@ class Mission:
 
     @staticmethod
     def from_dict(d: dict) -> "Mission":
-        orte = {str(k): (float(v["x"]), float(v["y"])) for k, v in d["orte"].items()}
-        for n in orte:
+        # Ortsnamen werden kleingeschrieben (Review B4): Fast Downward gibt Objektnamen klein aus,
+        # mit "K1" in der YAML schlug sonst das Nachschlagen der Koordinaten fehl.
+        def name(n):
+            return str(n).lower()
+        orte = {}
+        for k, v in d["orte"].items():
+            n = name(k)
             if not n.replace("_", "").isalnum() or not n.isascii():
-                raise ValueError(f"Ortsname {n!r}: nur ASCII-Buchstaben, Ziffern und _ erlaubt")
+                raise ValueError(f"Ortsname {k!r}: nur ASCII-Buchstaben, Ziffern und _ erlaubt")
+            if n == DYNAMISCHER_ORT:
+                raise ValueError(f"Ortsname {k!r} ist reserviert (Neuplanung)")
+            if n in orte:
+                raise ValueError(f"Ortsname {k!r} doppelt (Gross-/Kleinschreibung zaehlt nicht)")
+            orte[n] = (float(v["x"]), float(v["y"]))
         if d.get("verbindungen"):
-            verb = {frozenset(map(str, p)) for p in d["verbindungen"]}
+            verb = {frozenset(name(x) for x in p) for p in d["verbindungen"]}
             for p in verb:
                 if len(p) != 2 or not p <= set(orte):
                     raise ValueError(f"ungueltige Verbindung {sorted(p)}")
@@ -41,7 +51,7 @@ class Mission:
             verb = {frozenset(p) for p in itertools.combinations(orte, 2)}
         ziele = []
         for z in d.get("ziele", []):
-            art, ort = str(z["art"]), str(z["ort"])
+            art, ort = str(z["art"]), name(z["ort"])
             if art not in ZIEL_ARTEN:
                 raise ValueError(f"unbekannte Zielart {art!r}, erlaubt: {ZIEL_ARTEN}")
             if ort not in orte:
@@ -50,9 +60,10 @@ class Mission:
         if not ziele:
             raise ValueError("Mission ohne Ziele")
         start = d.get("start_ort")
-        if start is not None and str(start) not in orte:
+        start = name(start) if start else None
+        if start is not None and start not in orte:
             raise ValueError(f"start_ort {start!r} unbekannt")
-        return Mission(orte, verb, ziele, str(start) if start else None, dict(d.get("parameter", {})))
+        return Mission(orte, verb, ziele, start, dict(d.get("parameter", {})))
 
     @staticmethod
     def from_yaml(path: str) -> "Mission":
@@ -69,6 +80,8 @@ class WorldKnowledge:
         self.verbindungen = set(mission.verbindungen)
         self.current_ort = current_ort
         self.fakten: Set[Tuple[str, str]] = {("besucht", current_ort)}
+        # gerichtete Kanten NUR vom dynamischen Ort weg (siehe aktualisiere_position)
+        self.dyn_ziele: Set[str] = set()
 
     @staticmethod
     def naechster_ort(orte: Dict[str, Tuple[float, float]], pos) -> str:
@@ -78,13 +91,20 @@ class WorldKnowledge:
         (ax, ay), (bx, by) = self.orte[a], self.orte[b]
         return max(1, int(round(100.0 * math.hypot(ax - bx, ay - by))))
 
-    def aktualisiere_position(self, pos):
-        """Nach einem Fehlschlag: Roboter steht evtl. zwischen Orten -> dynamischer Ort an pos,
-        mit allen Orten verbunden, damit neu geplant werden kann."""
+    def aktualisiere_position(self, pos, gescheitertes_ziel: Optional[str] = None, n_naechste: int = 2):
+        """Nach einem Fehlschlag steht der Roboter evtl. zwischen Orten: dynamischer Ort an pos.
+
+        Er bekommt nur AUSGEHENDE Kanten (Review B2/L4): zu den n naechsten Orten und zum Ziel des
+        gescheiterten Schritts. Vorher war er in beide Richtungen mit ALLEN Orten verbunden; der
+        Planer konnte ihn dann als Abkuerzung durchqueren (gehe_zu(k1, pos_aktuell)) und die
+        Topologie der Mission (z. B. 'nur durch die Tuer') ging verloren.
+        """
         self.orte[DYNAMISCHER_ORT] = (float(pos[0]), float(pos[1]))
-        self.verbindungen = {v for v in self.verbindungen if DYNAMISCHER_ORT not in v}
-        for n in self.mission.orte:
-            self.verbindungen.add(frozenset((DYNAMISCHER_ORT, n)))
+        nah = sorted(self.mission.orte, key=lambda n: math.hypot(self.mission.orte[n][0] - pos[0],
+                                                                  self.mission.orte[n][1] - pos[1]))
+        self.dyn_ziele = set(nah[:n_naechste])
+        if gescheitertes_ziel in self.mission.orte:
+            self.dyn_ziele.add(gescheitertes_ziel)
         self.current_ort = DYNAMISCHER_ORT
 
     def schritt_erledigt(self, name: str, args: List[str]):

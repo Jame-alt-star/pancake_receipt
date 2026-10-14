@@ -81,8 +81,9 @@ class NavigationBridge(IActionBridge):
             time.sleep(0.5)
         return False
 
-    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event) -> BridgeResult:
-        x, y = mission.orte[schritt.args[1]]
+    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event, orte=None) -> BridgeResult:
+        ziel = schritt.args[1]
+        x, y = (orte or mission.orte)[ziel]     # Review B2: Weltwissen statt nur Missionsorte
         if self.backend == "nav2" and not self._wait_nav2_active(cancel):
             return BridgeResult(False, "Nav2 nicht aktiv" if not cancel.is_set() else "abgebrochen")
         if self.backend == "gehaktion":
@@ -123,7 +124,7 @@ class BalanceBridge(IActionBridge):
         self.client = ActionClient(node, BalancierAktion, BALANCIER_ACTION)
         self.timeout_s = timeout_s
 
-    def execute(self, schritt, mission: Mission, cancel: threading.Event) -> BridgeResult:
+    def execute(self, schritt, mission: Mission, cancel: threading.Event, orte=None) -> BridgeResult:
         goal = BalancierAktion.Goal()
         goal.toleranz_grad = float(mission.param("balancier_toleranz_grad"))
         ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)

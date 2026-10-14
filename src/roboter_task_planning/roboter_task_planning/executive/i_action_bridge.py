@@ -2,6 +2,7 @@
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
 
 from roboter_task_planning.deliberative.i_planner import PlanSchritt
 from roboter_task_planning.executive.world_knowledge import Mission
@@ -20,5 +21,8 @@ class IActionBridge(ABC):
     aktionen: tuple = ()
 
     @abstractmethod
-    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event) -> BridgeResult:
+    def execute(self, schritt: PlanSchritt, mission: Mission, cancel: threading.Event,
+                orte: Optional[Dict[str, Tuple[float, float]]] = None) -> BridgeResult:
+        """orte: aktuelle Ortskoordinaten aus dem Weltwissen (inkl. dynamischem Ort bei Neuplanung).
+        Fehlt es, gelten die Orte der Mission."""
         ...

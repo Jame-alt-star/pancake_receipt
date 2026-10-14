@@ -88,7 +88,7 @@ class Skript(IActionBridge):
     def __init__(self, scheitert=(), vor_schritt=None):
         self.log, self.n, self.scheitert, self.vor_schritt = [], 0, set(scheitert), vor_schritt
 
-    def execute(self, s, mission, cancel):
+    def execute(self, s, mission, cancel, orte=None):
         self.n += 1
         if self.vor_schritt:
             self.vor_schritt(self.n, s)
@@ -162,3 +162,84 @@ def test_executor_rundfahrt_zurueck_zum_start():
     assert r.status == ERFOLG
     assert b.log[-1] == "gehe_zu(" + b.log[-1].split("(")[1].split(",")[0] + ", start)"   # letzte Aktion endet am Start
     assert {"gehe_zu(start, a)", "gehe_zu(a, b)"} <= set(b.log) or {"gehe_zu(start, b)", "gehe_zu(b, a)"} <= set(b.log)
+
+
+
+# ---------------- Review-Paket 2 ----------------
+class KoordBridge(IActionBridge):
+    """Wie die NavigationBridge: schlaegt Zielkoordinaten nach (KeyError wie im Review B2)."""
+    aktionen = ("gehe_zu", "balanciere")
+
+    def __init__(self, scheitert=()):
+        self.log, self.n, self.scheitert = [], 0, set(scheitert)
+
+    def execute(self, s, mission, cancel, orte=None):
+        self.n += 1
+        if s.name == "gehe_zu":
+            (orte or mission.orte)[s.args[1]]          # muss existieren
+        self.log(str(s)) if callable(self.log) else self.log.append(str(s))
+        return BridgeResult(self.n not in self.scheitert, "ok")
+
+
+KETTE = {
+    "orte": {"start": {"x": 0, "y": 0}, "a": {"x": 3, "y": 0}, "b": {"x": 6, "y": 0}, "c": {"x": 6, "y": 3}},
+    "verbindungen": [["start", "a"], ["a", "b"], ["b", "c"]],          # nur eine Kette
+    "start_ort": "start",
+    "ziele": [{"art": "besucht", "ort": "c"}],
+    "parameter": {"max_replans": 2},
+}
+
+
+@needs_fd
+def test_neuplanung_durchquert_pos_aktuell_nicht():
+    b = KoordBridge(scheitert={2})                   # gehe_zu(a, b) scheitert
+    r = executor(b, locator=lambda: (4.5, 0.0)).run(Mission.from_dict(KETTE), threading.Event())
+    assert r.status == ERFOLG, r.meldung
+    assert not any(x.endswith(", pos_aktuell)") for x in b.log), b.log     # nie ZUM dynamischen Ort
+    assert "gehe_zu(pos_aktuell, b)" in b.log                               # vom naechsten Ort aus weiter
+
+
+def test_dynamischer_ort_hat_nur_ausgehende_kanten():
+    w = WorldKnowledge(Mission.from_dict(KETTE), "a")
+    w.aktualisiere_position((4.5, 0.0), gescheitertes_ziel="b")
+    p = generate_problem(w)
+    assert "(verbunden pos_aktuell b)" in p and "(verbunden b pos_aktuell)" not in p
+    assert "(verbunden c pos_aktuell)" not in p and "(verbunden pos_aktuell c)" not in p   # c nicht unter den 2 naechsten
+
+
+@needs_fd
+def test_grossbuchstaben_in_ortsnamen():
+    d = {"orte": {"Start": {"x": 0, "y": 0}, "K1": {"x": 3, "y": 0}}, "start_ort": "Start",
+         "ziele": [{"art": "besucht", "ort": "K1"}]}
+    m = Mission.from_dict(d)
+    assert set(m.orte) == {"start", "k1"}
+    b = KoordBridge()
+    assert executor(b).run(m, threading.Event()).status == ERFOLG
+
+
+def test_reservierter_und_doppelter_ortsname():
+    for orte in ({"pos_aktuell": {"x": 0, "y": 0}}, {"a": {"x": 0, "y": 0}, "A": {"x": 1, "y": 0}}):
+        with pytest.raises(ValueError):
+            Mission.from_dict({"orte": orte, "ziele": [{"art": "besucht", "ort": list(orte)[0]}]})
+
+
+@needs_fd
+def test_ausnahme_in_bridge_beendet_mission_mit_status():
+    class Kaputt(IActionBridge):
+        aktionen = ("gehe_zu", "balanciere")
+
+        def execute(self, s, mission, cancel, orte=None):
+            raise RuntimeError("Bridge kaputt")
+    st = []
+    r = MissionExecutor(FastDownwardPlanner(), [Kaputt(), WarteBridge()], log=lambda m: None,
+                        status_cb=st.append).run(Mission.from_dict(MISSION), threading.Event())
+    assert r.status == FEHLGESCHLAGEN and "interner Fehler" in r.meldung
+    assert st and st[-1]["phase"] == "ende"
+
+
+def test_ohne_startort_und_position_abgelehnt():
+    d = dict(MISSION)
+    d.pop("start_ort")
+    r = MissionExecutor(FastDownwardPlanner(), [Skript(), WarteBridge()], log=lambda m: None,
+                        locator=lambda: None).run(Mission.from_dict(d), threading.Event())
+    assert r.status == FEHLGESCHLAGEN and "Startort unbekannt" in r.meldung
