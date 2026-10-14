@@ -1,293 +1,130 @@
+"""Steuereinheit (Layer 3): Regelschleife im Takt der Policy (50 Hz) mit Zustandsautomat.
+
+Je Takt: Sensordaten ueber die Hardware-Bridge lesen, Fahrbefehl aufbereiten (kommando.py: Watchdog, Rampe,
+Begrenzung; haltung.py: Kurs- und Positionshaltung), NotAus/Freigabe auswerten und den aktuellen Zustand
+ausfuehren lassen (State Pattern, states/). Der Zustand ruft die Policy (control/) und schickt die
+Ziel-Gelenkwinkel ueber die Bridge an Layer 4. Der Knoten kennt weder MuJoCo noch die Netzarchitektur.
+
+Kommandowerte:
+  cmd_target  zuletzt per /cmd_vel angeforderter Wunsch [vx, vy, wz] (Zustandswechsel pruefen dagegen)
+  cmd_ramped  sanft an cmd_target angenaehert (Rampe)
+  cmd         an die Policy: cmd_ramped + Kurshaltung, begrenzt auf den Trainingsbereich
+  pos_hold_corr  Positionshaltung (vx, vy), nur im Zustand Balancieren
+
+Zustaende (SysML RoboterZustandsautomat): Start, Bereitschaft, Gehen, Balancieren, NotAus. NotAus wird zentral
+erzwungen (unterbricht jeden Zustand), nicht ueber den execute()-Rueckgabewert. AkkuSchwach/Laden fehlen
+bewusst (keine echten Batteriedaten).
+
+Topics: /cmd_vel (Twist, Wunsch), /freigabe (Bool, eigener Kanal), /not_aus (Bool, latched), /odom
+(Positionshaltung). Parameter: config/steuerung.yaml; Policy: config/policy_29dof.yaml.
+"""
 import os
 import time
-import yaml
+
 import numpy as np
 import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
 
 from roboter_steuerung.hardware.topic_bridge import TopicBridge
-from roboter_steuerung.states.start_state import StartState
+from roboter_steuerung.haltung import Kurshaltung, Positionshaltung
+from roboter_steuerung.kommando import Kommandobegrenzung, Watchdog, rampe
+from roboter_steuerung.states.balancieren_state import BalancierenState
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState
 from roboter_steuerung.states.not_aus_state import NotAusState
+from roboter_steuerung.states.start_state import StartState
 
 
-# NEU (12.10.2026): maximale Aenderungsrate von self.cmd pro Sekunde (siehe
-# _ramp_cmd() unten), fuer alle drei Kommando-Achsen (vx/vy/yaw_rate)
-# gemeinsam verwendet. Bewusst ein einzelner, noch nicht empirisch
-# feinabgestimmter Startwert (aehnlich CMD_NULL_SCHWELLE in den
-# States) - 1.0 heisst z.B., ein Wechsel von vx 0.5 auf 0 dauert ca. 0.5 s
-# statt einem einzigen Regelungstakt. In Bereitschaft/NotAus steht die Rampe auf 0.
-CMD_RAMP_RATE = 1.0
+def lade_policy(share: str, datei: str) -> dict:
+    """Policy-Config aus config/ von roboter_steuerung; policy_path wird absolut (relativ zum Share-Verzeichnis,
+    ein relativer Pfad brach frueher, sobald das Arbeitsverzeichnis beim Start nicht passte)."""
+    with open(os.path.join(share, "config", datei)) as f:
+        config = yaml.safe_load(f)
+    config["policy_path"] = os.path.join(share, config["policy_path"])
+    if not os.path.exists(config["policy_path"]):
+        raise FileNotFoundError(f"Policy nicht gefunden: {config['policy_path']} - 'colcon build' ausgefuehrt?")
+    return config
 
-# NEU (12.10.2026): Heading-Hold/Positions-Haltung - siehe
-# _apply_heading_hold()/_apply_position_hold() fuer die Begruendung
-# (Policy haelt selbst keine globale Richtung/Position, driftet daher
-# sowohl beim Gehen als auch beim Stehen). *_CMD_SCHWELLE: unterhalb
-# dieses Werts im ANGEFORDERTEN Kommando (cmd_target) gilt "keine
-# explizite Bewegung in diese Achse gewuenscht" - die jeweilige Haltung
-# greift dann ein. Bewusst derselbe Wert wie CMD_NULL_SCHWELLE in den
-# States, aus Konsistenzgruenden hier aber separat benannt (konzeptionell
-# unabhaengig).
-# GEAENDERT (14.10.2026, Review L2): vorher 0.05. Nav2 (RPP) gibt in sanften Kurven oft kleine wz
-# (< 0.05) aus; die Kurshaltung hielt dann den alten Kurs und regelte gegen den Pfadfolger. Jetzt
-# greift sie nur, wenn praktisch keine Drehung angefordert ist (Handbetrieb, Geradeausfahrt).
-YAW_CMD_SCHWELLE = 0.001
-LIN_CMD_SCHWELLE = 0.05
-# P-Verstaerkungen: wie stark ein Fehler (rad bzw. m) in eine korrigierende
-# Rate (rad/s bzw. m/s) uebersetzt wird. Noch nicht empirisch abgestimmt,
-# bewusst vorsichtig/klein gewaehlt.
-HEADING_HOLD_KP = 1.0
-POSITION_HOLD_KP = 1.0
-# Begrenzung der Korrekturen selbst, damit ein grosser Fehler (z.B. durch
-# einen Mess-Ausreisser) nicht zu einer unrealistisch harten Korrektur
-# fuehrt, die die Policy destabilisieren koennte - bewusst klein
-# gegenueber echten Bewegungs-Kommandos.
-HEADING_HOLD_MAX_YAW_RATE = 0.3
-POSITION_HOLD_MAX_SPEED = 0.15
+
+def erzeuge_controller(config: dict):
+    """ILocomotionController nach controller_type (der 12-DOF-Controller liegt in archiv/12dof/)."""
+    typ = config.get("controller_type", "rl_locomotion_29dof")
+    if typ == "rl_locomotion_29dof":
+        from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
+        return RLLocomotionController29Dof(config)
+    raise ValueError(f"Unbekannter controller_type in der Config: {typ!r}")
 
 
 class SteuereinheitNode(Node):
-    """
-    Zentraler Regelungs-Knoten (Layer 3): taktet die Regelschleife mit
-    50 Hz, holt sich bei jedem Takt die aktuellen Sensordaten ueber die
-    Hardware-Bridge, laesst die RL-Policy daraus Ziel-Gelenkwinkel
-    berechnen und schickt diese zurueck an die Bridge. Kennt selbst
-    weder MuJoCo noch die neuronale Netz-Architektur - beides steckt
-    hinter den beiden Objekten self.bridge/self.controller, austauschbar
-    ueber IRobotHardwareBridge bzw. den RL-Controller selbst. Das
-    Geschwindigkeitskommando (self.cmd) kommt zur Laufzeit per
-    Standard-ROS2-Topic /cmd_vel (geometry_msgs/Twist) herein, z.B. von
-    einem Joystick-Node, einer Tastatursteuerung oder spaeter Nav2 -
-    dieser Knoten selbst weiss nicht, WOHER das Kommando stammt.
-
-    NEU (12.10.2026): drei getrennte Kommando-Werte statt einem.
-    self.cmd_target ist das zuletzt per /cmd_vel angeforderte Ziel (reiner
-    Nutzerwunsch, unveraendert). self.cmd ist der tatsaechlich an die
-    Policy uebergebene Wert: zuerst sanft an cmd_target angenaehert
-    (_ramp_cmd()), danach ggf. um zwei Korrekturen ergaenzt:
-    _apply_heading_hold() (Drehrate, cmd[2]) und _apply_position_hold()
-    (vx/vy, cmd[0]/cmd[1]). Hintergrund fuer beide: sowohl beim Gehen als
-    auch beim Stehen wurde seitlicher Drift beobachtet (mal als Drehung,
-    mal als reine seitliche Verschiebung ohne Drehung) - die Policy
-    selbst haelt weder eine globale Ausrichtung noch eine Position,
-    cmd gibt ihr nur eine koerperbezogene Soll-Geschwindigkeit vor.
-    self.target_yaw/self.target_position sind die jeweils aktuell
-    gehaltenen Sollwerte.
-
-    Zustandswechsel-Entscheidungen (siehe gehen_state.py/
-    balancieren_state.py) pruefen bewusst gegen self.cmd_target, nicht
-    gegen self.cmd - sonst wuerden die Haltungs-Korrekturen faelschlich
-    als "Nutzer will sich bewegen" interpretiert und einen
-    Zustandswechsel auslösen, obwohl gar kein echtes Kommando vorliegt.
-
-    WAS der Roboter gerade tun soll (Gehen vs. Balancieren) steckt im
-    jeweils aktuellen Zustandsobjekt (self.state, State Pattern - siehe
-    roboter_steuerung/states/), nicht mehr fest in diesem Knoten. Dieser
-    Knoten ruft pro Takt nur noch self.state.execute(self) auf und
-    uebernimmt den zurueckgegebenen Zustand fuer den naechsten Takt.
-
-    NEU (12.10.2026): der Zustandsautomat deckt jetzt zusaetzlich
-    StartState (noch keine gueltigen Sensordaten), BereitschaftState
-    (ein Takt Uebergang) und NotAusState ab (siehe RoboterZustaende.sysml
-    fuer den vollen SysML-Automaten). NotAusState wird als einziger
-    davon NICHT ueber den normalen execute()-Rueckgabewert erreicht,
-    sondern zentral in _control_loop() erzwungen (siehe dort) - Not-Aus
-    muss jeden anderen Zustand unterbrechen koennen. AkkuSchwach/Laden
-    bleiben bewusst zurueckgestellt (siehe i_robot_state.py).
-    """
 
     def __init__(self):
         super().__init__("steuereinheit_node")
-
-        # 1. Policy-Config laden (roboter_steuerung/config/policy_29dof.yaml): Netz, Verstaerkungen,
-        # Ruhepose, Skalierungen, Regeltakt, Kommandobereich. Gehoert zu Layer 3; die Simulation bekommt
-        # die Antriebsparameter daraus zur Laufzeit ueber die Bridge (/antrieb/parameter).
         self.declare_parameter("policy_config", "policy_29dof.yaml")
+        self.declare_parameter("cmd_vel_timeout_s", 0.0)
+        self.declare_parameter("freigabe_per_cmd_vel", False)
+        self.declare_parameter("position_hold", True)
+
+        # Policy (Layer 3): Netz, Verstaerkungen, Ruhepose, Regeltakt, Kommandobereich. Die Bridge schickt
+        # kp/kd/Ruhepose einmal latched an Layer 4 (/antrieb/parameter), wie an einen Motortreiber.
         policy_config = self.get_parameter("policy_config").value
-        share = get_package_share_directory("roboter_steuerung")
-        with open(os.path.join(share, "config", policy_config), "r") as f:
-            self.config = yaml.safe_load(f)
-        self.get_logger().info(
-            f"[steuereinheit_node] Policy-Config: {policy_config} "
-            f"(controller_type={self.config.get('controller_type')}, num_actions={self.config.get('num_actions')})"
-        )
-
-        # policy_path ist relativ zum Share-Verzeichnis (frueher brach ein relativer Pfad, sobald das
-        # Arbeitsverzeichnis beim Start nicht passte).
-        policy_path = os.path.join(share, self.config["policy_path"])
-        if not os.path.exists(policy_path):
-            # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
-            raise FileNotFoundError(f"Policy nicht gefunden: {policy_path} - 'colcon build' ausgefuehrt?")
-        self.config["policy_path"] = policy_path
-
-        # 2. Hardware-Bridge und RL-Controller initialisieren. Die Bridge sendet kp/kd/Ruhepose der Policy
-        # einmal an Layer 4 (latched); num_joints aus num_actions (eine Stelle fuer die Gelenkanzahl).
+        self.config = lade_policy(get_package_share_directory("roboter_steuerung"), policy_config)
+        self.get_logger().info(f"[steuereinheit_node] Policy-Config: {policy_config} "
+                               f"(controller_type={self.config.get('controller_type')}, "
+                               f"num_actions={self.config.get('num_actions')})")
         self.bridge = TopicBridge(self, num_joints=self.config["num_actions"], kp=self.config["kps"],
                                   kd=self.config["kds"], startpose=self.config["default_angles"])
-        # controller_type in der YAML waehlt die ILocomotionController-Implementierung. Der alte
-        # 12-DOF-TorchScript-Controller liegt seit 15.10.2026 in archiv/12dof/ (nicht mehr getestet).
-        controller_type = self.config.get("controller_type", "rl_locomotion_29dof")
-        if controller_type == "rl_locomotion_29dof":
-            from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
-            self.controller = RLLocomotionController29Dof(self.config)
-        else:
-            raise ValueError(f"Unbekannter controller_type in der Config: {controller_type!r}")
+        self.controller = erzeuge_controller(self.config)
+        self.control_dt = float(self.config["regeltakt_s"])
 
-        # 3. Kommandowerte: cmd_target = zuletzt per /cmd_vel angefordertes Ziel, cmd_ramped =
-        # gerampter Wert, cmd = an die Policy uebergebener Wert (Rampe + Kurshaltung, begrenzt).
-        # GEAENDERT (14.10.2026, Review L1): Startwert immer 0. Ein cmd_init != 0 wurde
-        # nach der Freigabe als Sprung an die Policy gegeben (die Rampe lief vorher schon
-        # in Bereitschaft hoch); cmd_init aus der YAML wird nicht mehr verwendet.
+        # Fahrbefehl (siehe Modul-Docstring). Startwert immer 0 (Review L1).
         self.cmd_target = np.zeros(3, dtype=np.float32)
-        # BUGFIX (13.10.2026): getrennter Rampen-Zustand. Vorher lief die
-        # Rampe direkt auf self.cmd, und _apply_heading_hold() addierte
-        # seine Korrektur (bis +-0.3) JEDEN Takt auf self.cmd[2], waehrend
-        # die Rampe nur 0.02/Takt zurueckholen konnte -> unbegrenzter
-        # Integrator (im synchronen Test: cmd_wz = -572 rad/s nach 60 s
-        # Stehen; in Bereitschaft unsichtbar, weil dort cmd=0 an die Policy
-        # geht, aber beim Wechsel nach Balancieren sofort Sturz).
-        # self.cmd wird jetzt jeden Takt NEU aus cmd_ramped gebildet, die
-        # Korrekturen sind damit begrenzt und nicht akkumulierend.
-        self.cmd_ramped = self.cmd_target.copy()
-        self.cmd = self.cmd_ramped.copy()
-
-        # NEU (13.10.2026): Begrenzung von self.cmd auf den Trainings-
-        # Wertebereich der Policy (cmd_training_range in der YAML). Ein
-        # Kommando ausserhalb waere "out of distribution". Fehlt der
-        # Schluessel (12-DOF-Config), bleibt das Verhalten unveraendert.
-        rng = self.config.get("cmd_training_range")
-        if rng:
-            self.cmd_min = np.array([rng["lin_vel_x"][0], rng["lin_vel_y"][0], rng["ang_vel_z"][0]], dtype=np.float32)
-            self.cmd_max = np.array([rng["lin_vel_x"][1], rng["lin_vel_y"][1], rng["ang_vel_z"][1]], dtype=np.float32)
-        else:
-            self.cmd_min = self.cmd_max = None
-        # Kombinierte Grenze: bei hoher Vorwaertsgeschwindigkeit wird die Drehrate zusaetzlich
-        # linear auf wz_at_vmax abgesenkt (gemessen: vx 1.0 + wz 1.0 faellt in ~15-20 % der Laeufe,
-        # die Linie vx 0.7/wz 1.0 -> vx 1.0/wz 0.5 war in 10 Seeds je Punkt stabil).
-        hs = self.config.get("cmd_wz_limit_high_speed")
-        self.wz_vx_ref = float(hs["vx_ref"]) if hs else None
-        self.wz_at_vmax = float(hs["wz_at_vmax"]) if hs else None
+        self.cmd_ramped = np.zeros(3, dtype=np.float32)
+        self.cmd = np.zeros(3, dtype=np.float32)
+        self.begrenzung = Kommandobegrenzung.aus_policy(self.config)
         self._cmd_clip_gemeldet = False
-
-        # NEU (13.10.2026): cmd_vel-Watchdog. Bleibt /cmd_vel laenger als cmd_vel_timeout_s aus
-        # (z.B. Nav2 faellt aus), wird cmd_target auf 0 gesetzt, statt dass der Roboter mit dem
-        # letzten Kommando weiterlaeuft. 0 = aus (Wert aus config/steuerung.yaml bzw. Launch-Argument).
-        self.declare_parameter("cmd_vel_timeout_s", 0.0)
-        self.cmd_vel_timeout_s = float(self.get_parameter("cmd_vel_timeout_s").value)
-        self._last_cmd_vel_t = None
+        self.watchdog = Watchdog(float(self.get_parameter("cmd_vel_timeout_s").value))
         self._timeout_gemeldet = False
-
-        # Bewegungsfreigabe (Realismus-Fix 12.10.2026): nach dem Hochfahren bleibt der Roboter in
-        # Bereitschaft stehen, bis eine bewusste Freigabe kommt (siehe bereitschaft_state.py).
-        # NotAus entzieht die Freigabe; nach der Entwarnung ist eine neue noetig.
-        self.bewegung_freigegeben = False
-        # GEAENDERT (14.10.2026, Review B1/L3): Freigabe ueber einen EIGENEN Kanal /freigabe
-        # (std_msgs/Bool, true = freigeben, false = Freigabe entziehen) statt durch irgendein
-        # /cmd_vel. Vorher setzte JEDE /cmd_vel-Nachricht die Freigabe - auch automatische
-        # Quellen (Nav2-Glaetter beim Abbremsen, collision_monitor, balance_dienst_node), und
-        # das sogar waehrend NotAus: nach der Entwarnung lief der Roboter ohne bewusste
-        # Freigabe wieder an. Waehrend NotAus wird eine Freigabe immer ignoriert.
-        # freigabe_per_cmd_vel=true stellt das alte Verhalten fuer Handbetrieb wieder her
-        # (auch dann nie waehrend NotAus).
-        self.declare_parameter("freigabe_per_cmd_vel", False)
-        self.freigabe_per_cmd_vel = bool(self.get_parameter("freigabe_per_cmd_vel").value)
-
-        # NEU (12.10.2026): Soll-Ausrichtung/Soll-Position fuer die
-        # Haltungs-Korrekturen (_apply_heading_hold()/
-        # _apply_position_hold()). None bis zur ersten gueltigen Messung -
-        # vorher gibt es keine sinnvolle Referenz (siehe last_quat-Default
-        # in hardware/topic_bridge.py).
-        self.target_yaw = None
-        self.target_position = None
-        # NEU (13.10.2026): Positionshaltung im Stand (nur Zustand
-        # Balancieren). Parameter position_hold (config/steuerung.yaml). Die
-        # Korrektur wird NICHT auf self.cmd addiert, sondern getrennt in
-        # self.pos_hold_corr [vx, vy] abgelegt und von BalancierenState
-        # an die Policy gegeben. Grund fuer das fruehere Scheitern (12.10.)
-        # war sehr wahrscheinlich dieselbe Akkumulation wie bei der
-        # Kurshaltung (cmd[0] = cmd[0] + correction jeden Takt).
-        # Position aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
-        self.declare_parameter("position_hold", True)
+        self.kurshaltung = Kurshaltung()
+        self.positionshaltung = Positionshaltung()
         self.position_hold_aktiv = bool(self.get_parameter("position_hold").value)
         self.pos_hold_corr = np.zeros(2, dtype=np.float32)
         self._odom_xyz = None
         if self.position_hold_aktiv:
             self.create_subscription(Odometry, "/odom", self._odom_callback, 10)
 
-        # NEU: /cmd_vel-Subscriber (Standard-ROS2-Konvention, geometry_msgs/
-        # Twist) - ersetzt das bisherige "self.cmd wird nur einmal beim
-        # Start gesetzt und nie mehr veraendert". Mapping auf den vom
-        # RL-Controller erwarteten 3er-Kommandovektor [vx, vy, yaw_rate]
-        # (velocity_commands, Teil der Policy-Beobachtung): linear.x -> vorwaerts/-rueckwaerts
-        # (m/s), linear.y -> seitwaerts (m/s), angular.z -> Drehrate um die
-        # Hochachse (rad/s). linear.z/angular.x/angular.y werden bewusst
-        # ignoriert, die Policy kennt nur ebene Fortbewegung. Damit kann
-        # jetzt ein beliebiger Standard-ROS2-Publisher (Joystick-Node,
-        # Tastatursteuerung, "ros2 topic pub", Nav2) die Laufrichtung zur Laufzeit aendern.
-        # /cmd_vel gibt seit 14.10.2026 NICHT mehr frei (siehe /freigabe).
-        self.sub_cmd_vel = self.create_subscription(
-            Twist, "/cmd_vel", self._cmd_vel_callback, 10
-        )
-        self.sub_freigabe = self.create_subscription(Bool, "/freigabe", self._freigabe_callback, 10)
+        # Freigabe ueber den eigenen Kanal /freigabe (Review B1/L3): vorher gab JEDES /cmd_vel frei, auch
+        # automatische Quellen und sogar waehrend NotAus. freigabe_per_cmd_vel=true stellt den alten
+        # Handbetrieb wieder her (auch dann nie waehrend NotAus).
+        self.bewegung_freigegeben = False
+        self.freigabe_per_cmd_vel = bool(self.get_parameter("freigabe_per_cmd_vel").value)
+        self.create_subscription(Twist, "/cmd_vel", self._cmd_vel_callback, 10)
+        self.create_subscription(Bool, "/freigabe", self._freigabe_callback, 10)
 
-        # (/balance_mode wurde am 14.10.2026 entfernt - Review U7: immer False, ohne Abonnenten.)
-
-        # NEU (12.10.2026): /not_aus-Subscriber - Not-Aus (SysML:
-        # RoboterZustandsautomat, Zustand "NotAus"). Recherche zur
-        # ueblichen ROS2-/Industrie-Praxis (siehe Chat-Historie): ein
-        # einzelnes, ROS(2)-weit standardisiertes Not-Aus-Topic/-Service
-        # gibt es nicht - auf echter Hardware wird Not-Aus ueblicherweise
-        # HARDWARE-seitig (Sicherheitsrelais/-schaltkreis) verdrahtet und
-        # kappt die Motorversorgung UNABHAENGIG von der Software; die
-        # Software bekommt den resultierenden Fehlerzustand nur noch
-        # gemeldet. Da hier keine solche physische Verdrahtung existiert
-        # (MuJoCo-Simulation), wird Not-Aus rein softwareseitig ausgeloest
-        # - als eigenes Topic, aber mit expliziter
-        # TRANSIENT_LOCAL-QoS ("gelatcht"): ein spaeter startender oder
-        # neu verbindender Subscriber soll den zuletzt gesetzten Zustand
-        # sofort kennen, nicht erst auf die naechste Nachricht warten
-        # muessen - bei einem Sicherheitssignal darf "ich weiss es nicht"
-        # niemals als "alles ok" fehlinterpretiert werden.
-        not_aus_qos = QoSProfile(
-            depth=1,
-            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-            reliability=QoSReliabilityPolicy.RELIABLE,
-            history=QoSHistoryPolicy.KEEP_LAST,
-        )
+        # /not_aus latched (TRANSIENT_LOCAL): ein spaet verbindender Knoten kennt sofort den letzten Zustand -
+        # bei einem Sicherheitssignal darf "unbekannt" nie als "alles ok" gelten. Auf echter Hardware kappt der
+        # Not-Aus die Motorversorgung per Sicherheitsrelais; hier ist er rein softwareseitig.
+        not_aus_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                                 reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
         self.not_aus_aktiv = False
-        self.sub_not_aus = self.create_subscription(
-            Bool, "/not_aus", self._not_aus_callback, not_aus_qos
-        )
+        self.create_subscription(Bool, "/not_aus", self._not_aus_callback, not_aus_qos)
 
-        # NEU: initialer Zustand (State Pattern, siehe roboter_steuerung/
-        # states/). Start jetzt im eigenen StartState (vorher implizit
-        # als frueher return im Start-Gate unten in _control_loop
-        # behandelt, siehe dort) - wechselt automatisch weiter nach
-        # BereitschaftState, sobald die erste gueltige Sensormessung da
-        # ist, und von dort nach Gehen/Balancieren je nach cmd_target.
         self.state = StartState()
-
-        # 3. Regelungsschleife im Takt der Policy (regeltakt_s, 0.02 s = 50 Hz; muss zum Training passen).
-        self.control_dt = float(self.config["regeltakt_s"])
         self.timer = self.create_timer(self.control_dt, self._control_loop)
-        self.get_logger().info("Steuereinheit erfolgreich gestartet (50 Hz Regelkreis aktiv).")
+        self.get_logger().info(f"Steuereinheit gestartet ({1.0 / self.control_dt:.0f} Hz Regelkreis).")
 
+    # ---------------------------------------------------------------- Eingaenge
     def _cmd_vel_callback(self, msg: Twist):
-        # Setzt nur das ZIEL (cmd_target); Rampe, Kurs-/Positionshaltung und Begrenzung
-        # passieren in _control_loop(). Twist hat feste Struktur, kein Laengen-Check noetig.
-        # Waehrend NotAus wird /cmd_vel komplett ignoriert (Ziel bleibt 0, siehe
-        # _not_aus_callback), damit nach der Entwarnung kein altes Kommando ansteht.
+        """Setzt nur den Wunsch; waehrend NotAus ignoriert (kein altes Kommando ueberlebt die Entwarnung).
+        linear.z/angular.x/y entfallen: die Policy kennt nur ebene Fortbewegung."""
         if self.not_aus_aktiv:
             return
-        self.cmd_target = np.array(
-            [msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32
-        )
-        self._last_cmd_vel_t = time.monotonic()
+        self.cmd_target = np.array([msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32)
+        self.watchdog.empfangen(time.monotonic())
         self._timeout_gemeldet = False
         if self.freigabe_per_cmd_vel:
             self._setze_freigabe(True, quelle="/cmd_vel")
@@ -301,10 +138,7 @@ class SteuereinheitNode(Node):
             self.get_logger().warn(f"Freigabe ueber {quelle} abgelehnt: NOT-AUS ist aktiv.")
             return
         if frei and not self.bewegung_freigegeben:
-            # Zielrichtung der Kurshaltung bei der (Neu-)Freigabe auf die aktuelle Ausrichtung
-            # setzen (wird im naechsten Takt neu erfasst). Gemessen 13.10.: der Roboter dreht
-            # im Stand ~0.5 deg/s; mit dem alten Ziel drehte er beim ersten Kommando zurueck.
-            self.target_yaw = None
+            self.kurshaltung.zuruecksetzen()
             self.get_logger().info(f"Bewegung freigegeben ({quelle}).")
         elif not frei and self.bewegung_freigegeben:
             self.get_logger().info(f"Freigabe entzogen ({quelle}) - Roboter bleibt stehen.")
@@ -315,243 +149,79 @@ class SteuereinheitNode(Node):
         self._odom_xyz = np.array([p.x, p.y, p.z], dtype=np.float32)
 
     def _not_aus_callback(self, msg: Bool):
-        # Setzt nur das Flag - die eigentliche Reaktion (Zustandswechsel
-        # nach NotAusState bzw. zurueck nach BereitschaftState) passiert
-        # zentral in _control_loop(), nicht hier, weil Not-Aus JEDEN
-        # Zustand unterbrechen kann/muss (nicht nur Gehen/Balancieren) -
-        # siehe Kommentar dort.
+        """Sofort (nicht erst im naechsten Takt, Review B1/B5): Freigabe entziehen, Ziel und Rampe auf 0.
+        Der Zustandswechsel selbst passiert zentral in _control_loop."""
         self.not_aus_aktiv = bool(msg.data)
         if self.not_aus_aktiv:
-            # GEAENDERT (14.10.2026, Review B1/B5): sofort im Callback (nicht erst im naechsten
-            # Regeltakt) Freigabe entziehen und Ziel/Rampe auf 0 - kein altes Kommando darf
-            # die Entwarnung ueberleben.
             self.bewegung_freigegeben = False
             self.cmd_target = np.zeros(3, dtype=np.float32)
             self.cmd_ramped = np.zeros(3, dtype=np.float32)
 
-    def _ramp_cmd(self):
-        """
-        NEU (12.10.2026): naehert self.cmd (der tatsaechlich an die Policy
-        uebergebene Wert) pro Takt nur um maximal CMD_RAMP_RATE *
-        self.control_dt an self.cmd_target (das zuletzt per /cmd_vel
-        angeforderte Ziel) an, statt bei jeder neuen /cmd_vel-Nachricht
-        sofort zu springen. Begruendung: ein harter Sprung (z.B. 0.5 -> 0
-        von einem Takt auf den naechsten) wuerde die Policy aus dem
-        Geschwindigkeitsbereich reissen, in dem sie trainiert wurde - ein
-        sanftes Abbremsen entspricht eher der tatsaechlichen Vorgehensweise
-        von Unitree selbst (siehe Docstring in balancieren_state.py: die
-        Policy bleibt auch im Stillstand aktiv, nur das Kommando wird
-        weich auf 0 heruntergefahren statt hart gestoppt).
-        """
-        delta = self.cmd_target - self.cmd_ramped
-        max_step = CMD_RAMP_RATE * self.control_dt
-        delta = np.clip(delta, -max_step, max_step)
-        self.cmd_ramped = self.cmd_ramped + delta
-        # Korrekturen (Kurs-/Positionshaltung) kommen danach obendrauf und
-        # werden jeden Takt neu berechnet, nicht aufsummiert.
-        self.cmd = self.cmd_ramped.copy()
-
-    @staticmethod
-    def _yaw_from_quat(quat: np.ndarray) -> float:
-        # Standard-Formel fuer die Gier-/Yaw-Komponente (Drehung um die
-        # Hochachse) aus einer Quaternion in (w, x, y, z)-Reihenfolge -
-        # siehe hardware/topic_bridge.py fuer die Begruendung dieser Reihenfolge.
-        w, x, y, z = quat
-        return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
-
-    @staticmethod
-    def _wrap_angle(angle: float) -> float:
-        # Bildet einen beliebigen Winkel auf den Bereich [-pi, pi] ab -
-        # ohne das wuerde z.B. ein Fehler von 359 Grad statt als "-1 Grad,
-        # also fast nichts" als riesiger Fehler fehlinterpretiert.
-        return float((angle + np.pi) % (2.0 * np.pi) - np.pi)
-
-    def _apply_heading_hold(self, quat: np.ndarray):
-        """
-        NEU (12.10.2026): Hintergrund - sowohl beim Gehen (cmd=[0.5,0,0],
-        yaw_rate=0 angefordert) als auch beim Stehen wurde beobachtet,
-        dass sich der Roboter langsam zur Seite DREHT (je nach Testlauf
-        mal links, mal rechts - ein Hinweis, dass es kein fester Bias im
-        Code ist, sondern dass die Policy selbst keinen geschlossenen
-        Regelkreis fuer die globale Ausrichtung hat: cmd gibt nur eine
-        koerperbezogene Soll-Geschwindigkeit vor, keine Welt-Richtung).
-        Diese Methode ergaenzt genau das als duenne Schicht ueber der
-        Policy, nicht als Ersatz: ein einfacher P-Regler auf dem
-        Yaw-Fehler, der self.cmd[2] (Drehrate) korrigiert, wenn gerade
-        keine explizite Drehung per /cmd_vel angefordert ist.
-        """
-        current_yaw = self._yaw_from_quat(quat)
-
-        if self.target_yaw is None:
-            # Erster Takt mit gueltiger IMU-Messung: die aktuelle
-            # Ausrichtung wird zur Soll-Richtung, nichts zu korrigieren.
-            self.target_yaw = current_yaw
-            return
-
-        if abs(float(self.cmd_target[2])) >= YAW_CMD_SCHWELLE:
-            # Explizite Drehung angefordert - Heading-Hold greift hier
-            # NICHT ein, sondern verfolgt laufend die aktuelle Ausrichtung,
-            # damit nach Ende der Drehung genau DIESE (neue) Richtung
-            # gehalten wird, statt zur alten Soll-Richtung zurueckzudrehen.
-            self.target_yaw = current_yaw
-            return
-
-        yaw_error = self._wrap_angle(self.target_yaw - current_yaw)
-        correction = float(np.clip(
-            HEADING_HOLD_KP * yaw_error, -HEADING_HOLD_MAX_YAW_RATE, HEADING_HOLD_MAX_YAW_RATE
-        ))
-        self.cmd[2] = self.cmd[2] + correction
-
-    def _apply_position_hold(self, base_position: np.ndarray, quat: np.ndarray):
-        """
-        Positionshaltung im Stand: P-Regler auf dem Weltpositionsfehler,
-        in Koerperkoordinaten (vorwaerts/seitwaerts) umgerechnet. Ergebnis
-        in self.pos_hold_corr (vx, vy), von BalancierenState an die Policy
-        uebergeben. Das Ziel wird erst erfasst, wenn kein Kommando mehr
-        ansteht UND die Rampe abgeklungen ist (cmd_ramped ~ 0), und bei
-        jedem Verlassen von Balancieren verworfen (siehe _control_loop).
-        Gemessen (13.10.2026, synchroner Kreis, 29-DOF): Abweichung ~1 cm
-        ueber 60 s statt 32 cm Drift; seitlicher Stoss 0.3 m/s -> max 4 cm.
-        """
-        self.pos_hold_corr[:] = 0.0
-        current_xy = np.asarray(base_position[:2], dtype=np.float32)
-
-        if (
-            np.any(np.abs(self.cmd_target[:2]) >= LIN_CMD_SCHWELLE)
-            or np.any(np.abs(self.cmd_ramped[:2]) >= LIN_CMD_SCHWELLE)
-        ):
-            self.target_position = None
-            return
-
-        if self.target_position is None:
-            self.target_position = current_xy.copy()
-            return
-
-        dx, dy = self.target_position - current_xy
-        yaw = self._yaw_from_quat(quat)
-        forward_error = np.cos(yaw) * dx + np.sin(yaw) * dy
-        lateral_error = -np.sin(yaw) * dx + np.cos(yaw) * dy
-        self.pos_hold_corr[0] = float(np.clip(
-            POSITION_HOLD_KP * forward_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED))
-        self.pos_hold_corr[1] = float(np.clip(
-            POSITION_HOLD_KP * lateral_error, -POSITION_HOLD_MAX_SPEED, POSITION_HOLD_MAX_SPEED))
-
-    def _check_cmd_timeout(self, now: float) -> bool:
+    # ---------------------------------------------------------------- Fahrbefehl
+    def _pruefe_watchdog(self, jetzt: float) -> bool:
         """True, wenn der Watchdog ausgeloest hat (cmd_target wurde auf 0 gesetzt)."""
-        if self.cmd_vel_timeout_s <= 0.0 or self._last_cmd_vel_t is None:
+        if not self.watchdog.abgelaufen(jetzt) or not np.any(self.cmd_target != 0.0):
             return False
-        if now - self._last_cmd_vel_t <= self.cmd_vel_timeout_s:
-            return False
-        if np.any(self.cmd_target != 0.0):
-            self.cmd_target = np.zeros(3, dtype=np.float32)
-            if not self._timeout_gemeldet:
-                self.get_logger().warn(
-                    f"/cmd_vel seit > {self.cmd_vel_timeout_s:.1f} s nicht empfangen - Kommando auf 0 gesetzt.")
-                self._timeout_gemeldet = True
-            return True
-        return False
+        self.cmd_target = np.zeros(3, dtype=np.float32)
+        if not self._timeout_gemeldet:
+            self.get_logger().warn(f"/cmd_vel seit > {self.watchdog.timeout_s:.1f} s nicht empfangen - "
+                                   f"Kommando auf 0 gesetzt.")
+            self._timeout_gemeldet = True
+        return True
 
-    def _clip_cmd(self):
-        """Begrenzt self.cmd auf cmd_training_range (falls konfiguriert) und
-        warnt einmalig, wenn das angeforderte /cmd_vel ausserhalb liegt."""
-        if self.cmd_min is None:
-            return
-        if not self._cmd_clip_gemeldet and np.any(
-            (self.cmd_target < self.cmd_min) | (self.cmd_target > self.cmd_max)
-        ):
+    def _bereite_befehl_auf(self, quat: np.ndarray):
+        """Rampe + Kurshaltung + Begrenzung -> self.cmd. Ohne Freigabe und bei NotAus bleibt alles auf 0
+        (Review L1/B5: sonst lief die Rampe in Bereitschaft schon hoch und die Policy sprang nach der Freigabe)."""
+        steht = not self.bewegung_freigegeben or self.not_aus_aktiv
+        if steht:
+            self.cmd_ramped = np.zeros(3, dtype=np.float32)
+        else:
+            self.cmd_ramped = rampe(self.cmd_ramped, self.cmd_target, self.control_dt)
+        self.cmd = self.cmd_ramped.copy()
+        self.cmd[2] += self.kurshaltung.korrektur(quat, float(self.cmd_target[2]))
+        if not self._cmd_clip_gemeldet and self.begrenzung.ausserhalb(self.cmd_target):
             self.get_logger().warn(
                 f"cmd_vel {self.cmd_target.tolist()} liegt ausserhalb des Trainingsbereichs "
-                f"[{self.cmd_min.tolist()} .. {self.cmd_max.tolist()}] - wird begrenzt."
-            )
+                f"[{self.begrenzung.cmd_min.tolist()} .. {self.begrenzung.cmd_max.tolist()}] - wird begrenzt.")
             self._cmd_clip_gemeldet = True
-        self.cmd = np.clip(self.cmd, self.cmd_min, self.cmd_max)
-        if self.wz_vx_ref is not None:
-            vmax = float(max(abs(self.cmd_min[0]), abs(self.cmd_max[0])))
-            wz_hi = float(self.cmd_max[2])
-            v = abs(float(self.cmd[0]))
-            if v > self.wz_vx_ref and vmax > self.wz_vx_ref:
-                a = min(1.0, (v - self.wz_vx_ref) / (vmax - self.wz_vx_ref))
-                cap = wz_hi + a * (self.wz_at_vmax - wz_hi)
-                self.cmd[2] = float(np.clip(self.cmd[2], -cap, cap))
+        self.cmd = self.begrenzung.begrenze(self.cmd)
 
+    def _halte_position(self, quat: np.ndarray):
+        """Positionshaltung nur im Zustand Balancieren (Korrektur getrennt in pos_hold_corr, nicht auf cmd
+        addiert - der erste Versuch am 12.10. fiel genau an dieser Akkumulation um)."""
+        if self.position_hold_aktiv and isinstance(self.state, BalancierenState) and self._odom_xyz is not None:
+            self.pos_hold_corr[:] = self.positionshaltung.korrektur(self._odom_xyz, quat, self.cmd_target,
+                                                                    self.cmd_ramped)
+        else:
+            self.positionshaltung.zuruecksetzen()
+            self.pos_hold_corr[:] = 0.0
+
+    # ---------------------------------------------------------------- Regeltakt
     def _control_loop(self):
-        # Start-Gate bleibt hier im Node und ist bewusst zustands-
-        # unabhaengig: direkt nach dem Start dieses Knotens sind die
-        # Bridge-Werte noch auf ihrem Initialwert (alles 0.0), weil noch
-        # keine /joint_states- bzw. /imu-Nachricht von mujoco_node.py
-        # angekommen ist. Eine echte Quaternion ist nie komplett 0 (siehe
-        # last_quat-Default in hardware/topic_bridge.py) - der Vergleich erkennt
-        # diesen Fall also zuverlaessig und ueberspringt den Takt, statt
-        # die Policy mit bedeutungslosen Nullwerten laufen zu lassen. Das
-        # betrifft beide Zustaende gleich, deshalb kein Teil der
-        # State-Pattern-Logik selbst.
-        quat, omega = self.bridge.read_imu()
-        joint_pos, joint_vel = self.bridge.read_joint_states()
+        # Start-Gate: vor den ersten Sensordaten liefert die Bridge Nullen (eine echte Quaternion ist nie 0).
+        # Ein NotAus in dieser Phase wird im Callback gemerkt und mit den ersten Daten wirksam (Review L6).
+        quat, _ = self.bridge.read_imu()
+        joint_pos, _ = self.bridge.read_joint_states()
         if np.all(joint_pos == 0.0) and np.all(quat == 0.0):
-            # Review L6: StartState.execute laeuft dadurch nie mit ungueltigen Daten; ein NotAus in
-            # dieser Phase wird im Callback gemerkt und mit den ersten Sensordaten wirksam (vorher kann
-            # die Policy ohnehin nicht laufen; die Physik pausiert bis zum ersten Kommando).
             return
 
-        self._check_cmd_timeout(time.monotonic())
-        # GEAENDERT (14.10.2026, Review L1/B5): ohne Freigabe (Bereitschaft) und bei NotAus
-        # bleibt die Rampe auf 0. Vorher lief sie dort mit dem Nutzerkommando hoch: nach der
-        # Freigabe sprang die Policy von 0 auf den fast vollen Wert, und Bereitschaft gab
-        # eine alte Drehrate weiter (cmd[2] enthielt cmd_ramped[2]).
-        if not self.bewegung_freigegeben or self.not_aus_aktiv:
-            self.cmd_ramped = np.zeros(3, dtype=np.float32)
-        self._ramp_cmd()
-        if not self.bewegung_freigegeben or self.not_aus_aktiv:
-            self.cmd_ramped = np.zeros(3, dtype=np.float32)
-            self.cmd = np.zeros(3, dtype=np.float32)
-        self._apply_heading_hold(quat)
-        self._clip_cmd()
-        # Positionshaltung nur im Zustand Balancieren (Parameter position_hold). Der
-        # erste Versuch am 12.10. fiel um; Ursache war die Akkumulation der Korrektur auf
-        # self.cmd (wie bei der Kurshaltung). Seit 13.10. getrennt in pos_hold_corr: stabil.
-        if self.position_hold_aktiv:
-            from roboter_steuerung.states.balancieren_state import BalancierenState
-            if isinstance(self.state, BalancierenState) and self._odom_xyz is not None:
-                self._apply_position_hold(self._odom_xyz, quat)
-            else:
-                self.target_position = None
-                self.pos_hold_corr[:] = 0.0
+        self._pruefe_watchdog(time.monotonic())
+        self._bereite_befehl_auf(quat)
+        self._halte_position(quat)
 
-        # NEU (12.10.2026): Not-Aus unterbricht JEDEN Zustand, nicht nur
-        # Gehen/Balancieren - deshalb zentral hier, VOR dem normalen
-        # State-Pattern-Aufruf, statt als Teil des regulaeren
-        # execute()-Rueckgabewerts einzelner Zustaende. Erzwingt den
-        # Wechsel nach NotAusState, solange self.not_aus_aktiv True ist,
-        # und danach zurueck nach BereitschaftState, sobald es wieder
-        # False wird - inkl. Ruecksetzen von bewegung_freigegeben, damit
-        # nach einer Entwarnung eine bewusste neue Freigabe noetig ist
-        # (siehe bewegung_freigegeben oben, schliesst den vorher
-        # dokumentierten offenen Punkt).
+        # NotAus unterbricht jeden Zustand; nach der Entwarnung weiter ab Bereitschaft mit neuer Freigabe.
         if self.not_aus_aktiv:
             if not isinstance(self.state, NotAusState):
                 self.get_logger().warn("NOT-AUS ausgeloest - Bewegungsregelung angehalten.")
                 self.state = NotAusState()
-                # NEU (12.10.2026): schliesst den vorher dokumentierten
-                # offenen Punkt - ohne das wuerde die Bewegung nach
-                # Entwarnung automatisch wieder anlaufen (letzter
-                # cmd_target-Wert war ja schon vorher gueltig). Jetzt
-                # muss nach Not-Aus erst wieder eine echte /cmd_vel-
-                # Nachricht ankommen (siehe BereitschaftState).
                 self.bewegung_freigegeben = False
         elif isinstance(self.state, NotAusState):
             self.get_logger().info("NOT-AUS aufgehoben - Zustandsautomat wird ab Bereitschaft fortgesetzt.")
             self.state = BereitschaftState()
         elif not self.bewegung_freigegeben and not isinstance(self.state, (BereitschaftState, StartState)):
-            # Freigabe entzogen (/freigabe false): zurueck in Bereitschaft (Policy aktiv, steht)
             self.get_logger().info("Freigabe entzogen - Zustandswechsel nach Bereitschaft.")
             self.state = BereitschaftState()
 
-        # State Pattern (siehe roboter_steuerung/states/): der aktuelle
-        # Zustand liest sich seine Sensordaten selbst erneut (kleine,
-        # bewusst in Kauf genommene Redundanz zum Start-Gate oben - beide
-        # Lesezugriffe sind nur guenstige Rueckgaben zuletzt gespeicherter
-        # Werte, siehe hardware/topic_bridge.py), fuehrt seine Logik aus und gibt
-        # den fuer den naechsten Takt geltenden Zustand zurueck.
         self.state = self.state.execute(self)
 
 
@@ -564,7 +234,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

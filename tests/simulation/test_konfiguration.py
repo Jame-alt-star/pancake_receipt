@@ -1,5 +1,6 @@
 """Konsistenz der Konfiguration ueber Paketgrenzen (ohne ROS): Parameterdateien passen zu den Knoten,
 Policy passt zum Robotermodell, Physiktakt passt zum Regeltakt."""
+import ast
 import os
 import re
 
@@ -10,8 +11,14 @@ from sim_helpers import BESCHREIBUNG, SIMULATION_DT, STEUER, WS, load_config
 
 
 def _deklariert(quelldatei):
+    """Parameternamen aus declare_parameter("...") und aus einer Tabelle PARAMETER = {...} (mujoco_node)."""
     with open(quelldatei) as f:
-        return set(re.findall(r'declare_parameter\(\s*"([a-z_0-9]+)"', f.read()))
+        text = f.read()
+    namen = set(re.findall(r'declare_parameter\(\s*"([a-z_0-9]+)"', text))
+    for knoten in ast.walk(ast.parse(text)):
+        if isinstance(knoten, ast.Assign) and any(getattr(z, "id", None) == "PARAMETER" for z in knoten.targets):
+            namen |= {k.value for k in knoten.value.keys}
+    return namen
 
 
 def _params(yaml_datei, knoten):

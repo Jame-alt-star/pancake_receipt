@@ -1,46 +1,77 @@
-import math
-import os
+"""Simulations-Knoten (Layer 4): MuJoCo-Physik des G1 mit Low-Level-PD-Regelung und Sensorik.
+
+Rechnet in einem Hintergrund-Thread (der Viewer blockiert) und spricht nur ueber ROS2-Topics:
+  raus: /joint_states, /imu (100 Hz), /odom + TF odom->base_link (Ground-Truth, abschaltbar),
+        /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar),
+        TF base_link->lidar_link (statisch)
+  rein: /joint_commands (Zielwinkel), /antrieb/parameter (kp, kd, Startpose von der Steuerung, latched)
+Kennt keine Policy. Bausteine: szene.py (Roboter + Welt), sensormodell.py, lidar.py, aufnahme.py.
+Parameter: config/simulation.yaml; Robotermodell und Geometrie: roboter_beschreibung.
+
+Ablauf beim Start: (1) warten auf die Antriebsparameter (nichts senden), (2) Ruhepose einnehmen und
+Sensordaten senden, Physik pausiert, (3) mit dem ersten /joint_commands laeuft die Physik in Echtzeit.
+Schritt (2) ist noetig, weil der Regler ~7 s zum Hochfahren braucht und reine PD-Haltung auf der Ruhepose
+nachweislich umkippt (13.10.2026: z=0.096 bei Simzeit 1.9 s, bevor die Policy ihr erstes Kommando senden konnte).
+"""
 import threading
 import time
 from collections import deque
-import numpy as np
 
 import mujoco
 import mujoco.viewer
+import numpy as np
 import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Imu, JointState, LaserScan, PointCloud2, PointField
-from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Point, TransformStamped
 from nav_msgs.msg import Odometry
-from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
-
+from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from sensor_msgs.msg import Imu, JointState, LaserScan, PointCloud2, PointField
+from std_msgs.msg import Float32MultiArray
+from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 
 from roboter_beschreibung import lade as lade_roboter
 from roboter_interfaces.msg import Antriebsparameter
+from roboter_simulation.aufnahme import Posenaufnahme
+from roboter_simulation.geometrie import rotate_inverse
+from roboter_simulation.lidar import R_MIN, Lidar
+from roboter_simulation.sensormodell import Sensormodell
 from roboter_simulation.szene import lade_welt
+
+# Sensordaten alle 5 Physikschritte (500/5 = 100 Hz). Gemessen 13.10.2026: das Publizieren kostet ~1.1 ms je
+# Aufruf und liess die Simulation sonst nur mit ~0.5x Echtzeit laufen; die Policy laeuft mit 50 Hz.
+PUBLISH_DECIMATION = 5
+
+
+# Alle Parameter mit Typ-Standardwerten; die gueltigen Werte stehen in config/simulation.yaml, die
+# simulation.launch.py immer laedt (tests/simulation/test_konfiguration.py prueft, dass dort nur Deklariertes steht).
+PARAMETER = {
+    "welt": "", "simulation_dt": 0.002, "wait_for_controller": True, "render_decimation": 25,
+    "profile": False, "headless": False, "record_path": "",
+    "publish_odom": True, "publish_tf": True, "odom_frame": "odom", "base_frame": "base_link",
+    "realistic_sensors": False, "noise_joint_pos": 0.001, "noise_joint_vel": 0.02, "noise_gyro": 0.01,
+    "gyro_bias": 0.005, "noise_orientation": 0.005, "yaw_drift_deg_per_min": 0.5,
+    "sensor_latency_ms": 10.0, "command_latency_ms": 10.0, "lidar_noise_m": 0.02, "lidar_dropout": 0.01,
+    "noise_seed": 0,
+    "lidar": False, "lidar_2d": True, "lidar_3d": False, "lidar_rate_hz": 10.0, "lidar_rays": 360,
+    "lidar_range_max": 10.0, "lidar_geomgroup": 2, "lidar_3d_rings": 24,
+    "lidar_3d_elev_min_deg": -40.0, "lidar_3d_elev_max_deg": 10.0,
+    # Lidar-Montagehoehe ueber dem Becken; < 0 = aus roboter_beschreibung (eine Quelle mit der Sensorik)
+    "lidar_z": -1.0,
+}
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
-    """
-    Low-Level-Drehmoment-Regelung je Gelenk (Layer 4), uebernommen aus
-    unitree_rl_gym's deploy_mujoco.py (dort Zeile 25-28): Drehmoment =
-    Steifigkeit * Positionsfehler + Daempfung * Geschwindigkeitsfehler.
-    target_dq ist hier immer 0 (siehe Aufruf unten) - es wird nur eine
-    Zielposition angesteuert, keine Zielgeschwindigkeit.
-    """
+    """Drehmoment je Gelenk = kp * Positionsfehler + kd * Geschwindigkeitsfehler (wie deploy_mujoco.py aus
+    unitree_rl_gym); target_dq ist immer 0."""
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
 class _NullViewer:
-    """Platzhalter fuer headless=True: gleiche Schnittstelle wie der passive MuJoCo-Viewer,
-    tut aber nichts (kein Fenster, kein Rendering)."""
+    """Fuer headless: gleiche Schnittstelle wie der passive MuJoCo-Viewer, ohne Fenster."""
 
     def __init__(self):
         from types import SimpleNamespace
-        self.cam = SimpleNamespace(type=None, distance=0.0, azimuth=0.0, elevation=0.0,
-                                   lookat=np.zeros(3))
+        self.cam = SimpleNamespace(type=None, distance=0.0, azimuth=0.0, elevation=0.0, lookat=np.zeros(3))
 
     def __enter__(self):
         return self
@@ -55,214 +86,98 @@ class _NullViewer:
         pass
 
 
-def quat_zu_rotmat(q):
-    """Rotationsmatrix (Koerper -> Welt) aus Quaternion q=[w,x,y,z] (MuJoCo-Konvention)."""
-    w, x, y, z = q
-    return np.array([
-        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-    ])
-
-
-def rotate_inverse(q, v):
-    """v (Weltkoordinaten) in das Koerper-Koordinatensystem mit Orientierung q=[w,x,y,z]."""
-    return quat_zu_rotmat(q).T @ np.asarray(v, dtype=float)
-
-
 class MujocoBridgeNode(Node):
-    """
-    Simulations-Knoten (Layer 4): laedt die MuJoCo-Szene, rechnet Physik + Low-Level-PD-Regelung
-    in einem Hintergrund-Thread und kommuniziert ausschliesslich ueber ROS2-Topics:
-      raus: /joint_states, /imu (100 Hz), /odom + TF odom->base_link (Ground-Truth, abschaltbar),
-            /base_position (Ground-Truth, nur fuer Tests/Auswertung), /scan bzw. /points (Lidar),
-            TF base_link->lidar_link (statisch)
-      rein: /joint_commands
-    Kennt selbst keine RL-Policy - reine Physik und Sensormodell.
-    """
 
     def __init__(self):
         super().__init__("mujoco_bridge_node")
+        p = self._parameter_lesen()
 
-        # NEU (13.10.2026): Physik erst starten, wenn der Regler das erste
-        # /joint_commands gesendet hat. Gemessen: steuereinheit_node
-        # braucht ~7 s Wandzeit zum Hochfahren (Imports, ONNX-Laden); in
-        # der Zeit simulierte dieser Knoten schon mit reiner PD-Haltung auf
-        # default_angles, was nachweislich umkippt (siehe
-        # balancieren_state.py "Variante 2") - der Roboter lag schon, bevor
-        # die Policy ihr erstes Kommando senden konnte (z=0.096 bei
-        # simtime 1.9 s, ncmd=0). Zustaende werden waehrend der Pause
-        # weiter publiziert (der Regler braucht sie fuer sein Start-Gate).
-        self.declare_parameter("wait_for_controller", True)
-        self.wait_for_controller = self.get_parameter("wait_for_controller").get_parameter_value().bool_value
-        self.controller_connected = not self.wait_for_controller
-        self.declare_parameter("profile", False)
-        self.profile = self.get_parameter("profile").get_parameter_value().bool_value
-
-        # Robotermodell und Geometrie aus roboter_beschreibung (gilt fuer Simulation und Hardware), Umgebung
-        # als Welt aus roboter_welten ('' = nur Roboter auf der Ebene), zusammengesetzt in szene.py.
+        # Modell: Roboter aus roboter_beschreibung + Welt aus roboter_welten ('' = nur Ebene)
         self.roboter = lade_roboter()
-        self.declare_parameter("welt", "")
-        self.welt = self.get_parameter("welt").value
-        self.declare_parameter("simulation_dt", 0.002)   # Physik-Zeitschritt [s] (500 Hz)
-        self.simulation_dt = float(self.get_parameter("simulation_dt").value)
-
-        # Antriebsparameter (kp, kd, Startpose) gehoeren zur Policy in Layer 3 und kommen von dort ueber
-        # /antrieb/parameter (latched), wie bei einem Motortreiber. Bis dahin steht die Simulation still und
-        # sendet nichts; die Steuerung wartet in ihrem Start-Gate auf die ersten Sensordaten.
-        self.kps = self.kds = self.default_angles = None
-        self._antrieb_neu = None
-        self.target_dof_pos = None
-        # 2. MuJoCo Modell & Daten laden
-        self.model = lade_welt(self.roboter["modell_xml"], self.welt)
-        self.get_logger().info(f"[mujoco_bridge_node] Welt: {self.welt or '(keine, nur Ebene)'}")
+        self.model = lade_welt(self.roboter["modell_xml"], p["welt"])
+        self.model.opt.timestep = p["simulation_dt"]
         self.data = mujoco.MjData(self.model)
-        self.model.opt.timestep = self.simulation_dt
-
         mujoco.mj_forward(self.model, self.data)
+        self.get_logger().info(f"[mujoco_bridge_node] Welt: {p['welt'] or '(keine, nur Ebene)'}")
 
-        # 3. ROS-2 Publisher & Subscriber
+        # Antrieb: kommt von der Steuerung (siehe Modul-Docstring)
+        self.kps = self.kds = self.default_angles = None
+        self.target_dof_pos = None
+        self._antrieb_neu = None
+        self.controller_connected = not p["wait_for_controller"]
+        self._cmd_buf = deque()        # (sim_zeit_ankunft, cmd) fuer die Kommando-Latenz
+
+        # Sensorik
+        self._rng = np.random.default_rng(p["noise_seed"])
+        self.realistic = p["realistic_sensors"]
+        self.sensormodell = None
+        self.command_latency = 0.0
+        if self.realistic:
+            self.sensormodell = Sensormodell(
+                self._rng, p["noise_joint_pos"], p["noise_joint_vel"], p["noise_gyro"], p["gyro_bias"],
+                p["noise_orientation"], p["sensor_latency_ms"] / 1000.0, np.radians(p["yaw_drift_deg_per_min"]) / 60.0)
+            self.command_latency = p["command_latency_ms"] / 1000.0
+        self.n_lidar, self.p_drop = p["lidar_noise_m"], p["lidar_dropout"]
+
+        self.aufnahme = Posenaufnahme(p["record_path"])
+        self.render_decimation = max(1, p["render_decimation"])
+        self.headless, self.profile = p["headless"], p["profile"]
+        self.odom_frame, self.base_frame = p["odom_frame"], p["base_frame"]
+
+        # Publisher / Subscriber
         self.pub_joint_states = self.create_publisher(JointState, "/joint_states", 10)
         self.pub_imu = self.create_publisher(Imu, "/imu", 10)
-        # /base_position: wahre Basisposition (Simulations-Ground-Truth, qpos[0:3]). Seit 14.10.2026
-        # nur noch fuer Tests/Auswertung - alle Positionsnutzer lesen /odom (Ground-Truth oder
-        # Beinodometrie). Auf echter Hardware gibt es dieses Topic nicht.
+        # /base_position: wahre Basisposition (Ground-Truth) nur fuer Tests/Auswertung; alle Positionsnutzer
+        # lesen /odom. Auf echter Hardware gibt es dieses Topic nicht.
         self.pub_base_position = self.create_publisher(Point, "/base_position", 10)
-        # Realistische Sensorik (Schalter realistic_sensors, 14.10.2026): Rauschen auf Gelenken/IMU,
-        # konstanter Gyro-Bias, Gier-Drift, Latenz in beide Richtungen (Zustaende und Kommandos),
-        # Lidar-Rauschen und (2D-Scan) Ausfaelle. Die Werte sind ANNAHMEN in plausibler Groesse
-        # (typische Encoder/MEMS-IMU/DDS), nicht aus einem G1-Datenblatt. Gemessen (synchroner Kreis):
-        # die Policy bleibt bis zum 10-Fachen dieser Werte plus 20 ms Latenz stabil.
-        # Die Position (/odom) ist davon unabhaengig: Ground-Truth oder Beinodometrie (odom_quelle).
-        self.declare_parameter("realistic_sensors", False)
-        self.declare_parameter("noise_joint_pos", 0.001)     # rad
-        self.declare_parameter("noise_joint_vel", 0.02)      # rad/s
-        self.declare_parameter("noise_gyro", 0.01)           # rad/s
-        self.declare_parameter("gyro_bias", 0.005)           # rad/s (Std. des konstanten Bias)
-        self.declare_parameter("noise_orientation", 0.005)   # rad
-        self.declare_parameter("sensor_latency_ms", 10.0)
-        self.declare_parameter("command_latency_ms", 10.0)
-        self.declare_parameter("lidar_noise_m", 0.02)
-        self.declare_parameter("lidar_dropout", 0.01)
-        self.declare_parameter("noise_seed", 0)
-        self.declare_parameter("yaw_drift_deg_per_min", 0.5)   # langsame Gier-Drift der IMU-Orientierung
-        self.realistic = bool(self.get_parameter("realistic_sensors").value)
-        self._rng = np.random.default_rng(int(self.get_parameter("noise_seed").value))
-        gp = lambda n: float(self.get_parameter(n).value)
-        self.n_q, self.n_dq, self.n_gyro = gp("noise_joint_pos"), gp("noise_joint_vel"), gp("noise_gyro")
-        self.n_ori, self.n_lidar, self.p_drop = gp("noise_orientation"), gp("lidar_noise_m"), gp("lidar_dropout")
-        self.gyro_bias = self._rng.normal(0.0, gp("gyro_bias"), 3) if self.realistic else np.zeros(3)
-        self.sensor_latency = gp("sensor_latency_ms") / 1000.0 if self.realistic else 0.0
-        self.command_latency = gp("command_latency_ms") / 1000.0 if self.realistic else 0.0
-        self.yaw_drift_rate = np.radians(gp("yaw_drift_deg_per_min")) / 60.0 if self.realistic else 0.0
-        self._state_buf = deque()      # (sim_time, q, dq, quat, omega)
-        self._cmd_buf = deque()        # (sim_time_ankunft, cmd)
-
-        # NEU (14.10.2026): Aufzeichnung der Roboterpose fuer Demo-Videos (Offline-Rendering). Schreibt
-        # (Wandzeit, Simzeit, qpos) mit 25 Hz in eine .npz-Datei; die Simulation bleibt in Echtzeit.
-        self.declare_parameter("record_path", "")
-        self.record_path = str(self.get_parameter("record_path").value)
-        self._rec = {"wall": [], "t": [], "qpos": []}
-        self._rec_next = 0.0
-        self._rec_flushed = time.time()
-        # Viewer-Bildrate: alle render_decimation Physikschritte (25 -> 20 Hz). headless=True ->
-        # kein Fenster (spart CPU/RAM, Pflicht mit Nav2+SLAM bei ~2,8 GB RAM).
-        self.declare_parameter("render_decimation", 25)
-        self.render_decimation = max(1, int(self.get_parameter("render_decimation").value))
-        self.declare_parameter("headless", False)
-        self.headless = self.get_parameter("headless").value
-        # /odom + TF odom->base_link fuer Nav2 (Ground-Truth, perfekt). Abschaltbar, wenn eine andere
-        # Quelle sie liefert (odom_quelle:=beinodometrie -> beinodometrie_node).
-        self.declare_parameter("publish_odom", True)
-        self.declare_parameter("publish_tf", True)
-        self.declare_parameter("odom_frame", "odom")
-        self.declare_parameter("base_frame", "base_link")
-        self.publish_odom = self.get_parameter("publish_odom").value
-        self.publish_tf = self.get_parameter("publish_tf").value
-        self.odom_frame = self.get_parameter("odom_frame").value
-        self.base_frame = self.get_parameter("base_frame").value
-        self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if self.publish_odom else None
-        self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
-
-        # Simuliertes Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2 = Welt-Hindernisse). Frame lidar_link
-        # an base_link (0,0,lidar_z), kippt mit dem Roboter wie ein am Torso montierter Sensor.
-        # lidar_2d: eine Scanebene /scan (alter Modus); lidar_3d: Punktwolke /points (Standard mit
-        # Navigation, /scan wird dann von roboter_sensorik/punktwolke_zu_scan abgeleitet).
-        # Takt: der Lidar-Zaehler laeuft in _publish_states (100 Hz bei simulation_dt 0.002 und
-        # PUBLISH_DECIMATION 5); lidar_rate_hz bezieht sich auf diese 100 Hz.
-        self.declare_parameter("lidar", False)   # an per Launch-Argument lidar:=true (Nav2/SLAM)
-        self.declare_parameter("lidar_rate_hz", 10.0)
-        self.declare_parameter("lidar_rays", 360)
-        self.declare_parameter("lidar_range_max", 10.0)
-        # Montagehoehe ueber dem Becken aus roboter_beschreibung (lidar_hoehe_ueber_becken), damit Simulation,
-        # Scan-Ableitung und Beinodometrie dieselbe Geometrie nutzen (Review U5).
-        self.declare_parameter("lidar_z", float(self.roboter["lidar_hoehe_ueber_becken"]))
-        self.declare_parameter("lidar_geomgroup", 2)
-        self.lidar_on = bool(self.get_parameter("lidar").value)
-        self.lidar_period = max(1, int(round(100.0 / float(self.get_parameter("lidar_rate_hz").value))))
-        self.lidar_n = int(self.get_parameter("lidar_rays").value)
-        self.lidar_rmax = float(self.get_parameter("lidar_range_max").value)
-        self.lidar_z = float(self.get_parameter("lidar_z").value)
-        self.lidar_mask = np.zeros(6, dtype=np.uint8)
-        self.lidar_mask[int(self.get_parameter("lidar_geomgroup").value)] = 1
-        self._lidar_count = 0
-        # NEU (14.10.2026): optionales 3D-Lidar als PointCloud2 (/points, Frame lidar_link): 24 Ringe
-        # (-40..+10 Grad) x 360 Azimutwerte, 5 Hz. Ground-Truth-Raycast wie der 2D-Scan.
-        self.declare_parameter("lidar_3d", False)
-        # lidar_2d=False: KEIN eigener 2D-Scan (wie ein echtes 3D-Lidar); /scan wird dann von
-        # roboter_navigation/punktwolke_zu_scan aus der Punktwolke abgeleitet.
-        self.declare_parameter("lidar_2d", True)
-        self.lidar2d_on = bool(self.get_parameter("lidar_2d").value)
-        self.declare_parameter("lidar_3d_rings", 24)
-        self.declare_parameter("lidar_3d_elev_min_deg", -40.0)
-        self.declare_parameter("lidar_3d_elev_max_deg", 10.0)
-        self.lidar3d_on = bool(self.get_parameter("lidar_3d").value) and self.lidar_on
-        self._cloud_count = 0
-        if self.lidar3d_on:
-            nr = int(self.get_parameter("lidar_3d_rings").value)
-            el = np.radians(np.linspace(float(self.get_parameter("lidar_3d_elev_min_deg").value),
-                                        float(self.get_parameter("lidar_3d_elev_max_deg").value), nr))
-            az = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
-            E, A = np.meshgrid(el, az, indexing="ij")
-            self.cloud_dirs_local = np.stack([np.cos(E) * np.cos(A), np.cos(E) * np.sin(A), np.sin(E)],
-                                             axis=-1).reshape(-1, 3)
-            self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
-        a = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
-        self.lidar_dirs_local = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
-        if self.lidar_on and bool(self.get_parameter("lidar_2d").value):
-            self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
-        if self.lidar_on:
-            # Lidar-Montage (base_link -> lidar_link) IMMER publizieren - im reinen 3D-Modus ebenso
-            # (fehlte dort zunaechst: Nav2 konnte die Punktwolke nicht einordnen) und auch, wenn
-            # odom->base_link vom Schaetzer kommt.
-            st = TransformStamped()
-            st.header.stamp = self.get_clock().now().to_msg()
-            st.header.frame_id = self.base_frame
-            st.child_frame_id = "lidar_link"
-            st.transform.translation.z = self.lidar_z
-            st.transform.rotation.w = 1.0
-            self._static_tf = StaticTransformBroadcaster(self)
-            self._static_tf.sendTransform(st)
+        self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if p["publish_odom"] else None
+        self.tf_broadcaster = TransformBroadcaster(self) if p["publish_tf"] else None
+        self._lidar_einrichten(p)
         latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(Antriebsparameter, "/antrieb/parameter", self._antrieb_callback, latched)
-        self.sub_joint_commands = self.create_subscription(
-            Float32MultiArray,
-            "/joint_commands",
-            self._joint_commands_callback,
-            10
-        )
+        self.create_subscription(Float32MultiArray, "/joint_commands", self._joint_commands_callback, 10)
 
-        # 4. Simulationsschleife im Hintergrundthread starten - als eigener
-        # Thread, weil mujoco.viewer.launch_passive() blockierend laeuft;
-        # ROS2 (rclpy.spin in main()) muss parallel weiterlaufen koennen,
-        # damit Subscriber/Publisher nicht einfrieren. daemon=True, damit
-        # der Thread beim Beenden des Knotens nicht den Prozess offen haelt.
+        # Simulation im Hintergrundthread (der Viewer blockiert; rclpy.spin muss parallel laufen)
         self.is_running = True
-        self.sim_thread = threading.Thread(target=self._run_simulation)
-        self.sim_thread.daemon = True
+        self.sim_thread = threading.Thread(target=self._run_simulation, daemon=True)
         self.sim_thread.start()
 
+    def _parameter_lesen(self) -> dict:
+        for name, wert in PARAMETER.items():
+            self.declare_parameter(name, wert)
+        return {name: self.get_parameter(name).value for name in PARAMETER}
+
+    def _lidar_einrichten(self, p):
+        """Lidar (Raycast auf Welt-Geoms der Gruppe 2). Takt: Zaehler im 100-Hz-Publish; lidar_rate_hz bezieht
+        sich darauf, die 3D-Wolke kommt jede zweite Runde (5 Hz bei 10 Hz)."""
+        self.lidar = None
+        self.lidar2d_on = self.lidar3d_on = False
+        if not p["lidar"]:
+            return
+        hoehe = p["lidar_z"] if p["lidar_z"] >= 0 else float(self.roboter["lidar_hoehe_ueber_becken"])
+        self.lidar2d_on, self.lidar3d_on = bool(p["lidar_2d"]), bool(p["lidar_3d"])
+        self.lidar = Lidar(self.model, hoehe, int(p["lidar_rays"]), float(p["lidar_range_max"]),
+                           int(p["lidar_geomgroup"]), ringe=int(p["lidar_3d_rings"]) if self.lidar3d_on else 0,
+                           elev_min_deg=p["lidar_3d_elev_min_deg"], elev_max_deg=p["lidar_3d_elev_max_deg"])
+        self.lidar_period = max(1, int(round(100.0 / float(p["lidar_rate_hz"]))))
+        self._lidar_count = self._cloud_count = 0
+        if self.lidar2d_on:
+            self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
+        if self.lidar3d_on:
+            self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
+        # Montage base_link -> lidar_link IMMER (auch im reinen 3D-Modus und wenn odom->base_link vom Schaetzer
+        # kommt; fehlte anfangs im 3D-Modus: Nav2 konnte die Punktwolke nicht einordnen).
+        st = TransformStamped()
+        st.header.stamp = self.get_clock().now().to_msg()
+        st.header.frame_id = self.base_frame
+        st.child_frame_id = "lidar_link"
+        st.transform.translation.z = hoehe
+        st.transform.rotation.w = 1.0
+        self._static_tf = StaticTransformBroadcaster(self)
+        self._static_tf.sendTransform(st)
+
+    # ---------------------------------------------------------------- Eingaenge
     def _antrieb_callback(self, msg: Antriebsparameter):
         n = self.model.nu
         if not (len(msg.kp) == len(msg.kd) == len(msg.startpose) == n):
@@ -285,125 +200,73 @@ class MujocoBridgeNode(Node):
             self.get_logger().info("[mujoco_bridge_node] Antriebsparameter von der Steuerung erhalten.")
 
     def _joint_commands_callback(self, msg: Float32MultiArray):
-        # Laengen-Check als Sicherheitsnetz: eine falsch dimensionierte
-        # Nachricht (z.B. durch einen Konfigurationsfehler) wird ignoriert,
-        # statt die Simulation mit falsch vielen Werten zum Absturz zu bringen.
-        cmd_data = np.array(msg.data, dtype=np.float32)
-        _now = time.perf_counter()
+        cmd = np.array(msg.data, dtype=np.float32)
+        jetzt = time.perf_counter()
         if getattr(self, "_prof_last_cmd", None) is not None:
-            self._prof_gap = max(getattr(self, "_prof_gap", 0.0), _now - self._prof_last_cmd)
-        self._prof_last_cmd = _now
+            self._prof_gap = max(getattr(self, "_prof_gap", 0.0), jetzt - self._prof_last_cmd)
+        self._prof_last_cmd = jetzt
         self._prof_ncmd = getattr(self, "_prof_ncmd", 0) + 1
-        if self.target_dof_pos is not None and len(cmd_data) == len(self.target_dof_pos):
-            if self.command_latency > 0.0 and self.controller_connected:
-                self._cmd_buf.append((float(self.data.time), cmd_data))   # wird im Sim-Thread verzoegert angewendet
-            else:
-                self.target_dof_pos = cmd_data
-            if not self.controller_connected:
-                self.controller_connected = True
-                self.get_logger().info("[mujoco_bridge_node] Regler verbunden - Physik gestartet.")
+        # Laengen-Check: eine falsch dimensionierte Nachricht wird ignoriert statt die Simulation abzubrechen.
+        if self.target_dof_pos is None or len(cmd) != len(self.target_dof_pos):
+            return
+        if self.command_latency > 0.0 and self.controller_connected:
+            self._cmd_buf.append((float(self.data.time), cmd))   # im Sim-Thread verzoegert angewendet
+        else:
+            self.target_dof_pos = cmd
+        if not self.controller_connected:
+            self.controller_connected = True
+            self.get_logger().info("[mujoco_bridge_node] Regler verbunden - Physik gestartet.")
 
+    # ---------------------------------------------------------------- Simulationsschleife
     def _run_simulation(self):
-        # BUGFIX (gemessen: /joint_states kam nur mit ~90 Hz statt der
-        # angenommenen 500 Hz an): viewer.sync() - das Rendern des Fensters -
-        # kostet pro Aufruf relativ viel Zeit und wurde vorher bei JEDEM
-        # einzelnen Physikschritt aufgerufen. Dadurch schaffte die Schleife
-        # real nur ~90 Hz statt 500 Hz, obwohl die Zeitmessung unten
-        # (time_until_next) das nicht verhindern konnte - sie drosselt nur,
-        # wenn die Schleife SCHNELLER als Echtzeit waere, nicht wenn sie
-        # langsamer ist. Weil steuereinheit_node.py unabhaengig davon mit
-        # einem eigenen 50-Hz-Wall-Clock-Timer laeuft und intern davon
-        # ausgeht, dass pro Regeltakt 10 Physikschritte (control_decimation)
-        # vergangen sind, driftete die angenommene Simulationszeit (fuer das
-        # Phasensignal) weit von der tatsaechlichen Physik auseinander -
-        # das hat den Roboter instabil werden lassen und umfallen lassen.
-        # Fix (07.10.): nur alle RENDER_DECIMATION Physikschritte rendern. Seit 14.10. 25 statt 10
-        # (20 Hz Bild): viewer.sync() kostet ~16 ms (Software-GL unter WSLg) und loeste sporadische
-        # Stuerze im Pipeline-Test aus. Weitere Massnahmen (13.10.): Publish nur 100 Hz, absolute
-        # Zeitplanung (siehe unten).
-        RENDER_DECIMATION = self.render_decimation
-        render_counter = 0
-        # NEU (13.10.2026): Publish nur alle PUBLISH_DECIMATION Schritte
-        # (500/5 = 100 Hz). Gemessen: _publish_states() kostete ~1.1 ms pro
-        # Aufruf (3 Nachrichten, 29 Gelenke) - das war der groesste Posten
-        # der Schleife und liess die Simulation nur mit ~0.5x Echtzeit
-        # laufen. Die Policy laeuft mit 50 Hz (control_decimation=10), 100 Hz
-        # Sensordaten reichen also; zusaetzliche Latenz <= 10 ms.
-        PUBLISH_DECIMATION = 5
-        publish_counter = 0
-        # Absolute Zeitplanung: Verzoegerungen eines Schritts (Viewer-Sync,
-        # sleep-Overshoot) werden durch kuerzere Wartezeit der folgenden
-        # Schritte aufgeholt statt sich zu summieren.
+        try:
+            self._schleife()
+        except Exception:
+            # Beim Beenden macht rclpy den Kontext ungueltig, bevor dieser Thread anhaelt; ein Publish wirft dann.
+            # Das ist kein Fehler. Waehrend des Laufs dagegen schon - dann weiterreichen.
+            if self.is_running and rclpy.ok():
+                raise
+
+    def _schleife(self):
+        # Viewer nur alle render_decimation Physikschritte (25 -> 20 Hz): viewer.sync() kostet unter WSLg ~16 ms;
+        # bei jedem Schritt lief die Schleife nur mit ~90 Hz statt 500 Hz, die Physik driftete gegen den 50-Hz-
+        # Regler weg und der Roboter fiel (07.10.); 10 statt 25 loeste noch sporadische Stuerze aus (14.10.).
+        render_counter = publish_counter = 0
+        # Absolute Zeitplanung: Verzoegerungen eines Schritts (Viewer, sleep-Overshoot) werden durch kuerzeres
+        # Warten der folgenden Schritte aufgeholt statt sich zu summieren.
         next_deadline = time.perf_counter()
-        # Profiling der Schleife (Parameter profile:=true): Zeitanteile Physik/Publish/Rendern/Warten,
-        # alle 2 s geloggt. Bleibt dauerhaft drin, kostet ohne profile nur perf_counter-Aufrufe.
         prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
         prof_t0 = time.perf_counter()
 
-        viewer_ctx = (_NullViewer() if self.headless
-                      else mujoco.viewer.launch_passive(self.model, self.data))
+        viewer_ctx = _NullViewer() if self.headless else mujoco.viewer.launch_passive(self.model, self.data)
         with viewer_ctx as viewer:
-            # NEU: freie Kamera mit groesserem Abstand, direkt von hinten
-            # (Laufrichtung beim Start +X), leicht
-            # erhoeht - damit der ganze Roboter UND ein Stueck Laufweg
-            # sichtbar sind, ohne jedes Mal manuell nachstellen zu muessen.
-            # lookat wird unten im Render-Takt auf die Pelvis-Position
-            # aktualisiert, Abstand/Winkel bleiben unberuehrt (per Maus im
-            # Viewer weiter frei verstellbar).
+            # freie Kamera von hinten, leicht erhoeht; lookat folgt dem Roboter (Abstand/Winkel per Maus frei)
             viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            viewer.cam.distance = 5.0
-            viewer.cam.azimuth = 180.0
-            viewer.cam.elevation = -20.0
+            viewer.cam.distance, viewer.cam.azimuth, viewer.cam.elevation = 5.0, 180.0, -20.0
             viewer.cam.lookat[:] = self.data.qpos[0:3]
 
             while viewer.is_running() and self.is_running:
-                step_start = time.time()
-
                 if self._antrieb_neu is not None:
                     self._uebernehme_antrieb()
-                if self.kps is None:
-                    # Noch keine Antriebsparameter: nichts senden (die Steuerung laeuft noch nicht).
+                if self.kps is None or not self.controller_connected:
+                    # (1) ohne Antriebsparameter nichts senden; (2) danach Pose halten, Sensordaten senden
+                    if self.kps is not None:
+                        self._publish_states()
                     viewer.sync()
                     time.sleep(0.01)
                     next_deadline = time.perf_counter()
                     continue
 
-                if not self.controller_connected:
-                    # Pausiert: Pose einfrieren, aber Sensorwerte (100 Hz)
-                    # weiter senden und Fenster aktualisieren.
-                    self._publish_states()
-                    viewer.sync()
-                    time.sleep(0.01)
-                    next_deadline = time.perf_counter()
-                    continue
-
-                # Low-Level-PD-Regelung an Aktuatoren anwenden. qpos[7:]/
-                # qvel[6:]: die ersten 7 bzw. 6 Werte gehoeren zur
-                # "Floating Base" (qpos: 3 Position + 4 Quaternion = 7;
-                # qvel: 3 lineare + 3 Winkelgeschwindigkeit = 6) - danach
-                # erst kommen die eigentlichen Gelenkwerte.
+                # PD-Regelung auf die Gelenke (qpos[7:]/qvel[6:]: nach 7 bzw. 6 Werten der freien Basis)
                 while self._cmd_buf and self._cmd_buf[0][0] + self.command_latency <= self.data.time:
                     self.target_dof_pos = self._cmd_buf.popleft()[1]
-                q = self.data.qpos[7:]
-                dq = self.data.qvel[6:]
-                tau = pd_control(
-                    self.target_dof_pos, q, self.kps, np.zeros_like(self.kds), dq, self.kds
-                )
-                self.data.ctrl[:] = tau
-
-                # Physikschritt berechnen
+                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[7:], self.kps,
+                                               np.zeros_like(self.kds), self.data.qvel[6:], self.kds)
                 _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
                 _t1 = time.perf_counter()
-                if self.record_path and self.data.time >= self._rec_next:
-                    self._rec_next = self.data.time + 0.04
-                    self._rec["wall"].append(time.time())
-                    self._rec["t"].append(float(self.data.time))
-                    self._rec["qpos"].append(self.data.qpos.copy())
-                    if time.time() - self._rec_flushed > 15.0:
-                        self._flush_recording()
+                self.aufnahme.schritt(self.data.time, self.data.qpos)
 
-                # Sensor-Zustaende publizieren: alle PUBLISH_DECIMATION Schritte (100 Hz), siehe oben.
                 publish_counter += 1
                 if publish_counter >= PUBLISH_DECIMATION:
                     self._publish_states()
@@ -413,114 +276,89 @@ class MujocoBridgeNode(Node):
                 prof["pub"] += _t2 - _t1
 
                 render_counter += 1
-                if render_counter >= RENDER_DECIMATION:
-                    # Kamera folgt dem Roboter (nur Position - Abstand/
-                    # Winkel bleiben manuell verstellbar, siehe oben).
+                if render_counter >= self.render_decimation:
                     viewer.cam.lookat[:] = self.data.qpos[0:3]
                     _ts = time.perf_counter()
                     viewer.sync()
                     prof["sync"] += time.perf_counter() - _ts
                     render_counter = 0
 
-                # Taktung drosseln (auf Physikzeitschritt), damit die
-                # Simulation nicht schneller als Echtzeit durchlaeuft
+                # Echtzeit: nicht schneller als der Physiktakt; > 50 ms Rueckstand (z. B. Fenster verschoben)
+                # nicht im Schnelldurchlauf aufholen
                 next_deadline += self.model.opt.timestep
-                time_until_next = next_deadline - time.perf_counter()
-                if time_until_next < -0.05:
-                    # >50 ms im Rueckstand (z.B. Fenster verschoben): nicht
-                    # endlos im Schnelldurchlauf aufholen
+                warten = next_deadline - time.perf_counter()
+                if warten < -0.05:
                     next_deadline = time.perf_counter()
-                if time_until_next > 0:
+                if warten > 0:
                     _tsl = time.perf_counter()
-                    time.sleep(time_until_next)
+                    time.sleep(warten)
                     prof["sleep"] += time.perf_counter() - _tsl
                 prof["n"] += 1
                 if self.profile and time.perf_counter() - prof_t0 >= 2.0:
-                    el = time.perf_counter() - prof_t0
-                    n = prof["n"]
-                    self.get_logger().info(
-                        f"PROF {n/el:.0f} Hz | simtime={self.data.time:.2f}s | pro Schritt us: step={prof['step']/n*1e6:.0f} pub={prof['pub']/n*1e6:.0f} sync={prof['sync']/n*1e6:.0f} sleep={prof['sleep']/n*1e6:.0f} gesamt={el/n*1e6:.0f} | z={self.data.qpos[2]:.3f} ncmd={getattr(self,'_prof_ncmd',0)} maxgap={getattr(self,'_prof_gap',0.0)*1e3:.0f}ms")
-                    self._prof_ncmd = 0
-                    self._prof_gap = 0.0
+                    self._profil_melden(prof, time.perf_counter() - prof_t0)
                     prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
                     prof_t0 = time.perf_counter()
 
+    def _profil_melden(self, prof, dauer):
+        """Zeitanteile je Physikschritt (Parameter profile:=true), alle 2 s."""
+        n = prof["n"]
+        self.get_logger().info(
+            f"PROF {n / dauer:.0f} Hz | simtime={self.data.time:.2f}s | pro Schritt us: "
+            f"step={prof['step'] / n * 1e6:.0f} pub={prof['pub'] / n * 1e6:.0f} sync={prof['sync'] / n * 1e6:.0f} "
+            f"sleep={prof['sleep'] / n * 1e6:.0f} gesamt={dauer / n * 1e6:.0f} | z={self.data.qpos[2]:.3f} "
+            f"ncmd={getattr(self, '_prof_ncmd', 0)} maxgap={getattr(self, '_prof_gap', 0.0) * 1e3:.0f}ms")
+        self._prof_ncmd = 0
+        self._prof_gap = 0.0
+
+    # ---------------------------------------------------------------- Ausgaenge
     def _publish_states(self):
         now = self.get_clock().now().to_msg()
-
         q, dq = self.data.qpos[7:].copy(), self.data.qvel[6:].copy()
         quat_m, omega = self.data.qpos[3:7].copy(), self.data.qvel[3:6].copy()
-        if self.realistic:
-            q, dq, quat_m, omega = self._sensor_model(q, dq, quat_m, omega)
+        if self.sensormodell is not None:
+            q, dq, quat_m, omega = self.sensormodell.anwenden(float(self.data.time), q, dq, quat_m, omega)
 
-        # Joint States
         js = JointState()
         js.header.stamp = now
         js.position = q.tolist()
         js.velocity = dq.tolist()
         self.pub_joint_states.publish(js)
 
-        # IMU: direkt aus dem simulierten "Floating Base"-Zustand abgeleitet
-        # (qpos[3:7] = Orientierungs-Quaternion [w,x,y,z], qvel[3:6] =
-        # Winkelgeschwindigkeit) - KEIN simuliertes Sensormodell an einer
-        # konkreten Koerperstelle (eine idealisierte IMU an der Basis; die 29-DOF-Policy erwartet
-        # Basis-Drehrate und Schwerkraftrichtung). Mit realistic_sensors verrauscht (_sensor_model).
+        # Idealisierte IMU an der Basis (Orientierung + Drehrate der freien Basis); die Policy erwartet
+        # Basis-Drehrate und Schwerkraftrichtung.
         imu = Imu()
         imu.header.stamp = now
-        imu.orientation.w = float(quat_m[0])
-        imu.orientation.x = float(quat_m[1])
-        imu.orientation.y = float(quat_m[2])
-        imu.orientation.z = float(quat_m[3])
-        imu.angular_velocity.x = float(omega[0])
-        imu.angular_velocity.y = float(omega[1])
-        imu.angular_velocity.z = float(omega[2])
+        imu.orientation.w, imu.orientation.x, imu.orientation.y, imu.orientation.z = map(float, quat_m)
+        imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z = map(float, omega)
         self.pub_imu.publish(imu)
 
-        # NEU (12.10.2026): Basis-Position (qpos[0:3] = x, y, z der
-        # "Floating Base") - fuer die Positions-Haltung beim Stehen
-        # (siehe steuereinheit_node.py/_apply_position_hold()). Siehe
-        # Kommentar beim Publisher oben: reiner Simulations-Ground-Truth.
         pos = Point()
-        pos.x = float(self.data.qpos[0])
-        pos.y = float(self.data.qpos[1])
-        pos.z = float(self.data.qpos[2])
+        pos.x, pos.y, pos.z = map(float, self.data.qpos[0:3])
         self.pub_base_position.publish(pos)
 
-        # Odometrie (Ground-Truth): Pose im odom-Frame, Twist im Koerper-Frame (ROS-Konvention)
         quat = self.data.qpos[3:7]
         if self.pub_odom is not None:
+            # Ground-Truth: Pose im odom-Frame, Twist im Koerper-Frame (ROS-Konvention)
             od = Odometry()
             od.header.stamp = now
-            od.header.frame_id = self.odom_frame
-            od.child_frame_id = self.base_frame
-            od.pose.pose.position.x = float(self.data.qpos[0])
-            od.pose.pose.position.y = float(self.data.qpos[1])
-            od.pose.pose.position.z = float(self.data.qpos[2])
-            od.pose.pose.orientation.w = float(quat[0])
-            od.pose.pose.orientation.x = float(quat[1])
-            od.pose.pose.orientation.y = float(quat[2])
-            od.pose.pose.orientation.z = float(quat[3])
-            v_body = rotate_inverse(quat, self.data.qvel[0:3])
-            od.twist.twist.linear.x, od.twist.twist.linear.y, od.twist.twist.linear.z = map(float, v_body)
-            od.twist.twist.angular.x = float(self.data.qvel[3])    # MuJoCo: Winkelgeschw. im Koerper-Frame
-            od.twist.twist.angular.y = float(self.data.qvel[4])
-            od.twist.twist.angular.z = float(self.data.qvel[5])
+            od.header.frame_id, od.child_frame_id = self.odom_frame, self.base_frame
+            pp, oo = od.pose.pose.position, od.pose.pose.orientation
+            pp.x, pp.y, pp.z = map(float, self.data.qpos[0:3])
+            oo.w, oo.x, oo.y, oo.z = map(float, quat)
+            tl, ta = od.twist.twist.linear, od.twist.twist.angular
+            tl.x, tl.y, tl.z = map(float, rotate_inverse(quat, self.data.qvel[0:3]))
+            ta.x, ta.y, ta.z = map(float, self.data.qvel[3:6])     # MuJoCo: bereits im Koerper-Frame
             self.pub_odom.publish(od)
         if self.tf_broadcaster is not None:
             t = TransformStamped()
             t.header.stamp = now
-            t.header.frame_id = self.odom_frame
-            t.child_frame_id = self.base_frame
-            t.transform.translation.x = float(self.data.qpos[0])
-            t.transform.translation.y = float(self.data.qpos[1])
-            t.transform.translation.z = float(self.data.qpos[2])
-            t.transform.rotation.w = float(quat[0])
-            t.transform.rotation.x = float(quat[1])
-            t.transform.rotation.y = float(quat[2])
-            t.transform.rotation.z = float(quat[3])
+            t.header.frame_id, t.child_frame_id = self.odom_frame, self.base_frame
+            tt, tr = t.transform.translation, t.transform.rotation
+            tt.x, tt.y, tt.z = map(float, self.data.qpos[0:3])
+            tr.w, tr.x, tr.y, tr.z = map(float, quat)
             self.tf_broadcaster.sendTransform(t)
 
-        if self.lidar_on:
+        if self.lidar is not None:
             self._lidar_count += 1
             if self._lidar_count >= self.lidar_period:
                 self._lidar_count = 0
@@ -528,55 +366,15 @@ class MujocoBridgeNode(Node):
                     self._publish_scan(now, quat)
                 if self.lidar3d_on:
                     self._cloud_count += 1
-                    if self._cloud_count >= 2:                  # 5 Hz
+                    if self._cloud_count >= 2:
                         self._cloud_count = 0
                         self._publish_cloud(now, quat)
 
-    def _sensor_model(self, q, dq, quat, omega):
-        """Latenz (Ringpuffer nach Sim-Zeit) + Rauschen/Bias, wie sie ein echter Sensor liefert."""
-        t = float(self.data.time)
-        self._state_buf.append((t, q, dq, quat, omega))
-        while len(self._state_buf) > 1 and self._state_buf[1][0] <= t - self.sensor_latency:
-            self._state_buf.popleft()
-        _, q, dq, quat, omega = self._state_buf[0]
-        r = self._rng
-        q = q + r.normal(0.0, self.n_q, q.shape)
-        dq = dq + r.normal(0.0, self.n_dq, dq.shape)
-        omega = omega + self.gyro_bias + r.normal(0.0, self.n_gyro, 3)
-        if self.yaw_drift_rate:
-            # Gier-Drift um die Welt-z-Achse (vorne multipliziert): q_drift * q
-            h = 0.5 * self.yaw_drift_rate * t
-            w1, x1, y1, z1 = math.cos(h), 0.0, 0.0, math.sin(h)
-            w2, x2, y2, z2 = quat
-            quat = np.array([w1 * w2 - z1 * z2, w1 * x2 - z1 * y2, w1 * y2 + z1 * x2, w1 * z2 + z1 * w2])
-        if self.n_ori > 0.0:
-            v = r.normal(0.0, self.n_ori, 3)
-            d = np.concatenate([[1.0], 0.5 * v])
-            d /= np.linalg.norm(d)
-            w1, x1, y1, z1 = quat
-            w2, x2, y2, z2 = d
-            quat = np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-                             w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
-        return q, dq, quat, omega
+    def _rauschen(self):
+        return (self._rng, self.n_lidar, self.p_drop) if self.realistic else (None, 0.0, 0.0)
 
     def _publish_cloud(self, now, quat):
-        """3D-Lidar: ein Raycast je Ring x Azimut (mj_multiRay, nur Welt-Geoms der Gruppe 2), Treffer
-        als PointCloud2 im lidar_link-Frame. Mit realistic_sensors Entfernungsrauschen und Ausfaelle."""
-        R = quat_zu_rotmat(quat)
-        origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
-        dirs = self.cloud_dirs_local @ R.T
-        n = len(dirs)
-        dist = np.zeros(n, dtype=np.float64)
-        geomid = np.zeros(n, dtype=np.int32)
-        mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
-                           geomid, dist, None, n, self.lidar_rmax)
-        ok = (geomid >= 0) & (dist > 0.15) & (dist < self.lidar_rmax)
-        if self.realistic:
-            ok &= self._rng.random(n) >= self.p_drop        # Ausfaelle wie beim 2D-Scan (Review U6)
-        d_ok = dist[ok]
-        if self.realistic and len(d_ok):
-            d_ok = d_ok + self._rng.normal(0.0, self.n_lidar, len(d_ok))
-        pts = (self.cloud_dirs_local[ok] * d_ok[:, None]).astype(np.float32)     # im lidar_link-Frame
+        pts = self.lidar.wolke(self.data, quat, *self._rauschen())
         msg = PointCloud2()
         msg.header.stamp = now
         msg.header.frame_id = "lidar_link"
@@ -589,20 +387,8 @@ class MujocoBridgeNode(Node):
         self.pub_cloud.publish(msg)
 
     def _publish_scan(self, now, quat):
-        """2D-Lidar (eine Ebene in der Koerper-xy-Ebene des Sensors) als LaserScan; kein Treffer = inf.
-        Mit realistic_sensors Rauschen und Ausfaelle (inf)."""
-        R = quat_zu_rotmat(quat)
-        origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
-        dirs = self.lidar_dirs_local @ R.T
-        n = self.lidar_n
-        dist = np.zeros(n, dtype=np.float64)
-        geomid = np.zeros(n, dtype=np.int32)
-        mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
-                           geomid, dist, None, n, self.lidar_rmax)
-        ranges = np.where((geomid >= 0) & (dist >= 0) & (dist < self.lidar_rmax), dist, np.inf)
-        if self.realistic:
-            ranges = ranges + self._rng.normal(0.0, self.n_lidar, n)
-            ranges[self._rng.random(n) < self.p_drop] = np.inf     # Ausfaelle (keine Rueckmeldung)
+        ranges = self.lidar.scan(self.data, quat, *self._rauschen())
+        n = self.lidar.n
         sc = LaserScan()
         sc.header.stamp = now
         sc.header.frame_id = "lidar_link"
@@ -611,27 +397,18 @@ class MujocoBridgeNode(Node):
         sc.angle_increment = 2.0 * float(np.pi) / n
         sc.time_increment = 0.0
         sc.scan_time = self.lidar_period * 0.01
-        sc.range_min = 0.15
-        sc.range_max = self.lidar_rmax
+        sc.range_min = R_MIN
+        sc.range_max = self.lidar.rmax
         sc.ranges = ranges.astype(np.float32)   # numpy-Array statt Python-Liste (1.6 ms -> 0.06 ms)
         self.pub_scan.publish(sc)
 
-    def _flush_recording(self):
-        """Schreibt die Posenaufzeichnung (record_path) als .npz; alle 15 s und beim Beenden."""
-        if not self.record_path or not self._rec["t"]:
-            return
-        self._rec_flushed = time.time()
-        np.savez_compressed(self.record_path, wall=np.array(self._rec["wall"]), t=np.array(self._rec["t"]),
-                            qpos=np.array(self._rec["qpos"]))
-
     def destroy_node(self):
-        # Simulationsthread stoppen und abwarten (Review B8): erst danach die Aufnahme schreiben (sonst
-        # Race mit dem noch anhaengenden Thread) und den Knoten zerstoeren (sonst publiziert der Thread
-        # noch auf einen zerstoerten Knoten).
+        # Erst den Simulationsthread anhalten und abwarten (Review B8), dann die Aufnahme schreiben (sonst Race)
+        # und den Knoten zerstoeren (sonst publiziert der Thread noch auf einen zerstoerten Knoten).
         self.is_running = False
         if self.sim_thread.is_alive():
             self.sim_thread.join(timeout=2.0)
-        self._flush_recording()
+        self.aufnahme.schreiben()
         super().destroy_node()
 
 
@@ -644,7 +421,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

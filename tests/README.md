@@ -10,10 +10,10 @@ Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`), Workspace gesourct
 ## Wo liegt was
 | Ort | Art | Inhalt |
 |---|---|---|
-| `src/roboter_steuerung/test/` | Unit (Layer 3) | `test_steuereinheit_logik.py`: Rampe, Kurshaltung akkumuliert nicht (Regression −572 rad/s), cmd-Begrenzung, Watchdog, Positionshaltung, NotAus/Freigabe |
+| `src/roboter_steuerung/test/` | Unit (Layer 3) | `test_kommando_haltung.py`: Rampe, Begrenzung, Kombigrenze, Watchdog, Kurshaltung akkumuliert nicht (Regression −572 rad/s), Positionshaltung; `test_steuereinheit_logik.py`: Knoten mit NotAus/Freigabe, Watchdog-Meldung, Befehl ohne Freigabe |
 | `src/roboter_sensorik/test/` | Unit (Sensorvorverarbeitung) | `test_punktwolke_zu_scan.py`: Boden raus, niedrige Hindernisse drin, Neigungsausgleich, Ausdünnung |
 | `src/roboter_task_planning/test/` | Unit (Layer 1) | `test_layer1.py`: Weltwissen, PDDL, Planer, Dispatcher, Neuplanung (braucht Fast Downward) |
-| `tests/simulation/` | Simulation + Controller ohne ROS | `test_closed_loop.py` (Stehen, Gehen, Kurshaltung, Robustheit gegen Verzögerung/Jitter, Welten laden), `test_beinodometrie.py` (< 2 % der Strecke), `test_konfiguration.py` (Parameterdateien nur mit deklarierten Parametern, Policy passt zum Modell, Takt), Helfer `sim_helpers.py` |
+| `tests/simulation/` | Simulation + Controller ohne ROS | `test_closed_loop.py` (Stehen, Gehen, Kurshaltung, Robustheit gegen Verzögerung/Jitter, Welten laden), `test_beinodometrie.py` (< 2 % der Strecke), `test_konfiguration.py` (Parameterdateien nur mit deklarierten Parametern, Policy passt zum Modell, Takt), `test_sim_bausteine.py` (Lidar, Sensormodell, Posenaufnahme), Helfer `sim_helpers.py` |
 | `tests/system/` | System (`ros2 launch`) | `integration_ros.py` (Pipeline: Startrennen, Freigabe, Gehen, Begrenzung, NotAus, Odometrie), `integration_watchdog.py`, `integration_mission.py` (Layer 1–4), `stop_all.sh` |
 | `experimente/` | Experiment + Regression | `arm_feasibility.py` (Greifen im Stehen, Optionen `--obs-mask`, `--waist`, `--empfohlen`, `--phases`), `test_arm_feasibility.py` sichert den Betriebspunkt (0,30 m, ≤ 1 kg je Hand) |
 
