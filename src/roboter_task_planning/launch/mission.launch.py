@@ -25,6 +25,8 @@ def generate_launch_description():
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
         DeclareLaunchArgument("headless", default_value="false",
                               description="MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher)"),
+        DeclareLaunchArgument("lidar", default_value="true",
+                              description="simuliertes Lidar (/scan) in der Simulation"),
         DeclareLaunchArgument("slam", default_value="false",
                               description="slam_toolbox statt statischem map->odom (mit nav2:=true)"),
         DeclareLaunchArgument("cmd_vel_timeout_s", default_value="1.0",
@@ -40,6 +42,7 @@ def generate_launch_description():
         launch_arguments={"config_file": LaunchConfiguration("config_file"),
                           "headless": LaunchConfiguration("headless"),
                           "scene_file": LaunchConfiguration("scene_file"),
+                          "lidar": LaunchConfiguration("lidar"),
                           "cmd_vel_timeout_s": LaunchConfiguration("cmd_vel_timeout_s")}.items())
     balance = Node(package="roboter_steuerung", executable="balance_dienst_node", output="screen")
     double = Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen",

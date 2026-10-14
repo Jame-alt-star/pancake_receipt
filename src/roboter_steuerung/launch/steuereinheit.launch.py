@@ -49,6 +49,9 @@ def generate_launch_description():
     timeout_arg = DeclareLaunchArgument(
         "cmd_vel_timeout_s", default_value="0.0",
         description="cmd_vel-Watchdog [s]: ohne neue Nachricht wird das Kommando auf 0 gesetzt (0 = aus).")
+    lidar_arg = DeclareLaunchArgument(
+        "lidar", default_value="false",
+        description="true = simuliertes 2D-Lidar (/scan) in mujoco_node (fuer Nav2/SLAM).")
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
@@ -60,7 +63,8 @@ def generate_launch_description():
         executable="mujoco_node",
         name="mujoco_bridge_node",
         output="screen",
-        parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene}],
+        parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene,
+                     "lidar": LaunchConfiguration("lidar")}],
     )
 
     steuereinheit_node = Node(
@@ -75,6 +79,7 @@ def generate_launch_description():
     return LaunchDescription([
         config_file_arg,
         headless_arg,
+        lidar_arg,
         scene_arg,
         timeout_arg,
         mujoco_node,

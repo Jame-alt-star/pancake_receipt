@@ -170,7 +170,7 @@ class MujocoBridgeNode(Node):
         # NEU (13.10.2026): simuliertes 2D-Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2) fuer
         # Nav2 (Costmaps) und SLAM. Frame lidar_link an base_link (0,0,lidar_z), Scan in der
         # Koerperebene (kippt mit dem Roboter wie ein echter Torso-Lidar).
-        self.declare_parameter("lidar", True)
+        self.declare_parameter("lidar", False)   # an per Launch-Argument lidar:=true (Nav2/SLAM)
         self.declare_parameter("lidar_rate_hz", 10.0)
         self.declare_parameter("lidar_rays", 360)
         self.declare_parameter("lidar_range_max", 10.0)
@@ -458,7 +458,7 @@ class MujocoBridgeNode(Node):
         sc.scan_time = self.lidar_period * 0.01
         sc.range_min = 0.15
         sc.range_max = self.lidar_rmax
-        sc.ranges = [float(r) for r in ranges]
+        sc.ranges = ranges.astype(np.float32)   # numpy-Array statt Python-Liste (1.6 ms -> 0.06 ms)
         self.pub_scan.publish(sc)
 
     def destroy_node(self):

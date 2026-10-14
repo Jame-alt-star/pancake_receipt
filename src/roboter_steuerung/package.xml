@@ -23,7 +23,7 @@
        <depend>/<exec_depend> deklariert werden, ohne "rosdep install" zu
        brechen. Muss separat installiert sein, genau wie "mujoco"/"torch"
        (siehe r1_bringup/package.xml):
-           pip install onnxruntime --break-system-packages -->
+           pip install onnxruntime (mit Option break-system-packages unter Ubuntu 24.04) -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
