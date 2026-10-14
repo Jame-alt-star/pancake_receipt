@@ -7,6 +7,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoSHistoryPolicy
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 
 from r1_bringup.bridges.mujoco_bridge import MujocoBridge
@@ -235,6 +236,11 @@ class SteuereinheitNode(Node):
         # echter Hardware braeuchte es Odometrie/Lokalisierung.
         self.position_hold_aktiv = bool(self.config.get("position_hold", False))
         self.pos_hold_corr = np.zeros(2, dtype=np.float32)
+        # NEU (14.10.2026): Position fuer die Positionshaltung aus /odom (Ground-Truth oder
+        # Beinodometrie, je nach odom_quelle) statt direkt aus /base_position.
+        self._odom_xyz = None
+        if self.position_hold_aktiv:
+            self.create_subscription(Odometry, "/odom", self._odom_callback, 10)
 
         # NEU: /cmd_vel-Subscriber (Standard-ROS2-Konvention, geometry_msgs/
         # Twist) - ersetzt das bisherige "self.cmd wird nur einmal beim
@@ -334,6 +340,10 @@ class SteuereinheitNode(Node):
         if not self.bewegung_freigegeben:
             self.target_yaw = None
         self.bewegung_freigegeben = True
+
+    def _odom_callback(self, msg: Odometry):
+        p = msg.pose.pose.position
+        self._odom_xyz = np.array([p.x, p.y, p.z], dtype=np.float32)
 
     def _not_aus_callback(self, msg: Bool):
         # Setzt nur das Flag - die eigentliche Reaktion (Zustandswechsel
@@ -518,8 +528,8 @@ class SteuereinheitNode(Node):
         # oder eine andere Policy), wird aber aktuell NICHT aufgerufen.
         if self.position_hold_aktiv:
             from roboter_steuerung.states.balancieren_state import BalancierenState
-            if isinstance(self.state, BalancierenState):
-                self._apply_position_hold(self.bridge.read_base_position(), quat)
+            if isinstance(self.state, BalancierenState) and self._odom_xyz is not None:
+                self._apply_position_hold(self._odom_xyz, quat)
             else:
                 self.target_position = None
                 self.pos_hold_corr[:] = 0.0

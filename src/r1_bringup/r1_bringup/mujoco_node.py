@@ -1,3 +1,4 @@
+import math
 import os
 import threading
 import time
@@ -171,6 +172,7 @@ class MujocoBridgeNode(Node):
         self.declare_parameter("lidar_noise_m", 0.02)
         self.declare_parameter("lidar_dropout", 0.01)
         self.declare_parameter("noise_seed", 0)
+        self.declare_parameter("yaw_drift_deg_per_min", 0.5)   # langsame Gier-Drift der IMU-Orientierung
         self.realistic = bool(self.get_parameter("realistic_sensors").value)
         self._rng = np.random.default_rng(int(self.get_parameter("noise_seed").value))
         gp = lambda n: float(self.get_parameter(n).value)
@@ -179,6 +181,7 @@ class MujocoBridgeNode(Node):
         self.gyro_bias = self._rng.normal(0.0, gp("gyro_bias"), 3) if self.realistic else np.zeros(3)
         self.sensor_latency = gp("sensor_latency_ms") / 1000.0 if self.realistic else 0.0
         self.command_latency = gp("command_latency_ms") / 1000.0 if self.realistic else 0.0
+        self.yaw_drift_rate = np.radians(gp("yaw_drift_deg_per_min")) / 60.0 if self.realistic else 0.0
         self._state_buf = deque()      # (sim_time, q, dq, quat, omega)
         self._cmd_buf = deque()        # (sim_time_ankunft, cmd)
 
@@ -218,7 +221,7 @@ class MujocoBridgeNode(Node):
         self.lidar_dirs_local = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
         if self.lidar_on:
             self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
-            if self.publish_tf:
+            if True:   # Lidar-Montage immer publizieren (auch wenn odom->base_link vom Schaetzer kommt)
                 st = TransformStamped()
                 st.header.stamp = self.get_clock().now().to_msg()
                 st.header.frame_id = self.base_frame
@@ -486,6 +489,12 @@ class MujocoBridgeNode(Node):
         q = q + r.normal(0.0, self.n_q, q.shape)
         dq = dq + r.normal(0.0, self.n_dq, dq.shape)
         omega = omega + self.gyro_bias + r.normal(0.0, self.n_gyro, 3)
+        if self.yaw_drift_rate:
+            # Gier-Drift um die Welt-z-Achse (vorne multipliziert): q_drift * q
+            h = 0.5 * self.yaw_drift_rate * t
+            w1, x1, y1, z1 = math.cos(h), 0.0, 0.0, math.sin(h)
+            w2, x2, y2, z2 = quat
+            quat = np.array([w1 * w2 - z1 * z2, w1 * x2 - z1 * y2, w1 * y2 + z1 * x2, w1 * z2 + z1 * w2])
         if self.n_ori > 0.0:
             v = r.normal(0.0, self.n_ori, 3)
             d = np.concatenate([[1.0], 0.5 * v])

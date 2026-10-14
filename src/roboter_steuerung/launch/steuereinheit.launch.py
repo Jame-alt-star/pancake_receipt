@@ -1,6 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -55,6 +56,10 @@ def generate_launch_description():
     realistic_arg = DeclareLaunchArgument(
         "realistic_sensors", default_value="false",
         description="true = Sensorrauschen, Gyro-Bias, Latenz und Lidar-Ausfaelle statt perfekter Simulationswerte.")
+    odom_arg = DeclareLaunchArgument(
+        "odom_quelle", default_value="ground_truth",
+        description="ground_truth (perfekte Simulationswerte) oder beinodometrie (Schaetzer aus Gelenken + IMU)")
+    odom_gt = PythonExpression(["'", LaunchConfiguration("odom_quelle"), "' == 'ground_truth'"])
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
@@ -68,7 +73,8 @@ def generate_launch_description():
         output="screen",
         parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene,
                      "lidar": LaunchConfiguration("lidar"),
-                     "realistic_sensors": LaunchConfiguration("realistic_sensors")}],
+                     "realistic_sensors": LaunchConfiguration("realistic_sensors"),
+                     "publish_odom": odom_gt, "publish_tf": odom_gt}],
     )
 
     steuereinheit_node = Node(
@@ -80,13 +86,24 @@ def generate_launch_description():
                      "cmd_vel_timeout_s": LaunchConfiguration("cmd_vel_timeout_s")}],
     )
 
+    beinodometrie = Node(
+        package="roboter_steuerung",
+        executable="beinodometrie_node",
+        name="beinodometrie_node",
+        output="screen",
+        parameters=[{"config_file": config_file}],
+        condition=IfCondition(PythonExpression(["'", LaunchConfiguration("odom_quelle"), "' == 'beinodometrie'"])),
+    )
+
     return LaunchDescription([
         config_file_arg,
         headless_arg,
         lidar_arg,
         realistic_arg,
+        odom_arg,
         scene_arg,
         timeout_arg,
         mujoco_node,
         steuereinheit_node,
+        beinodometrie,
     ])

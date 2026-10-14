@@ -33,6 +33,12 @@ ros2 topic pub --once /not_aus std_msgs/msg/Bool "{data: true}"   # NotAus
 Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml` (Ziele `besucht`,
 `balanciert`, `gewartet`, `am_ort`).
 
+## Realismus-Schalter
+- `realistic_sensors:=true`: Sensorrauschen, Gyro-Bias und -Drift, Latenz, Lidar-Ausfälle statt idealer Werte.
+- `odom_quelle:=beinodometrie`: Position aus Beinodometrie (Gelenke + IMU) statt Ground-Truth; mit
+  `slam:=true` korrigiert SLAM die Drift über `map→odom`. Das ist die Konfiguration, die der echten
+  Hardware am nächsten kommt.
+
 ## Voraussetzungen
 ROS 2 Jazzy, `ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`, `ros-jazzy-slam-toolbox`;
 Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter `~/tools/downward`
@@ -46,6 +52,7 @@ Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter
 | `python3 -m pytest src/roboter_task_planning/test/test_layer1.py` | Planer/Dispatcher-Kern (braucht Fast Downward) |
 | `python3 tests/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
 | `python3 tests/integration_watchdog.py` | `cmd_vel`-Watchdog |
+| `... --realistisch --beinodometrie` | dieselben Integrationstests mit realistischer Sensorik und geschätzter Position |
 | `python3 tests/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte |
 
 Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist eine Kopie).
@@ -57,8 +64,8 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
 - **Stehen:** Drift < 1 cm in 120 s (Kurshaltung auch in Bereitschaft), Positionshaltung gegen Störungen.
 - **Greifen:** gemessener Betriebspunkt (Arme per IK, Policy „blind“ für Arme, Taille −0,15 rad,
   0,30 m Reichweite, ≤ 1 kg je Hand); `Manipulieren`-Zustand und Hand-Modell sind **nicht** umgesetzt.
-- **Ground-Truth:** `/odom`, `/base_position` stammen aus der Simulation; auf echter Hardware braucht
-  es Odometrie/Lokalisierung. Lidar ist ein Raycast-Modell (2D, 360°, 10 Hz).
+- **Position:** standardmäßig Ground-Truth aus der Simulation; mit `odom_quelle:=beinodometrie` geschätzt
+  (< 1 % der Strecke). Lidar ist ein Raycast-Modell (2D, 360°, 10 Hz), optional mit Rauschen/Ausfällen.
 - **Nicht umgesetzt:** Zustände AkkuSchwach/Laden (keine echten Batteriedaten), gelernte Greif-Policy,
   Wahrnehmung per Kamera, echte Hardware.
 

@@ -122,6 +122,8 @@ def launch(logfile):
         nav += ["slam:=true"]
     if "--realistisch" in sys.argv:
         nav += ["realistic_sensors:=true"]
+    if "--beinodometrie" in sys.argv:
+        nav += ["odom_quelle:=beinodometrie"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
         nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",

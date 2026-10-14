@@ -7,14 +7,15 @@ Regelschleife, nur ueber Topics:
     und melden, sobald er stabil steht (Neigung <= toleranz_grad UND Basisgeschwindigkeit klein
     fuer mind. STABIL_ZEIT_S).
 
-Hinweis: Geschwindigkeit stammt aus /base_position (Simulations-Ground-Truth).
+Hinweis: Geschwindigkeit stammt aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
 """
 import math
 import threading
 import time
 
 import rclpy
-from geometry_msgs.msg import Point, Twist
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -36,7 +37,7 @@ def neigung_grad(qw, qx, qy, qz) -> float:
 
 class _Tap:
     """Abo auf Abruf: abonniert nur zwischen acquire() und release(). Spart CPU, weil die 100-Hz-Topics
-    (/imu, /base_position) im Leerlauf nicht dauerhaft in Python deserialisiert werden muessen."""
+    (/imu, /odom) im Leerlauf nicht dauerhaft in Python deserialisiert werden muessen."""
 
     def __init__(self, node, msg_type, topic, callback, group):
         self.node, self.msg_type, self.topic, self.cb, self.group = node, msg_type, topic, callback, group
@@ -69,7 +70,7 @@ class BalanceDienstNode(Node):
         self._hist = []                      # (t, x, y) der letzten ~1 s
         cb = ReentrantCallbackGroup()
         self._tap_imu = _Tap(self, Imu, "/imu", self._imu, cb)
-        self._tap_pos = _Tap(self, Point, "/base_position", self._pos, cb)
+        self._tap_pos = _Tap(self, Odometry, "/odom", self._pos, cb)
         self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
         self.create_service(GleichgewichtService, "/gleichgewicht", self._service, callback_group=cb)
         self.action = ActionServer(
@@ -83,10 +84,11 @@ class BalanceDienstNode(Node):
         with self._lock:
             self._quat = (o.w, o.x, o.y, o.z)
 
-    def _pos(self, m: Point):
+    def _pos(self, m: Odometry):
         now = time.monotonic()
+        p = m.pose.pose.position
         with self._lock:
-            self._hist.append((now, m.x, m.y))
+            self._hist.append((now, p.x, p.y))
             self._hist = [h for h in self._hist if now - h[0] <= 1.0]
 
     def _tilt(self):

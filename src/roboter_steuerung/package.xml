@@ -15,6 +15,8 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>builtin_interfaces</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2_ros</depend>
 
   <!-- HINWEIS: "onnxruntime" (Python-Paket, von
        control/rl_locomotion_controller_29dof.py fuer die ONNX-Policy

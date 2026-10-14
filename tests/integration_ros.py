@@ -81,6 +81,7 @@ def main():
     ap.add_argument("--config", default="g1_policy_29dof.yaml")
     ap.add_argument("--keep-log", default=None)
     ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
+    ap.add_argument("--beinodometrie", action="store_true", help="odom_quelle:=beinodometrie (Schaetzer statt Ground-Truth)")
     a = ap.parse_args()
     has_clip = "29dof" in a.config
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
@@ -91,7 +92,8 @@ def main():
     os.makedirs(logdir, exist_ok=True)
     logfile = os.path.join(logdir, "launch.log")
     proc = subprocess.Popen(["ros2", "launch", "roboter_steuerung", "steuereinheit.launch.py",
-                             f"config_file:={a.config}"] + (["realistic_sensors:=true"] if a.realistisch else []), stdout=open(logfile, "w"),
+                             f"config_file:={a.config}"] + (["realistic_sensors:=true"] if a.realistisch else [])
+                            + (["odom_quelle:=beinodometrie"] if a.beinodometrie else []), stdout=open(logfile, "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init()
     pr = Probe()
@@ -166,6 +168,11 @@ def main():
         pr.twist(0, 0, 0); pr.spin(8); px = pr.p[0]; pr.spin(4)
         check("S7 steht nach Stopp", pr.p[2] > 0.7 and abs(pr.p[0] - px) < tol, f"z={pr.p[2]:.3f}")
 
+        if pr.odom is not None:
+            o = pr.odom.pose.pose.position
+            err = float(np.hypot(o.x - pr.p[0], o.y - pr.p[1]))
+            check("S8 /odom stimmt mit wahrer Position ueberein (< 0.5 m nach allen Szenarien, ~3 % der Strecke)", err < 0.5,
+                  f"Fehler={err*100:.1f} cm")
         log = read_log(logfile)
         check("S8 keine MuJoCo-Instabilitaetswarnung", "simulation is unstable" not in log)
         check("S8 keine Python-Tracebacks", "Traceback" not in log)

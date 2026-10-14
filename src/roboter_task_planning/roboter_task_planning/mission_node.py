@@ -11,7 +11,7 @@ import json
 import threading
 
 import rclpy
-from geometry_msgs.msg import Point
+from nav_msgs.msg import Odometry
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -55,15 +55,15 @@ class MissionNode(Node):
 
     # ---- Eingaenge ----
     def _locate(self, timeout_s: float = 1.5):
-        """Aktuelle Roboterposition auf Abruf (einmaliges Abo; /base_position laeuft mit 100 Hz, ein
+        """Aktuelle Roboterposition auf Abruf (einmaliges Abo auf /odom; laeuft mit 100 Hz, ein
         Dauerabo kostete im Leerlauf ~30 % CPU)."""
         got = {}
         ev = threading.Event()
 
-        def cb(m: Point):
-            got["p"] = (m.x, m.y)
+        def cb(m: Odometry):
+            got["p"] = (m.pose.pose.position.x, m.pose.pose.position.y)
             ev.set()
-        sub = self.create_subscription(Point, "/base_position", cb, 10, callback_group=self._cb)
+        sub = self.create_subscription(Odometry, "/odom", cb, 10, callback_group=self._cb)
         try:
             ev.wait(timeout_s)
         finally:

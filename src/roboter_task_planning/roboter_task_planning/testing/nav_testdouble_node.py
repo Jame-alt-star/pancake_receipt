@@ -8,12 +8,12 @@ import math
 import time
 
 import rclpy
-from geometry_msgs.msg import Point, Twist
+from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from sensor_msgs.msg import Imu
 
 from roboter_interfaces.action import GehAktion
 
@@ -28,17 +28,16 @@ class NavTestdouble(Node):
         self.pos = None
         self.yaw = None
         cb = ReentrantCallbackGroup()
-        self.create_subscription(Point, "/base_position", lambda m: setattr(self, "pos", (m.x, m.y)), 10,
-                                 callback_group=cb)
-        self.create_subscription(Imu, "/imu", self._imu, 10, callback_group=cb)
+        self.create_subscription(Odometry, "/odom", self._odom, 10, callback_group=cb)
         self.pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self.server = ActionServer(self, GehAktion, "/geh_aktion", execute_callback=self._execute,
                                    goal_callback=lambda g: GoalResponse.ACCEPT,
                                    cancel_callback=lambda g: CancelResponse.ACCEPT, callback_group=cb)
         self.get_logger().info("Nav-TESTDOUBLE aktiv (ersetzt Nav2 nur fuer Tests).")
 
-    def _imu(self, m):
-        o = m.orientation
+    def _odom(self, m):
+        self.pos = (m.pose.pose.position.x, m.pose.pose.position.y)
+        o = m.pose.pose.orientation
         self.yaw = math.atan2(2 * (o.w * o.z + o.x * o.y), 1 - 2 * (o.y * o.y + o.z * o.z))
 
     def _cmd(self, vx=0.0, wz=0.0):

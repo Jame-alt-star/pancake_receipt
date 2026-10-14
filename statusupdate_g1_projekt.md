@@ -289,3 +289,16 @@ Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des 
 **Bekannte Grenzen / offen:** Manipulation (Zustand `Manipulieren`, Hand-Modell, Wahrnehmung) nur als Machbarkeitsmessung; AkkuSchwach/Laden fehlen (keine Batteriedaten); Nav2-Variante des Kollegen steht aus; keine echte Hardware (Ground-Truth-Odometrie, Raycast-Lidar); WSL2 mit ~2,8 GB RAM: Nav2/SLAM nur headless; vereinzelt SIGKILL (Exit 137) durch Speicherdruck bei langen Testserien.
 
 **Rücksprungpunkte (Git-Tags):** `stand-2026-10-13-nav2-grundlage`, `v0.8-testwelt-nav2-lidar`, `v0.9-patrouille`, `v0.10-slam`, `v1.0`.
+
+## Realistische Sensorik und Zustandsschätzer (14.10.2026) – v1.1
+
+**Ziel:** Die Simulation war „zu perfekt“ (Ground-Truth-Position, ideale Sensoren). Damit der spätere Wechsel auf echte Hardware weniger Überraschungen bringt, laufen dieselben Tests jetzt optional mit realistischer Sensorik und geschätzter Position.
+
+**Schalter `realistic_sensors:=true`** (`mujoco_node`, durchgereicht in `steuereinheit.launch`/`mission.launch`): Gelenkrauschen (0,001 rad, 0,02 rad/s), IMU-Rauschen (0,01 rad/s) mit konstantem Gyro-Bias (Std. 0,005 rad/s), Orientierungsrauschen (0,005 rad), Gier-Drift 0,5 °/min, Latenz 10 ms auf Zuständen und 10 ms auf Kommandos, Lidar-Rauschen 2 cm und 1 % Ausfälle. Gelenkmomente sind im Modell bereits begrenzt (5–139 Nm). Gemessen (synchroner Kreis): Policy bleibt bis zum 10-Fachen dieses Rauschens plus 20 ms Latenz stabil (36 Läufe ohne Sturz).
+
+**Schalter `odom_quelle:=beinodometrie`:** neuer Knoten `beinodometrie_node` (Klasse `zustandsschaetzung/beinodometrie.py`, ROS-frei) schätzt die Basisposition aus Gelenkwinkeln und IMU (Standbein steht still → Basis bewegt sich gegenläufig zur Fußbewegung; Vorwärtskinematik über das MuJoCo-Modell, auf Hardware gleich nutzbar). `mujoco_node` publiziert dann kein `/odom`/TF mehr. Alle Positionsnutzer (Positionshaltung, Balance-Dienst, Missionsknoten, Testdouble) lesen jetzt `/odom` statt `/base_position`; `/base_position` bleibt nur als Messwert für Tests.
+- Genauigkeit (synchroner Kreis, mit Rauschen): Geradeaus 14,5 m → 11 cm, Gehen+Drehen 24,5 m → 8 cm (< 1 %). Entscheidend waren 100 Hz Aktualisierung, 3 mm Hysterese beim Standbeinwechsel und das Verbuchen der Bewegung mit dem alten Standfuß vor dem Wechsel (vorher 16 % Fehler).
+
+**Tests:** `integration_ros.py --realistisch --beinodometrie` 29/29 (Schätzfehler nach allen Szenarien inkl. schneller Spiralen 24,8 cm); `integration_mission.py --welt --realistisch` 14/14; `integration_mission.py --slam --realistisch --beinodometrie` 22/22 (Endabstand zu b 0,16 m, Karte vollständig); `tests/test_beinodometrie.py` (Fehler < 2 % der Strecke).
+
+**Was weiterhin fehlt gegenüber echter Hardware:** echte Reibung/Motorverhalten, echte Lidar-Physik (3D-Punktwolke, Reflexionen), echte Unitree-SDK-Bridge, Sicherheitskette beim Hochfahren. Beinodometrie nimmt an, dass der Standfuß nicht rutscht.
