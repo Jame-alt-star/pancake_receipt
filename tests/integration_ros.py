@@ -34,6 +34,7 @@ class Probe(Node):
         q = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.RELIABLE,
                        durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.not_aus = self.create_publisher(Bool, "/not_aus", q)
+        self.freigabe_pub = self.create_publisher(Bool, "/freigabe", 10)
         self.p = None; self.quat = None; self.dq = None
         self.odom = None; self.tf_ok = False
         self.create_subscription(Odometry, "/odom", lambda m: setattr(self, "odom", m), 10)
@@ -57,6 +58,16 @@ class Probe(Node):
     def yaw(self):
         w, x, y, z = self.quat
         return float(np.degrees(np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))))
+
+    def freigabe(self, frei=True):
+        self.freigabe_pub.publish(Bool(data=bool(frei)))
+
+    def spin_mit_cmd(self, secs, vx):
+        """spin, dabei /cmd_vel mit 10 Hz senden (wie Nav2/Joystick)."""
+        end = time.time() + secs
+        while time.time() < end:
+            self.twist(vx)
+            self.spin(0.1)
 
     def twist(self, vx=0.0, vy=0.0, wz=0.0):
         m = Twist(); m.linear.x = float(vx); m.linear.y = float(vy); m.angular.z = float(wz)
@@ -120,7 +131,9 @@ def main():
             check("S1b Frames odom/base_link", pr.odom.header.frame_id == "odom" and pr.odom.child_frame_id == "base_link")
 
         print("== S2 Freigabe + Stehen")
-        pr.twist(0, 0, 0); pr.spin(8)
+        pr.twist(0.4); pr.spin(4)
+        check("S2a /cmd_vel ohne Freigabe bewegt den Roboter nicht", pr.p[2] > 0.7 and "Bewegung freigegeben" not in read_log(logfile))
+        pr.twist(0, 0, 0); pr.freigabe(True); pr.spin(8)
         check("S2 steht nach Freigabe", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         check("S2 Zustand Balancieren", "Bereitschaft -> Balancieren" in read_log(logfile))
 
@@ -156,13 +169,19 @@ def main():
             check("S5 Beine still (|dq| < 0.05 rad/s)", pr.dq is not None and pr.dq < 0.05, f"dq={pr.dq:.4f}")
         check("S5 NOT-AUS im Log", "NOT-AUS ausgeloest" in read_log(logfile))
 
-        print("== S6 Entwarnung ohne Freigabe -> bleibt stehen")
-        pr.not_aus.publish(Bool(data=False)); px = pr.p[0]; pr.spin(6)
-        check("S6 laeuft nicht von selbst an", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
+        print("== S5b /cmd_vel und Freigabe-Versuch WAEHREND NotAus (Review B1)")
+        pr.freigabe(True)                          # muss abgelehnt werden
+        px = pr.p[0]; pr.spin_mit_cmd(3, 0.4)      # automatische Quelle sendet weiter
+        check("S5b Freigabe waehrend NOT-AUS abgelehnt", "abgelehnt: NOT-AUS ist aktiv" in read_log(logfile))
+        check("S5b steht trotz /cmd_vel", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
+
+        print("== S6 Entwarnung ohne Freigabe, /cmd_vel laeuft weiter -> bleibt stehen")
+        pr.not_aus.publish(Bool(data=False)); px = pr.p[0]; pr.spin_mit_cmd(6, 0.4)
+        check("S6 laeuft trotz /cmd_vel nicht von selbst an", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
         check("S6 wartet auf Freigabe", "NOT-AUS aufgehoben" in read_log(logfile))
 
         print("== S7 neue Freigabe -> Gehen, dann Stopp")
-        pp = pr.p; pr.twist(0.4); pr.spin(8)
+        pp = pr.p; pr.freigabe(True); pr.spin_mit_cmd(8, 0.4)
         dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))   # Richtung egal (S4 hat gedreht)
         check("S7 geht wieder (>1.5 m)", dist > 1.5, f"dist={dist:.2f}")
         pr.twist(0, 0, 0); pr.spin(8); px = pr.p[0]; pr.spin(4)

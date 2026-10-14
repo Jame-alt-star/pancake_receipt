@@ -83,7 +83,7 @@ num_obs: 480
 # 12-DOF-Pfad nur Anfangswert, wird per /cmd_vel ueberschrieben (siehe
 # steuereinheit_node.py). Liegt innerhalb der Trainings-Range (siehe
 # cmd_training_range unten).
-cmd_init: [0.5, 0, 0]
+cmd_init: [0.0, 0.0, 0.0]   # wird seit 14.10.2026 nicht mehr verwendet (Start immer 0, siehe steuereinheit_node)
 
 # Trainings-Wertebereich der Policy (aus deploy.yaml). steuereinheit_node.py
 # begrenzt self.cmd (nach Rampe + Kurshaltung) per np.clip auf diese

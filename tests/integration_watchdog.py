@@ -5,6 +5,7 @@ import os, signal, subprocess, sys, tempfile, time
 import numpy as np, rclpy
 from geometry_msgs.msg import Point, Twist
 from rclpy.node import Node
+from std_msgs.msg import Bool
 
 R = []
 
@@ -19,6 +20,7 @@ def main():
                              "config_file:=g1_policy_29dof.yaml", "headless:=true", "cmd_vel_timeout_s:=1.0"],
                             stdout=open(log, "w"), stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init(); n = Node("wd_probe"); pub = n.create_publisher(Twist, "/cmd_vel", 10); s = {}
+    fpub = n.create_publisher(Bool, "/freigabe", 10)
     n.create_subscription(Point, "/base_position", lambda m: s.__setitem__("p", (m.x, m.y, m.z)), 10)
 
     def spin(t):
@@ -28,7 +30,8 @@ def main():
     try:
         while "p" not in s: spin(0.2)
         spin(25)
-        m = Twist(); pub.publish(m); spin(4)                      # Freigabe
+        m = Twist(); pub.publish(m)
+        fpub.publish(Bool(data=True)); spin(4)                    # Freigabe ueber /freigabe
         p0 = s["p"]; m.linear.x = 0.4; pub.publish(m)             # EIN Kommando, danach nichts mehr
         spin(2.5); pa = s["p"]
         spin(3.0); pb = s["p"]

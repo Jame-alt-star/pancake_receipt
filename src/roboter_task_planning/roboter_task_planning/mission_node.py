@@ -38,6 +38,9 @@ class MissionNode(Node):
         status_qos = QoSProfile(depth=50, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                                 reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
         self.pub_status = self.create_publisher(String, "/mission/status", status_qos)
+        # Bewegungsfreigabe fuer Layer 3: der Start einer Mission ist die bewusste Bedieneraktion
+        # (seit 14.10.2026 gibt /cmd_vel nicht mehr frei, siehe steuereinheit_node).
+        self.pub_freigabe = self.create_publisher(Bool, "/freigabe", 10)
         self._cb = cb
         self.create_subscription(Bool, "/not_aus", self._not_aus, latched, callback_group=cb)
         self.create_service(Trigger, "/mission/start", self._start, callback_group=cb)
@@ -97,6 +100,7 @@ class MissionNode(Node):
         except Exception as e:      # Datei fehlt, YAML/Validierung
             return False, f"Mission nicht ladbar: {e}"
         self._abort.clear()
+        self.pub_freigabe.publish(Bool(data=True))
         ex = MissionExecutor(FastDownwardPlanner(), self.bridges, locator=self._locate,
                              log=lambda m: self.get_logger().info(m), status_cb=self._publish)
         self._thread = threading.Thread(target=ex.run, args=(mission, self._abort), daemon=True)

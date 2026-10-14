@@ -166,7 +166,10 @@ class SteuereinheitNode(Node):
         # lauter Nullen) startet. NEU (12.10.2026): cmd_target ist das
         # angeforderte Ziel, cmd der aktuell gerampte+korrigierte Wert -
         # beide starten gleich, es gibt also am Anfang nichts auszurampen.
-        self.cmd_target = np.array(self.config.get("cmd_init", [0.5, 0.0, 0.0]), dtype=np.float32)
+        # GEAENDERT (14.10.2026, Review L1): Startwert immer 0. Ein cmd_init != 0 wurde
+        # nach der Freigabe als Sprung an die Policy gegeben (die Rampe lief vorher schon
+        # in Bereitschaft hoch); cmd_init aus der YAML wird nicht mehr verwendet.
+        self.cmd_target = np.zeros(3, dtype=np.float32)
         # BUGFIX (13.10.2026): getrennter Rampen-Zustand. Vorher lief die
         # Rampe direkt auf self.cmd, und _apply_heading_hold() addierte
         # seine Korrektur (bis +-0.3) JEDEN Takt auf self.cmd[2], waehrend
@@ -217,6 +220,16 @@ class SteuereinheitNode(Node):
         # nur noch ein Platzhalter-Anfangswert, der erst nach der
         # Freigabe tatsaechlich wirksam werden kann.
         self.bewegung_freigegeben = False
+        # GEAENDERT (14.10.2026, Review B1/L3): Freigabe ueber einen EIGENEN Kanal /freigabe
+        # (std_msgs/Bool, true = freigeben, false = Freigabe entziehen) statt durch irgendein
+        # /cmd_vel. Vorher setzte JEDE /cmd_vel-Nachricht die Freigabe - auch automatische
+        # Quellen (Nav2-Glaetter beim Abbremsen, collision_monitor, balance_dienst_node), und
+        # das sogar waehrend NotAus: nach der Entwarnung lief der Roboter ohne bewusste
+        # Freigabe wieder an. Waehrend NotAus wird eine Freigabe immer ignoriert.
+        # freigabe_per_cmd_vel=true stellt das alte Verhalten fuer Handbetrieb wieder her
+        # (auch dann nie waehrend NotAus).
+        self.declare_parameter("freigabe_per_cmd_vel", False)
+        self.freigabe_per_cmd_vel = bool(self.get_parameter("freigabe_per_cmd_vel").value)
 
         # NEU (12.10.2026): Soll-Ausrichtung/Soll-Position fuer die
         # Haltungs-Korrekturen (_apply_heading_hold()/
@@ -257,6 +270,7 @@ class SteuereinheitNode(Node):
         self.sub_cmd_vel = self.create_subscription(
             Twist, "/cmd_vel", self._cmd_vel_callback, 10
         )
+        self.sub_freigabe = self.create_subscription(Bool, "/freigabe", self._freigabe_callback, 10)
 
         # NEU (12.10.2026): /balance_mode-Publisher - teilt mujoco_node.py
         # mit, ob gerade der Stehen-Zustand (BalancierenState) aktiv ist.
@@ -310,36 +324,37 @@ class SteuereinheitNode(Node):
         self.get_logger().info("Steuereinheit erfolgreich gestartet (50 Hz Regelkreis aktiv).")
 
     def _cmd_vel_callback(self, msg: Twist):
-        # NEU (12.10.2026): setzt nur noch das ZIEL (cmd_target), nicht
-        # mehr den tatsaechlich an die Policy uebergebenen Wert direkt -
-        # das sanfte Nachfuehren + die Haltungs-Korrekturen passieren jetzt
-        # in _ramp_cmd()/_apply_heading_hold()/_apply_position_hold(). Kein
-        # Laengen-Check noetig wie bei /joint_commands in mujoco_node.py,
-        # da Twist immer dieselbe feste Struktur hat.
+        # Setzt nur das ZIEL (cmd_target); Rampe, Kurs-/Positionshaltung und Begrenzung
+        # passieren in _control_loop(). Twist hat feste Struktur, kein Laengen-Check noetig.
+        # Waehrend NotAus wird /cmd_vel komplett ignoriert (Ziel bleibt 0, siehe
+        # _not_aus_callback), damit nach der Entwarnung kein altes Kommando ansteht.
+        if self.not_aus_aktiv:
+            return
         self.cmd_target = np.array(
             [msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32
         )
         self._last_cmd_vel_t = time.monotonic()
         self._timeout_gemeldet = False
+        if self.freigabe_per_cmd_vel:
+            self._setze_freigabe(True, quelle="/cmd_vel")
 
-        # NEU (12.10.2026, Realismus-Fix): das Ankommen IRGENDEINER
-        # /cmd_vel-Nachricht gilt als bewusste Freigabe durch einen
-        # Bediener/eine uebergeordnete Instanz (Joystick, Tastatur,
-        # Nav2, "ros2 topic pub") - auch ein explizites "stehen
-        # bleiben" (0,0,0) zaehlt als Freigabe, nicht nur ein
-        # Bewegungswunsch. Bleibt einmal True (kein automatisches
-        # Zuruecksetzen hier) - wird NUR beim Ausloesen von Not-Aus
-        # wieder auf False gesetzt (siehe _control_loop()), damit nach
-        # einer Entwarnung wieder eine bewusste Freigabe noetig ist.
-        # NEU (13.10.2026): bei der (Neu-)Freigabe die Zielrichtung der
-        # Kurshaltung auf die aktuelle Ausrichtung setzen (wird im
-        # naechsten Takt in _apply_heading_hold() neu erfasst). Gemessen:
-        # der Roboter dreht sich schon im Stand um ~0.5 deg/s nach links;
-        # mit dem Startwert als Ziel drehte er beim ersten Kommando erst
-        # wieder zurueck (nach ~10 s Stehen ~9 deg).
-        if not self.bewegung_freigegeben:
+    def _freigabe_callback(self, msg: Bool):
+        self._setze_freigabe(bool(msg.data), quelle="/freigabe")
+
+    def _setze_freigabe(self, frei: bool, quelle: str):
+        """Freigabe setzen/entziehen. Waehrend NotAus wird eine Freigabe immer abgelehnt."""
+        if frei and self.not_aus_aktiv:
+            self.get_logger().warn(f"Freigabe ueber {quelle} abgelehnt: NOT-AUS ist aktiv.")
+            return
+        if frei and not self.bewegung_freigegeben:
+            # Zielrichtung der Kurshaltung bei der (Neu-)Freigabe auf die aktuelle Ausrichtung
+            # setzen (wird im naechsten Takt neu erfasst). Gemessen 13.10.: der Roboter dreht
+            # im Stand ~0.5 deg/s; mit dem alten Ziel drehte er beim ersten Kommando zurueck.
             self.target_yaw = None
-        self.bewegung_freigegeben = True
+            self.get_logger().info(f"Bewegung freigegeben ({quelle}).")
+        elif not frei and self.bewegung_freigegeben:
+            self.get_logger().info(f"Freigabe entzogen ({quelle}) - Roboter bleibt stehen.")
+        self.bewegung_freigegeben = frei
 
     def _odom_callback(self, msg: Odometry):
         p = msg.pose.pose.position
@@ -352,6 +367,13 @@ class SteuereinheitNode(Node):
         # Zustand unterbrechen kann/muss (nicht nur Gehen/Balancieren) -
         # siehe Kommentar dort.
         self.not_aus_aktiv = bool(msg.data)
+        if self.not_aus_aktiv:
+            # GEAENDERT (14.10.2026, Review B1/B5): sofort im Callback (nicht erst im naechsten
+            # Regeltakt) Freigabe entziehen und Ziel/Rampe auf 0 - kein altes Kommando darf
+            # die Entwarnung ueberleben.
+            self.bewegung_freigegeben = False
+            self.cmd_target = np.zeros(3, dtype=np.float32)
+            self.cmd_ramped = np.zeros(3, dtype=np.float32)
 
     def _ramp_cmd(self):
         """
@@ -515,7 +537,16 @@ class SteuereinheitNode(Node):
             return
 
         self._check_cmd_timeout(time.monotonic())
+        # GEAENDERT (14.10.2026, Review L1/B5): ohne Freigabe (Bereitschaft) und bei NotAus
+        # bleibt die Rampe auf 0. Vorher lief sie dort mit dem Nutzerkommando hoch: nach der
+        # Freigabe sprang die Policy von 0 auf den fast vollen Wert, und Bereitschaft gab
+        # eine alte Drehrate weiter (cmd[2] enthielt cmd_ramped[2]).
+        if not self.bewegung_freigegeben or self.not_aus_aktiv:
+            self.cmd_ramped = np.zeros(3, dtype=np.float32)
         self._ramp_cmd()
+        if not self.bewegung_freigegeben or self.not_aus_aktiv:
+            self.cmd_ramped = np.zeros(3, dtype=np.float32)
+            self.cmd = np.zeros(3, dtype=np.float32)
         self._apply_heading_hold(quat)
         self._clip_cmd()
         # ZURUECKGEBAUT (12.10.2026): _apply_position_hold() wurde testweise
@@ -557,6 +588,10 @@ class SteuereinheitNode(Node):
                 self.bewegung_freigegeben = False
         elif isinstance(self.state, NotAusState):
             self.get_logger().info("NOT-AUS aufgehoben - Zustandsautomat wird ab Bereitschaft fortgesetzt.")
+            self.state = BereitschaftState()
+        elif not self.bewegung_freigegeben and not isinstance(self.state, (BereitschaftState, StartState)):
+            # Freigabe entzogen (/freigabe false): zurueck in Bereitschaft (Policy aktiv, steht)
+            self.get_logger().info("Freigabe entzogen - Zustandswechsel nach Bereitschaft.")
             self.state = BereitschaftState()
 
         # State Pattern (siehe roboter_steuerung/states/): der aktuelle

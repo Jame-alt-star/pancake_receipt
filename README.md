@@ -10,7 +10,8 @@ Layer 3  Reactive       roboter_steuerung       Zustandsautomat (State Pattern),
 Layer 4  HAL            r1_bringup              IRobotHardwareBridge, mujoco_node (Physik, Lidar, Odometrie, TF)
 ```
 
-Schnittstellen: Layer 2 -> 3 per `/cmd_vel`; Layer 1 -> 2 per `NavigateToPose` (Nav2) bzw. `GehAktion`;
+Schnittstellen: Freigabe per `/freigabe` (Bool, eigener Kanal; `/cmd_vel` gibt nicht frei, während NotAus
+wird jede Freigabe abgelehnt; eine Mission gibt beim Start selbst frei); Layer 2 -> 3 per `/cmd_vel`; Layer 1 -> 2 per `NavigateToPose` (Nav2) bzw. `GehAktion`;
 Layer 1 -> 3 per `BalancierAktion`; Sicherheit per `/not_aus` (latched).
 
 ## Schnellstart
@@ -19,6 +20,7 @@ source /opt/ros/jazzy/setup.bash && colcon build && source install/setup.bash
 
 # Roboter allein (Viewer-Fenster), Steuerung per /cmd_vel
 ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
+ros2 topic pub --once /freigabe std_msgs/msg/Bool "{data: true}"      # Bewegung freigeben (eigener Kanal)
 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 
 # Komplettes System in der Testwelt: Nav2 + SLAM + Mission (headless, wenig RAM)

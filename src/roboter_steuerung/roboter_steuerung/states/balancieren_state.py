@@ -83,10 +83,14 @@ class BalancierenState(IRobotState):
         # Umfallen - vx/vy daher wieder hart auf 0, nur die Drehrate
         # (node.cmd[2], Heading-Hold) bleibt durchgereicht, da die beim
         # Testen NICHT zum Umfallen gefuehrt hat. Siehe Docstring oben.
-        # vx/vy: nur die Positionshaltungs-Korrektur (0, solange diese aus ist);
-        # die Rampen-Restwerte vom Gehen bleiben bewusst draussen (Variante 4).
+        # GEAENDERT (14.10.2026, Review L1/U2): vx/vy = abklingende Rampe (weiches Abbremsen
+        # nach dem Gehen, wie in _ramp_cmd dokumentiert) + Positionshaltungs-Korrektur (die erst
+        # greift, wenn die Rampe abgeklungen ist). Vorher wurde vx/vy beim Wechsel aus Gehen
+        # hart auf 0 gesetzt; die Policy vertrug das, die Doku beschrieb aber das Abbremsen.
         cmd_fuer_policy = np.array(
-            [float(node.pos_hold_corr[0]), float(node.pos_hold_corr[1]), float(node.cmd[2])],
+            [float(node.cmd_ramped[0] + node.pos_hold_corr[0]),
+             float(node.cmd_ramped[1] + node.pos_hold_corr[1]),
+             float(node.cmd[2])],
             dtype=np.float32,
         )
         target_positions = node.controller.compute_joint_targets(

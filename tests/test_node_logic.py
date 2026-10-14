@@ -139,3 +139,31 @@ def test_cmd_vel_watchdog():
     n.cmd_vel_timeout_s = 0.0
     n.cmd_target = np.array([0.4, 0, 0], dtype=np.float32)
     assert n._check_cmd_timeout(500.0) is False           # Watchdog aus
+
+
+
+def test_notaus_freigabe_und_cmd_vel_waehrend_notaus():
+    """Review B1: /cmd_vel und Freigabe-Versuche waehrend NotAus duerfen nichts bewirken."""
+    from geometry_msgs.msg import Twist
+    from std_msgs.msg import Bool
+    n = make()
+    n.freigabe_per_cmd_vel = True            # selbst im Handbetrieb-Modus
+    n.bewegung_freigegeben = True
+    n.not_aus_aktiv = False
+    n._last_cmd_vel_t = None
+    n._not_aus_callback(Bool(data=True))
+    assert n.bewegung_freigegeben is False and n.cmd_target.tolist() == [0.0, 0.0, 0.0]
+    t = Twist(); t.linear.x = 0.4
+    n._cmd_vel_callback(t)
+    n._freigabe_callback(Bool(data=True))
+    assert n.bewegung_freigegeben is False and n.cmd_target.tolist() == [0.0, 0.0, 0.0]
+    assert any("abgelehnt" in w for w in n._log.warnungen)
+    n._not_aus_callback(Bool(data=False))
+    n._cmd_vel_callback(t)                    # nach Entwarnung: Ziel ja ...
+    assert n.cmd_target[0] == pytest.approx(0.4)
+    n.freigabe_per_cmd_vel = False
+    n.bewegung_freigegeben = False
+    n._cmd_vel_callback(t)                    # ... aber ohne Freigabe-Kanal keine Freigabe
+    assert n.bewegung_freigegeben is False
+    n._freigabe_callback(Bool(data=True))
+    assert n.bewegung_freigegeben is True
