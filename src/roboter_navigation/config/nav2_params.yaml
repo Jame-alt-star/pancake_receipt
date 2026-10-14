@@ -95,7 +95,7 @@ local_costmap:
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
-        publish_voxel_map: false
+        publish_voxel_map: true           # Voxel fuer RViz (/local_costmap/voxel_marked_cloud)
         origin_z: 0.0
         z_resolution: 0.15
         z_voxels: 14

@@ -1,0 +1,136 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Help Height: 0
+    Property Tree Widget:
+      Expanded: ~
+      Splitter Ratio: 0.55
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Gitter
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 20
+      Color: 160; 160; 164
+      Alpha: 0.3
+      Reference Frame: map
+    - Class: rviz_default_plugins/Map
+      Name: SLAM-Karte (/map)
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: map
+      Alpha: 0.6
+    - Class: rviz_default_plugins/Map
+      Name: Globale Costmap
+      Enabled: true
+      Topic:
+        Value: /global_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.45
+    - Class: rviz_default_plugins/Map
+      Name: Lokale Costmap
+      Enabled: true
+      Topic:
+        Value: /local_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.7
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 3D-Lidar Rohdaten (/points)
+      Enabled: true
+      Topic:
+        Value: /points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+      Style: Points
+      Size (Pixels): 2
+      Color Transformer: AxisColor
+      Axis: Z
+      Use Fixed Frame: true
+      Decay Time: 0
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Hindernispunkte (/punkte_hindernis)
+      Enabled: true
+      Topic:
+        Value: /punkte_hindernis
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+      Style: Flat Squares
+      Size (m): 0.05
+      Color Transformer: FlatColor
+      Color: 255; 60; 40
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Voxel lokale Costmap
+      Enabled: true
+      Topic:
+        Value: /local_costmap/voxel_marked_cloud
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+      Style: Boxes
+      Size (m): 0.05
+      Color Transformer: FlatColor
+      Color: 255; 200; 0
+      Alpha: 0.8
+    - Class: rviz_default_plugins/LaserScan
+      Name: Abgeleiteter Scan (/scan)
+      Enabled: false
+      Topic:
+        Value: /scan
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+      Size (m): 0.04
+      Color Transformer: FlatColor
+      Color: 255; 255; 255
+    - Class: rviz_default_plugins/Path
+      Name: Geplanter Weg (/plan)
+      Enabled: true
+      Topic:
+        Value: /plan
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Color: 25; 230; 80
+      Line Style: Billboards
+      Line Width: 0.05
+    - Class: rviz_default_plugins/Polygon
+      Name: Roboter-Umriss
+      Enabled: true
+      Topic:
+        Value: /local_costmap/published_footprint
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+      Color: 0; 170; 255
+    - Class: rviz_default_plugins/TF
+      Name: TF (map, odom, base_link, lidar_link)
+      Enabled: true
+      Show Names: true
+      Marker Scale: 0.6
+  Global Options:
+    Fixed Frame: map
+    Background Color: 38; 41; 46
+    Frame Rate: 15
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: nav2_rviz_plugins/GoalTool
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Kamera
+      Target Frame: base_link
+      Distance: 9
+      Pitch: 0.75
+      Yaw: 3.6
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.5
+Window Geometry:
+  Width: 1400
+  Height: 860
