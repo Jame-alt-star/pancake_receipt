@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Demo-Lauf "Kontrollrundgang im Lager": startet die komplette Pipeline (Nav2 + SLAM, realistische
-Sensorik, Beinodometrie), fuehrt die Mission aus, zeigt zum Schluss den NotAus und schreibt
-  <ausgabe>/pose.npz       Roboterpose (aus mujoco_node, 25 Hz)
+"""Demo-Lauf: startet die komplette Pipeline (Nav2 + SLAM, realistische Sensorik, Beinodometrie, 3D-Lidar),
+fuehrt eine Mission aus, zeigt zum Schluss den NotAus und schreibt
+  <ausgabe>/pose.npz         Roboterpose (aus mujoco_node, 25 Hz)
   <ausgabe>/ereignisse.json  Missionsereignisse mit Wandzeit
+  <ausgabe>/lauf.json        Mission, Welt und Konfiguration (fuer render_demo.py)
 
-Aufruf: python3 demo/run_demo.py <ausgabeordner> [--einfach]    (--einfach: ohne SLAM/realistische Sensorik)
+Aufruf: python3 demo/run_demo.py <ausgabeordner> [--mission NAME] [--einfach]
+  --mission: Mission aus roboter_task_planning/missions (Standard demo_lager, z. B. testwelt3d)
+  --einfach: ohne SLAM/realistische Sensorik
 """
 import json, os, signal, subprocess, sys, time
 import numpy as np, rclpy
@@ -17,8 +20,14 @@ from std_srvs.srv import Trigger
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
 einfach = "--einfach" in sys.argv
-args = ["ros2", "launch", "roboter_system", "system.launch.py", "mission:=demo_lager", "navigation:=nav2",
-        "headless:=true",
+mission = sys.argv[sys.argv.index("--mission") + 1] if "--mission" in sys.argv else "demo_lager"
+share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
+import yaml  # noqa: E402
+welt = yaml.safe_load(open(f"{share}/share/roboter_task_planning/missions/{mission}.yaml"))["welt"]
+json.dump({"mission": mission, "welt": welt, "slam": not einfach, "realistisch": not einfach, "lidar": "3d"},
+          open(f"{out}/lauf.json", "w"), indent=1)
+args = ["ros2", "launch", "roboter_system", "system.launch.py", f"mission:={mission}", "navigation:=nav2",
+        "lidar_modus:=3d", "headless:=true",
         f"record_path:={out}/pose.npz"]
 if not einfach:
     args += ["slam:=true", "realistic_sensors:=true", "odom_quelle:=beinodometrie"]
