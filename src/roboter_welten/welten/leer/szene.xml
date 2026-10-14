@@ -1,0 +1,5 @@
+<mujoco model="welt leer">
+  <!-- Leere Ebene: nur Boden und Licht aus dem Robotermodell (g1_29dof.xml). Fuer Tests ohne Hindernisse
+       (Mission beispiel.yaml mit Nav2-Testdouble, Pipeline-Tests). -->
+  <worldbody/>
+</mujoco>

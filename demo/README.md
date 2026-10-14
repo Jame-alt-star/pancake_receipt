@@ -3,7 +3,7 @@
 Zeigt die komplette Pipeline in der Simulation: PDDL-Planung (Fast Downward), Navigation mit Nav2 und
 SLAM, Hindernisumfahrung per Lidar, Bürotür, Balancieren/Warten, Rückkehr zur Ladestation, anschließend NOT-AUS.
 
-- Szene: `src/r1_bringup/models/robots/g1_description/scene_demo_lager_29dof.xml` (Halle mit Regalen und
+- Szene: `src/roboter_welten/welten/demo_lager/` (`szene.xml`, `orte.yaml`) (Halle mit Regalen und
   Kistenstapeln, Büro hinter einer 1,6 m breiten Tür)
 - Mission: `src/roboter_task_planning/missions/demo_lager.yaml`
 - Konfiguration: SLAM, realistische Sensorik (Rauschen, Latenz, Gyro-Bias), Beinodometrie statt Ground-Truth

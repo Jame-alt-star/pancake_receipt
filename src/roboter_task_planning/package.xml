@@ -18,6 +18,7 @@
   <exec_depend>nav2_msgs</exec_depend>   <!-- nav_backend=nav2 (Standard) -->
   <depend>action_msgs</depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>roboter_welten</exec_depend>   <!-- Orte der Welt (Schluessel welt in der Mission) -->
   <!-- HINWEIS: Fast Downward (Planer) und nav2_msgs (nur fuer nav_backend=nav2) haben keinen
        rosdep-Schluessel bzw. sind optional; siehe README.md -->
 

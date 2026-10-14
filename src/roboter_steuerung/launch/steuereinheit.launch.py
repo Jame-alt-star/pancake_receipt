@@ -69,18 +69,16 @@ def generate_launch_description():
     lidar3d_arg = DeclareLaunchArgument(
         "lidar_3d", default_value="false",
         description="true = 3D-Lidar als PointCloud2 (/points, 24 Ringe, 5 Hz).")
-    scene_arg = DeclareLaunchArgument(
-        "scene_file", default_value="",
-        description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
-                    "models/robots/g1_description/scene_testwelt_29dof.xml")
-    scene = LaunchConfiguration("scene_file")
+    welt_arg = DeclareLaunchArgument(
+        "welt", default_value="",
+        description="Umgebung aus roboter_welten (leer, testwelt, testwelt3d, demo_lager); leer = nur Ebene.")
 
     mujoco_node = Node(
         package="r1_bringup",
         executable="mujoco_node",
         name="mujoco_bridge_node",
         output="screen",
-        parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene,
+        parameters=[{"config_file": config_file, "headless": headless, "welt": LaunchConfiguration("welt"),
                      "lidar": LaunchConfiguration("lidar"),
                      "realistic_sensors": LaunchConfiguration("realistic_sensors"),
                      "record_path": LaunchConfiguration("record_path"),
@@ -116,7 +114,7 @@ def generate_launch_description():
         realistic_arg,
         record_arg,
         odom_arg,
-        scene_arg,
+        welt_arg,
         timeout_arg,
         mujoco_node,
         steuereinheit_node,

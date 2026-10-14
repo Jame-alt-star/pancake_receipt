@@ -13,12 +13,24 @@ Mission (YAML) → PDDL-Problem → **Fast Downward** → Plan → Dispatcher �
 Ziele in der Mission: `besucht`, `balanciert`, `gewartet` je Ort. Planung kostenoptimal
 (`astar(lmcut())`).
 
-## Mission (`missions/beispiel.yaml`)
-`orte` (x/y in m, Frame `map`), `verbindungen` (ungerichtet; fehlt = vollvernetzt), `start_ort`
+## Mission (`missions/*.yaml`)
+Eine Mission ist nur der **Auftrag**: `welt` (Name einer Welt aus `roboter_welten`), `start_ort`
 (optional, sonst nächster Ort zur Position), `ziele`, `parameter` (`warte_s`,
 `balancier_toleranz_grad`, `max_replans`; `nav_geschwindigkeit` und `nav_toleranz_m` wirken nur im
 GehAktion-Backend/Testdouble – mit Nav2 gelten dessen Parameter).
+Die **Orte** (x/y in m, Frame `map`) und **Verbindungen** (ungerichtet; fehlt = vollvernetzt) stehen in
+`roboter_welten/welten/<welt>/orte.yaml`, weil sie zur Umgebung gehören: mehrere Missionen in derselben Halle
+nutzen dieselben Orte, und `mission.launch.py` startet die Simulation mit derselben Welt.
 Ortsnamen: ASCII, Buchstaben/Ziffern/`_`; werden beim Laden kleingeschrieben, `pos_aktuell` ist reserviert.
+
+```yaml
+welt: testwelt
+start_ort: start
+ziele:
+  - {art: besucht,    ort: a}
+  - {art: balanciert, ort: b}
+parameter: {warte_s: 2.0, max_replans: 2}
+```
 
 ## Ablauf bei Fehlern
 - Aktion scheitert → Roboterposition per TF `map→base_link` (Rückfall `/odom`), dynamischen Ort

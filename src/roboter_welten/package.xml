@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>roboter_welten</name>
+  <version>0.1.0</version>
+  <description>
+    Umgebungen des Roboters, je Welt ein Ordner: szene.xml (physische Umgebung fuer die Simulation, Layer 4)
+    und orte.yaml (benannte Orte und Verbindungen im map-Frame, Grundlage der Missionen in Layer 1).
+  </description>
+  <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

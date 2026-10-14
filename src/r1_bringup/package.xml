@@ -21,6 +21,7 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>roboter_welten</exec_depend>  <!-- Umgebungen (Parameter welt) -->
   <!-- HINWEIS: "mujoco" (das Python-Paket der MuJoCo-Physik-Engine) fehlt
        hier bewusst - das ist kein ROS2-Paket mit eigenem rosdep-Key,
        sondern wird separat per "pip install mujoco" installiert (siehe

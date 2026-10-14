@@ -1,0 +1,10 @@
+# Orte der Welt "leer" (Ebene ohne Hindernisse), map-Frame in Metern. map = odom = Startpose des Roboters.
+orte:
+  start: {x: 0.0, y: 0.0}
+  a:     {x: 3.0, y: 0.0}
+  b:     {x: 3.0, y: 2.0}
+# Ungerichtete Verbindungen; fehlt der Schluessel, ist jeder Ort mit jedem verbunden.
+verbindungen:
+  - [start, a]
+  - [a, b]
+  - [b, start]

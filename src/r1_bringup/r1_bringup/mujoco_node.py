@@ -17,6 +17,8 @@ from nav_msgs.msg import Odometry
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from ament_index_python.packages import get_package_share_directory
 
+from r1_bringup.szene import lade_welt
+
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
     """
@@ -113,15 +115,14 @@ class MujocoBridgeNode(Node):
             self.config = yaml.load(f, Loader=yaml.FullLoader)
         self.get_logger().info(f"[mujoco_bridge_node] aktive Config: {config_file} (xml_path={self.config.get('xml_path')})")
 
-        # Pfade aufloesen (relativ zum Share-Verzeichnis)
-        # NEU (13.10.2026): scene_file ueberschreibt xml_path der Config (z.B. Testwelt mit Waenden)
-        self.declare_parameter("scene_file", "")
-        scene_file = self.get_parameter("scene_file").value
-        xml_rel_path = scene_file or self.config["xml_path"]
-        xml_path = os.path.join(pkg_share, xml_rel_path)
+        # Robotermodell aus der Config (relativ zum Share-Verzeichnis), Umgebung als Welt aus
+        # roboter_welten ('' = nur Roboter auf der Ebene), zusammengesetzt in szene.py.
+        self.declare_parameter("welt", "")
+        self.welt = self.get_parameter("welt").value
+        xml_path = os.path.join(pkg_share, self.config["xml_path"])
         if not os.path.exists(xml_path):
             # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
-            raise FileNotFoundError(f"MuJoCo-Szene nicht gefunden: {xml_path} - 'colcon build' ausgefuehrt?")
+            raise FileNotFoundError(f"Robotermodell nicht gefunden: {xml_path} - 'colcon build' ausgefuehrt?")
 
         # Parameter initialisieren
         self.simulation_dt = float(self.config["simulation_dt"])
@@ -131,7 +132,8 @@ class MujocoBridgeNode(Node):
         self.target_dof_pos = self.default_angles.copy()
 
         # 2. MuJoCo Modell & Daten laden
-        self.model = mujoco.MjModel.from_xml_path(xml_path)
+        self.model = lade_welt(xml_path, self.welt)
+        self.get_logger().info(f"[mujoco_bridge_node] Welt: {self.welt or '(keine, nur Ebene)'}")
         self.data = mujoco.MjData(self.model)
         self.model.opt.timestep = self.simulation_dt
 

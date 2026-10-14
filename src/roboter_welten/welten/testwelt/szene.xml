@@ -1,4 +1,4 @@
-<mujoco model="g1 29dof Testwelt">
+<mujoco model="welt testwelt">
   <!-- Einfache Testwelt (13.10.2026): zwei Raeume mit Tuer und ein Hindernis. Roboter startet bei
        (0, 0) und blickt nach +x. Alle Welt-Geoms liegen in geom group 2: im Viewer sichtbar und
        fuer das simulierte Lidar (nur group 2) erfassbar; die Roboter-Geoms liegen in group 0/1.
@@ -7,9 +7,10 @@
          Raum A: x -1.5 .. 4.5, y -2.95 .. 2.95   Raum B: x 4.5 .. 7, y -2.95 .. 2.95
          Trennwand bei x = 4.5 mit Tuer y -0.8 .. 0.8 (1.6 m breit)
          Hindernis: Quader 0.5 x 1.6 bei (1.5, 0)
-       Mission 'testwelt.yaml': start (0,0), a (3,-1.5), b (5.8,1.5) - a und b liegen so, dass der
+       Orte (orte.yaml): start (0,0), a (3,-1.5), b (5.8,1.5) - a und b liegen so, dass der
        direkte Weg das Hindernis bzw. die Trennwand kreuzt. -->
-  <include file="g1_29dof.xml"/>
+  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus r1_bringup) haengt die Simulation beim Laden
+       dazu (r1_bringup/szene.py). Orte fuer Missionen: orte.yaml in diesem Ordner. -->
 
   <worldbody>
     <!-- Aussenwaende (Hoehe 1.6 m, damit das Lidar auf ~1.2 m sie trifft) -->

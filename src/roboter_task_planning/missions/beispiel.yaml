@@ -1,13 +1,5 @@
-# Beispiel-Mission (Layer 1). Koordinaten im Welt-/map-Frame in Metern.
-orte:
-  start: {x: 0.0, y: 0.0}
-  a:     {x: 3.0, y: 0.0}
-  b:     {x: 3.0, y: 2.0}
-# Ungerichtete Verbindungen; fehlt der Schluessel, ist jeder Ort mit jedem verbunden.
-verbindungen:
-  - [start, a]
-  - [a, b]
-  - [b, start]
+# Beispiel-Mission (Layer 1) in der Welt 'leer' (Ebene ohne Hindernisse, Orte in roboter_welten/welten/leer/orte.yaml).
+welt: leer
 start_ort: start        # optional; sonst naechster Ort zur aktuellen Position
 ziele:
   - {art: besucht,    ort: a}

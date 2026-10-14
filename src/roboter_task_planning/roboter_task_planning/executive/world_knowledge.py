@@ -12,13 +12,18 @@ DYNAMISCHER_ORT = "pos_aktuell"      # wird bei Neuplanung an der aktuellen Posi
 
 @dataclass
 class Mission:
-    """Unveraenderliche Missionsbeschreibung aus der YAML: Orte (map-Frame, m), ungerichtete
-    Verbindungen, Ziele (art, ort), optionaler Startort und Parameter (Defaults unten)."""
+    """Unveraenderliche Missionsbeschreibung: Orte (map-Frame, m), ungerichtete Verbindungen,
+    Ziele (art, ort), optionaler Startort und Parameter (Defaults unten).
+
+    Orte und Verbindungen gehoeren zur Umgebung, nicht zum Auftrag: eine Missionsdatei verweist mit
+    'welt: <name>' auf roboter_welten/welten/<name>/orte.yaml. Direkt angegebene 'orte' bleiben fuer
+    Unit-Tests und schnelle Versuche erlaubt, aber nicht zusammen mit 'welt'."""
     orte: Dict[str, Tuple[float, float]]
     verbindungen: Set[frozenset]
     ziele: List[Tuple[str, str]]               # (art, ort)
     start_ort: Optional[str] = None
     parameter: Dict[str, float] = field(default_factory=dict)
+    welt: Optional[str] = None
 
     PARAMETER_DEFAULTS = {
         "warte_s": 3.0, "balancier_toleranz_grad": 5.0, "nav_toleranz_m": 0.3,
@@ -29,7 +34,18 @@ class Mission:
         return self.parameter.get(name, self.PARAMETER_DEFAULTS[name])
 
     @staticmethod
-    def from_dict(d: dict) -> "Mission":
+    def from_dict(d: dict, welt_lader=None) -> "Mission":
+        """welt_lader(name) -> dict mit 'orte'/'verbindungen'; Standard: roboter_welten.lade_orte."""
+        welt = d.get("welt")
+        if welt:
+            if "orte" in d or "verbindungen" in d:
+                raise ValueError("Mission mit 'welt' darf keine eigenen 'orte'/'verbindungen' enthalten")
+            if welt_lader is None:
+                from roboter_welten import lade_orte as welt_lader
+            w = welt_lader(str(welt))
+            d = dict(d, orte=w["orte"], verbindungen=w.get("verbindungen"))
+        elif "orte" not in d:
+            raise ValueError("Mission braucht 'welt' (oder fuer Tests direkt 'orte')")
         # Ortsnamen werden kleingeschrieben (Review B4): Fast Downward gibt Objektnamen klein aus,
         # mit "K1" in der YAML schlug sonst das Nachschlagen der Koordinaten fehl.
         def name(n):
@@ -65,7 +81,7 @@ class Mission:
         start = name(start) if start else None
         if start is not None and start not in orte:
             raise ValueError(f"start_ort {start!r} unbekannt")
-        return Mission(orte, verb, ziele, start, dict(d.get("parameter", {})))
+        return Mission(orte, verb, ziele, start, dict(d.get("parameter", {})), str(welt) if welt else None)
 
     @staticmethod
     def from_yaml(path: str) -> "Mission":

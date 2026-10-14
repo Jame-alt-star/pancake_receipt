@@ -26,14 +26,14 @@ ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 # Komplettes System in der Testwelt: Nav2 + SLAM + Mission (headless, wenig RAM)
 ros2 launch roboter_task_planning mission.launch.py nav2:=true slam:=true headless:=true \
      config_file:=g1_policy_29dof.yaml \
-     scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml \
      mission_file:=$(ros2 pkg prefix roboter_task_planning)/share/roboter_task_planning/missions/patrouille.yaml
 ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten
 ros2 topic echo /mission/status                           # Fortschritt
 ros2 topic pub --once /not_aus std_msgs/msg/Bool "{data: true}"   # NotAus
 ```
-Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml` (Ziele `besucht`,
-`balanciert`, `gewartet`, `am_ort`).
+Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml`, `testwelt3d.yaml`, `demo_lager.yaml`
+(Ziele `besucht`, `balanciert`, `gewartet`, `am_ort`). Eine Mission verweist mit `welt:` auf eine Welt aus
+`roboter_welten` (Szene für die Simulation + Orte); die Simulation startet automatisch in dieser Welt.
 
 ## Realismus-Schalter
 - `realistic_sensors:=true`: Sensorrauschen, Gyro-Bias und -Drift, Latenz, Lidar-Ausfälle statt idealer Werte.

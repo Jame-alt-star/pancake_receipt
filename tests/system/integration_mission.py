@@ -132,9 +132,8 @@ def launch(logfile):
         nav += ["lidar_modus:=2d"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
-        szene = "scene_testwelt3d_29dof.xml" if (DREI_D or NUR_2D) else "scene_testwelt_29dof.xml"
-        nav += [f"scene_file:=models/robots/g1_description/{szene}",
-                f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else ('testwelt3d' if (DREI_D or NUR_2D) else 'testwelt')}.yaml"]
+        # Die Simulation uebernimmt die Welt aus der Missionsdatei (Schluessel welt).
+        nav += [f"mission_file:={share}/share/roboter_task_planning/missions/{'patrouille' if PATROUILLE else ('testwelt3d' if (DREI_D or NUR_2D) else 'testwelt')}.yaml"]
     return subprocess.Popen(["ros2", "launch", "roboter_task_planning", "mission.launch.py",
                              *nav, "config_file:=g1_policy_29dof.yaml"],
                             stdout=open(logfile, "w"), stderr=subprocess.STDOUT, start_new_session=True, env=env)

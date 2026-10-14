@@ -42,19 +42,24 @@ def generate_launch_description():
                               description="slam_toolbox statt statischem map->odom (mit nav2:=true)"),
         DeclareLaunchArgument("cmd_vel_timeout_s", default_value="1.0",
                               description="cmd_vel-Watchdog in Layer 3 [s] (0 = aus)"),
-        DeclareLaunchArgument("scene_file", default_value="",
-                              description="MuJoCo-Szene (relativ zu r1_bringup), z.B. Testwelt"),
+        DeclareLaunchArgument("welt", default_value="",
+                              description="Umgebung der Simulation; leer = Welt aus der Missionsdatei (Schluessel welt)"),
         DeclareLaunchArgument("nav2", default_value="false",
                               description="Nav2 (roboter_navigation, Layer 2) mitstarten"),
         DeclareLaunchArgument("auto_start", default_value="false"),
     ]
+    # Eine Quelle fuer die Umgebung: ohne Argument welt startet die Simulation in der Welt, auf die die
+    # Missionsdatei verweist (sonst koennten Simulation und Orte auseinanderlaufen).
+    welt_aus_mission = PythonExpression([
+        "(__import__('yaml').safe_load(open('", LaunchConfiguration("mission_file"), "')) or {}).get('welt') or ''"])
     ist3d = PythonExpression(["'", LaunchConfiguration("lidar_modus"), "' == '3d'"])
     nav_cfg = os.path.join(get_package_share_directory("roboter_navigation"), "config")
     layer3 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(steuer, "launch", "steuereinheit.launch.py")),
         launch_arguments={"config_file": LaunchConfiguration("config_file"),
                           "headless": LaunchConfiguration("headless"),
-                          "scene_file": LaunchConfiguration("scene_file"),
+                          "welt": PythonExpression(["'", LaunchConfiguration("welt"), "' or '",
+                                                    welt_aus_mission, "'"]),
                           "lidar": LaunchConfiguration("lidar"),
                           "lidar_3d": ist3d,
                           "lidar_2d": PythonExpression(["'", LaunchConfiguration("lidar_modus"), "' == '2d'"]),

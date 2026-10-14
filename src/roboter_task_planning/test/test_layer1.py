@@ -243,3 +243,34 @@ def test_ohne_startort_und_position_abgelehnt():
     r = MissionExecutor(FastDownwardPlanner(), [Skript(), WarteBridge()], log=lambda m: None,
                         locator=lambda: None).run(Mission.from_dict(d), threading.Event())
     assert r.status == FEHLGESCHLAGEN and "Startort unbekannt" in r.meldung
+
+
+# ---------------- Welt (Orte aus roboter_welten) ----------------
+def test_mission_mit_welt_laedt_orte_der_welt():
+    welt = {"orte": MISSION["orte"], "verbindungen": MISSION["verbindungen"]}
+    auftrag = {k: v for k, v in MISSION.items() if k not in ("orte", "verbindungen")}
+    m = Mission.from_dict(dict(auftrag, welt="testwelt"), welt_lader=lambda n: welt)
+    assert m.welt == "testwelt" and m.orte["c"] == (10.0, 0.0) and len(m.verbindungen) == 4
+    with pytest.raises(ValueError):          # Orte gehoeren in die Welt, nicht zusaetzlich in die Mission
+        Mission.from_dict(dict(MISSION, welt="testwelt"), welt_lader=lambda n: welt)
+    with pytest.raises(ValueError):          # weder Welt noch Orte
+        Mission.from_dict(auftrag)
+
+
+def test_alle_missionsdateien_passen_zu_ihrer_welt():
+    """Jede mitgelieferte Mission verweist auf eine vorhandene Welt und nur auf deren Orte (Quellbaum)."""
+    import glob
+    import os
+    import yaml
+    src = os.path.join(os.path.dirname(__file__), "..", "..")
+    def lader(n):
+        with open(os.path.join(src, "roboter_welten", "welten", n, "orte.yaml")) as f:
+            return yaml.safe_load(f)
+    dateien = sorted(glob.glob(os.path.join(src, "roboter_task_planning", "missions", "*.yaml")))
+    assert len(dateien) >= 5
+    for p in dateien:
+        with open(p) as f:
+            d = yaml.safe_load(f)
+        assert d.get("welt"), p
+        Mission.from_dict(d, welt_lader=lader)
+        assert os.path.exists(os.path.join(src, "roboter_welten", "welten", d["welt"], "szene.xml")), p

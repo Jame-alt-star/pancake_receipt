@@ -1,0 +1,14 @@
+# Orte der Welt "demo_lager" (szene.xml), map-Frame in Metern. map = odom = Startpose des Roboters.
+# start nahe der Ladestation, k1 im Regalgang, k2 in der Hallenecke, k3 im Buero (durch die Tuer), lader = Ladestation.
+orte:
+  start: {x: 0.0, y: 0.0}
+  k1:    {x: 3.0, y: 0.0}
+  k2:    {x: 5.5, y: -2.6}
+  k3:    {x: 8.5, y: 1.5}
+  lader: {x: 0.0, y: -2.6}
+verbindungen:
+  - [start, k1]
+  - [k1, k2]
+  - [k2, k3]
+  - [k3, lader]
+  - [start, lader]

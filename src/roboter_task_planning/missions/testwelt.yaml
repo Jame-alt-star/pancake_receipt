@@ -1,13 +1,6 @@
-# Mission fuer die Testwelt (scene_testwelt_29dof.xml): zwei Raeume, Tuer bei x=4.5, Hindernis bei (1.5, 0).
-# Der direkte Weg start->a kreuzt das Hindernis, a->b muss durch die Tuer.
-orte:
-  start: {x: 0.0, y: 0.0}
-  a:     {x: 3.0, y: -1.5}
-  b:     {x: 5.8, y: 1.5}
-verbindungen:
-  - [start, a]
-  - [a, b]
-  - [start, b]
+# Mission in der Testwelt: a besuchen, in b balancieren und warten.
+# Der direkte Weg start->a kreuzt das Hindernis, a->b muss durch die Tuer (Orte: roboter_welten/welten/testwelt/orte.yaml).
+welt: testwelt
 start_ort: start
 ziele:
   - {art: besucht,    ort: a}

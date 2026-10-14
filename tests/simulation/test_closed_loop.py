@@ -83,3 +83,21 @@ def test_ohne_regler_faellt_um():
         d.ctrl[:] = (tgt - d.qpos[7:]) * kps - d.qvel[6:] * kds
         mujoco.mj_step(m, d)
     assert d.qpos[2] < 0.4, "PD-Haltung ohne Policy blieb stehen - wait_for_controller waere evtl. unnoetig"
+
+
+def test_welten_laden_roboter_plus_umgebung():
+    """Jede Welt laesst sich mit dem Robotermodell zusammensetzen; Hindernisse liegen in geom group 2 (Lidar)."""
+    import os
+    import sys
+    import mujoco
+    from sim_helpers import load_config, BRINGUP, WS
+    sys.path.insert(0, BRINGUP)
+    from r1_bringup.szene import lade_modell
+    roboter = BRINGUP + load_config()["xml_path"]
+    nur_roboter = mujoco.MjModel.from_xml_path(roboter)
+    welten = WS + "roboter_welten/welten/"
+    for name in sorted(os.listdir(welten)):
+        m = lade_modell(roboter, welten + name + "/szene.xml")
+        assert m.nu == nur_roboter.nu and m.nbody == nur_roboter.nbody, name
+        if name != "leer":
+            assert (m.geom_group == 2).sum() > 0, name

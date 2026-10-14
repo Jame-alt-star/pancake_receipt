@@ -1,4 +1,4 @@
-<mujoco model="g1 29dof Demo Lager und Buero">
+<mujoco model="welt demo_lager">
   <!-- Demo-Szenario "Kontrollrundgang im Lager" (14.10.2026).
        Grundriss (x nach rechts, y nach oben), Meter:
          Halle (Lager):  x -1.5 .. 6.5,  y -3.5 .. 3.5
@@ -9,7 +9,8 @@
        Alle Hindernisse in geom group 2 (kollidierend UND fuer das Lidar sichtbar; der Lidar sitzt auf
        ~1.24 m, daher sind Hindernisse hoeher). Dekoration (Markierungen, Laderstation, Kisten auf den
        Regalen) ohne Kollision (contype/conaffinity 0) in group 0. -->
-  <include file="g1_29dof.xml"/>
+  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus r1_bringup) haengt die Simulation beim Laden
+       dazu (r1_bringup/szene.py). Orte fuer Missionen: orte.yaml in diesem Ordner. -->
 
   <asset>
     <material name="wand"     rgba="0.86 0.86 0.82 1"/>

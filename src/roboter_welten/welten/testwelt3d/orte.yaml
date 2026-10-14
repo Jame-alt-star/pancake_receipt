@@ -1,0 +1,10 @@
+# Orte der Welt "testwelt3d" (szene.xml), map-Frame in Metern. map = odom = Startpose des Roboters (0, 0, Blick +x).
+# Der direkte Weg start->a kreuzt das Hindernis bei (1.5, 0), a->b fuehrt durch die Tuer bei x = 4.5.
+orte:
+  start: {x: 0.0, y: 0.0}
+  a:     {x: 3.0, y: -1.5}
+  b:     {x: 5.8, y: 1.5}
+verbindungen:
+  - [start, a]
+  - [a, b]
+  - [start, b]
