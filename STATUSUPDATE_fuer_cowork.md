@@ -1,4 +1,4 @@
-# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 13.10.2026 (abends, nach Nav2-Anbindung)
+# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 14.10.2026 (v1.0)
 
 Dieses Dokument ersetzt den Kontext aus `UEBERGABE_fuer_claude_code_wsl2.md` (damals offene Aufgabe:
 29-DOF-Policy fällt im echten ROS2-Lauf um). Diese Aufgabe ist **gelöst**. Detailverlauf mit allen
@@ -81,3 +81,13 @@ Vorher `source /opt/ros/jazzy/setup.bash && source install/setup.bash`; nach Cod
 - Beim Integrationstest keine parallelen `ros2 topic echo/hz`-Aufrufe (stören die Simulation). Persistente Skripte statt vieler CLI-Starts.
 - Messbare Behauptungen belegen (Zahlen), „getestet“ von „angenommen“ trennen. Commits nur auf Wunsch; `MUJOCO_LOG.TXT` ist in `.gitignore`.
 - Sprache der Kommentare/Doku: Deutsch.
+
+
+## Nachtrag v1.0 (14.10.2026)
+- **Komplett:** alle vier Schichten laufen als Pipeline in der Simulation: Layer 1 (PDDL/Fast Downward/Dispatcher), Layer 2 (Nav2 mit Lidar-Hindernis-Layer, optional `slam_toolbox`), Layer 3, Layer 4. Testwelt mit zwei Räumen, Tür und Hindernis; Missionen `beispiel`, `testwelt`, `patrouille` (Ziele `besucht`, `balanciert`, `gewartet`, `am_ort`).
+- **Start:** siehe `README.md` im Projekt-Root (Schnellstart, Tests, Grenzen). Komplettsystem: `ros2 launch roboter_task_planning mission.launch.py nav2:=true slam:=true headless:=true scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml mission_file:=<patrouille.yaml>`, dann `/mission/start`.
+- **Tests alle grün:** pytest 24, Layer-1 12, Pipeline 28/28 (5 Läufe), Watchdog 5/5, Missionen 14/14 (Testdouble, `--nav2`, `--welt`, `--patrouille`) und 22/22 (`--slam`).
+- **Für den Kollegen:** Nav2-Parameter in `src/roboter_navigation/config/nav2_params.yaml` sind eine funktionierende Referenz (Costmaps, Pfadfolger RPP, Geschwindigkeitsglätter, Collision-Monitor). Die Policy-bedingten Besonderheiten: Drehen auf der Stelle braucht |wz| ≳ 0,8, `max_angular_accel` muss hoch sein (RPP bezieht sich auf die gemessene Drehrate), vx ≥ 0,3, kombinierte Grenze vx/wz. `/odom`, TF `odom→base_link`, `/scan` (Frame `lidar_link`, 360°, 10 Hz) liefert `mujoco_node`.
+- **Ressourcen:** ~2,8 GB RAM in WSL2: Nav2 + SLAM nur mit `headless:=true`; Lidar nur per `lidar:=true` (Standard in `mission.launch`).
+- **Offen:** Manipulation (nur Machbarkeitsmessung), AkkuSchwach/Laden, Nav2-Variante des Kollegen testen, echte Hardware.
+- **Git-Tags:** `v0.8-testwelt-nav2-lidar`, `v0.9-patrouille`, `v0.10-slam`, `v1.0`.

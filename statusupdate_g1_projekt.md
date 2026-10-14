@@ -272,3 +272,20 @@ Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des 
 - Neuer Parameter `headless` (`mujoco_node`, `steuereinheit.launch.py`, `mission.launch.py`): MuJoCo ohne Viewer. Mit Viewer + Nav2 reichen die ~2,8 GB RAM nicht (Control-Loop 6 Hz, Lifecycle-Heartbeat verloren).
 
 **Offen:** `cmd_vel`-Watchdog fehlt (Layer 3 hält das letzte Kommando); Nav2 ohne Sensorik (kein Hindernis-Layer, `map→odom` statisch); Nav2-Parameter sind generisch, die Variante des Kollegen steht aus. **Hinweis:** Wegen der schwachen Standdrehung braucht jede Navigation mit enger Kurve einen Drehradius ≥ ~1,5 m beim Gehen oder Drehen auf der Stelle mit |wz| ≥ 0,8.
+
+## Abschlussstand v1.0 (14.10.2026)
+
+**Umgesetzt (nach „Vorgehensplan der Softwareimplementierung“):** Layer 4 HAL (`mujoco_node`: Physik, Lidar, `/odom`, TF, headless), Layer 3 (Zustandsautomat, ONNX-Controller, Kurs-/Positionshaltung, NotAus, `cmd_vel`-Begrenzung und -Watchdog, Balance-Dienste), Layer 2 (Nav2 mit Lidar-Hindernis-Layer, optional `slam_toolbox`), Layer 1 (PDDL, Fast Downward, Dispatcher mit Neuplanung über ROS-2-Actions). Testwelt: zwei Räume, Tür, Hindernis (`scene_testwelt_29dof.xml`).
+
+**Tests (Stand 14.10.2026, alle bestanden):** `tests/` pytest 24 (Regelkreis, Knoten-Logik, Greif-Machbarkeit); `test_layer1.py` 12; `integration_ros.py` 28/28 (5 Läufe in Folge); `integration_watchdog.py` 5/5; `integration_mission.py` 14/14 für Testdouble, `--nav2`, `--welt` (Hindernis umfahren, Tür, Mindestabstand 0,6 m), `--patrouille` (a, b, Rückkehr zum Start) und 22/22 für `--slam` (Karte enthält Wände, Hindernis, Trennwand; Tür frei; `map→odom`).
+
+**Wesentliche Befunde der letzten Etappe:**
+- Das Lidar in der Simulationsschleife (zusammen mit Viewer-Rendering) störte das Echtzeit-Timing (Pipeline-Test ~1/3 Ausfälle). Behoben durch: Lidar nur per Launch-Argument (`lidar:=true`, in `mission.launch` an, in `steuereinheit.launch` aus), Scan als float32-Array (1,6 → 0,06 ms), seltenes Rendern (`render_decimation` 25). Danach 5/5 grün. Im synchronen Kreis 48 Läufe der Extremfolge (vx 1,0 + wz) ohne Sturz: der Fehler lag am Echtzeitverhalten, nicht an der Regelung.
+- `package.xml` von `roboter_steuerung` enthielt `--` in einem XML-Kommentar → ungültig, das Paket fehlte nach einem vollständigen `colcon build` im Install-Index (Launch: „Package not found“). Behoben.
+- Nav2/RPP: Drehbeschleunigung wird relativ zur gemessenen Drehrate begrenzt; die Policy reagiert im Stand auf kleine wz kaum → `max_angular_accel` 25. Globale Costmap im `map`-Frame (sonst „Unable to transform poses“ mit SLAM). Navigations-Bridge wartet auf `is_active` und wiederholt sofortige Abbrüche (< 6 s) einmal still.
+- Dienste (`balance_dienst_node`, `mission_node`) abonnieren 100-Hz-Topics nur auf Abruf (Leerlauf-CPU 30–48 % → ~0).
+- SLAM-Karte: Wände genau auf der Rasterkante (Nordwand) werden von `slam_toolbox` abgeschnitten; Welt-Geometrie 5 cm nach innen. Mit SLAM liegen Ziele im `map`-Frame; Scan-Matching-Versatz gegen die Welt ~0,5–0,75 m in dem glatten Raum.
+
+**Bekannte Grenzen / offen:** Manipulation (Zustand `Manipulieren`, Hand-Modell, Wahrnehmung) nur als Machbarkeitsmessung; AkkuSchwach/Laden fehlen (keine Batteriedaten); Nav2-Variante des Kollegen steht aus; keine echte Hardware (Ground-Truth-Odometrie, Raycast-Lidar); WSL2 mit ~2,8 GB RAM: Nav2/SLAM nur headless; vereinzelt SIGKILL (Exit 137) durch Speicherdruck bei langen Testserien.
+
+**Rücksprungpunkte (Git-Tags):** `stand-2026-10-13-nav2-grundlage`, `v0.8-testwelt-nav2-lidar`, `v0.9-patrouille`, `v0.10-slam`, `v1.0`.

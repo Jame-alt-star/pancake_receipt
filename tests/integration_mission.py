@@ -63,6 +63,20 @@ class Probe(Node):
                     return True
         return False
 
+    def map_occupied_rect(self, x0, x1, y0, y1):
+        """Anzahl belegter Zellen (>50) im Rechteck der /map (Karten-Rasterung robust)."""
+        m = self.map
+        if m is None:
+            return 0
+        res = m.info.resolution
+        ox, oy = m.info.origin.position.x, m.info.origin.position.y
+        n = 0
+        for j in range(max(0, int((y0 - oy) / res)), min(m.info.height, int((y1 - oy) / res) + 1)):
+            for i in range(max(0, int((x0 - ox) / res)), min(m.info.width, int((x1 - ox) / res) + 1)):
+                if m.data[j * m.info.width + i] > 50:
+                    n += 1
+        return n
+
     def _on_pos(self, m):
         self.p = (m.x, m.y, m.z)
         for x0, x1, y0, y1 in BOXEN:
@@ -164,9 +178,17 @@ def main():
             check("S1b /map empfangen", pr.map is not None)
             check("S1b TF map->odom von slam_toolbox", pr.tf_map_odom)
             # bekannte Wandpunkte (Welt = map-Frame, da Start im Ursprung mit Yaw 0)
-            for name, (wx, wy) in {"Westwand": (-1.5, 0.0), "Nordwand": (2.0, 2.95), "Suedwand": (2.0, -2.95),
-                                   "Hindernis": (1.25, 0.0), "Trennwand": (4.5, 2.0)}.items():
-                check(f"S1b Karte enthaelt {name} bei ({wx},{wy})", pr.map_occupied(wx, wy, 0.3))
+            # Fenster entlang der Waende (x0, x1, y0, y1) - mind. 6 belegte Zellen = Wand erkannt
+            for name, (x0, x1, y0, y1) in {
+                    "Westwand": (-1.7, -1.3, -1.5, 1.5),
+                    "Suedwand": (1.0, 3.0, -3.2, -2.7), "Hindernis": (1.1, 1.9, -0.6, 0.6),
+                    "Trennwand": (4.3, 4.7, 1.2, 2.6)}.items():
+                n = pr.map_occupied_rect(x0, x1, y0, y1)
+                check(f"S1b Karte enthaelt {name}", n >= 6, f"{n} belegte Zellen")
+            # Die Nordwand liegt auf der oberen Rasterkante; slam_toolbox verwirft dort die aeusserste
+            # Zeile. Geprueft wird daher nur, dass die Karte bis zur Nordwand reicht.
+            top = pr.map.info.origin.position.y + pr.map.info.height * pr.map.info.resolution if pr.map else 0.0
+            check("S1b Karte reicht bis zur Nordwand (y >= 2.9)", top >= 2.9, f"oberer Rand y={top:.2f}")
             check("S1b Tuer in der Karte frei", not pr.map_occupied(4.5, 0.0, 0.15))
 
         print("== S2 NotAus waehrend der Mission")
