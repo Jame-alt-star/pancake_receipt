@@ -52,6 +52,9 @@ def generate_launch_description():
     lidar_arg = DeclareLaunchArgument(
         "lidar", default_value="false",
         description="true = simuliertes 2D-Lidar (/scan) in mujoco_node (fuer Nav2/SLAM).")
+    realistic_arg = DeclareLaunchArgument(
+        "realistic_sensors", default_value="false",
+        description="true = Sensorrauschen, Gyro-Bias, Latenz und Lidar-Ausfaelle statt perfekter Simulationswerte.")
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
@@ -64,7 +67,8 @@ def generate_launch_description():
         name="mujoco_bridge_node",
         output="screen",
         parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene,
-                     "lidar": LaunchConfiguration("lidar")}],
+                     "lidar": LaunchConfiguration("lidar"),
+                     "realistic_sensors": LaunchConfiguration("realistic_sensors")}],
     )
 
     steuereinheit_node = Node(
@@ -80,6 +84,7 @@ def generate_launch_description():
         config_file_arg,
         headless_arg,
         lidar_arg,
+        realistic_arg,
         scene_arg,
         timeout_arg,
         mujoco_node,

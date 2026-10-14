@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from collections import deque
 import yaml
 import numpy as np
 
@@ -154,6 +155,33 @@ class MujocoBridgeNode(Node):
         # eine andere Quelle (z.B. robot_localization) Odometrie/TF liefert.
         # NEU (13.10.2026): headless=True -> kein Viewer-Fenster. Spart bei Tests/Nav2-Betrieb
         # viel CPU und Speicher (Rendering war der groesste Posten der Sim-Schleife).
+        # NEU (14.10.2026): realistische Sensorik (Schalter). Statt perfekter Simulationswerte:
+        # Rauschen auf Gelenken/IMU, konstanter Gyro-Bias, Latenz in beide Richtungen (Zustaende
+        # und Kommandos), Lidar-Rauschen/-Ausfaelle. Werte grob an typische G1-/DDS-Groessen
+        # angelehnt. Gemessen (synchroner Kreis): Policy bleibt bis 10x dieser Werte + 20 ms stabil.
+        # Odometrie (/odom, /base_position) bleibt hier noch Ground-Truth.
+        self.declare_parameter("realistic_sensors", False)
+        self.declare_parameter("noise_joint_pos", 0.001)     # rad
+        self.declare_parameter("noise_joint_vel", 0.02)      # rad/s
+        self.declare_parameter("noise_gyro", 0.01)           # rad/s
+        self.declare_parameter("gyro_bias", 0.005)           # rad/s (Std. des konstanten Bias)
+        self.declare_parameter("noise_orientation", 0.005)   # rad
+        self.declare_parameter("sensor_latency_ms", 10.0)
+        self.declare_parameter("command_latency_ms", 10.0)
+        self.declare_parameter("lidar_noise_m", 0.02)
+        self.declare_parameter("lidar_dropout", 0.01)
+        self.declare_parameter("noise_seed", 0)
+        self.realistic = bool(self.get_parameter("realistic_sensors").value)
+        self._rng = np.random.default_rng(int(self.get_parameter("noise_seed").value))
+        gp = lambda n: float(self.get_parameter(n).value)
+        self.n_q, self.n_dq, self.n_gyro = gp("noise_joint_pos"), gp("noise_joint_vel"), gp("noise_gyro")
+        self.n_ori, self.n_lidar, self.p_drop = gp("noise_orientation"), gp("lidar_noise_m"), gp("lidar_dropout")
+        self.gyro_bias = self._rng.normal(0.0, gp("gyro_bias"), 3) if self.realistic else np.zeros(3)
+        self.sensor_latency = gp("sensor_latency_ms") / 1000.0 if self.realistic else 0.0
+        self.command_latency = gp("command_latency_ms") / 1000.0 if self.realistic else 0.0
+        self._state_buf = deque()      # (sim_time, q, dq, quat, omega)
+        self._cmd_buf = deque()        # (sim_time_ankunft, cmd)
+
         self.declare_parameter("render_decimation", 25)
         self.render_decimation = max(1, int(self.get_parameter("render_decimation").value))
         self.declare_parameter("headless", False)
@@ -227,7 +255,10 @@ class MujocoBridgeNode(Node):
         self._prof_last_cmd = _now
         self._prof_ncmd = getattr(self, "_prof_ncmd", 0) + 1
         if len(cmd_data) == len(self.target_dof_pos):
-            self.target_dof_pos = cmd_data
+            if self.command_latency > 0.0 and self.controller_connected:
+                self._cmd_buf.append((float(self.data.time), cmd_data))   # wird im Sim-Thread verzoegert angewendet
+            else:
+                self.target_dof_pos = cmd_data
             if not self.controller_connected:
                 self.controller_connected = True
                 self.get_logger().info("[mujoco_bridge_node] Regler verbunden - Physik gestartet.")
@@ -303,6 +334,8 @@ class MujocoBridgeNode(Node):
                 # "Floating Base" (qpos: 3 Position + 4 Quaternion = 7;
                 # qvel: 3 lineare + 3 Winkelgeschwindigkeit = 6) - danach
                 # erst kommen die eigentlichen Gelenkwerte.
+                while self._cmd_buf and self._cmd_buf[0][0] + self.command_latency <= self.data.time:
+                    self.target_dof_pos = self._cmd_buf.popleft()[1]
                 q = self.data.qpos[7:]
                 dq = self.data.qvel[6:]
                 tau = pd_control(
@@ -362,11 +395,16 @@ class MujocoBridgeNode(Node):
     def _publish_states(self):
         now = self.get_clock().now().to_msg()
 
+        q, dq = self.data.qpos[7:].copy(), self.data.qvel[6:].copy()
+        quat_m, omega = self.data.qpos[3:7].copy(), self.data.qvel[3:6].copy()
+        if self.realistic:
+            q, dq, quat_m, omega = self._sensor_model(q, dq, quat_m, omega)
+
         # Joint States
         js = JointState()
         js.header.stamp = now
-        js.position = self.data.qpos[7:].tolist()
-        js.velocity = self.data.qvel[6:].tolist()
+        js.position = q.tolist()
+        js.velocity = dq.tolist()
         self.pub_joint_states.publish(js)
 
         # IMU: direkt aus dem simulierten "Floating Base"-Zustand abgeleitet
@@ -378,13 +416,13 @@ class MujocoBridgeNode(Node):
         # aber weniger realitaetsnah als zwei echte Sensor-Sites.
         imu = Imu()
         imu.header.stamp = now
-        imu.orientation.w = float(self.data.qpos[3])
-        imu.orientation.x = float(self.data.qpos[4])
-        imu.orientation.y = float(self.data.qpos[5])
-        imu.orientation.z = float(self.data.qpos[6])
-        imu.angular_velocity.x = float(self.data.qvel[3])
-        imu.angular_velocity.y = float(self.data.qvel[4])
-        imu.angular_velocity.z = float(self.data.qvel[5])
+        imu.orientation.w = float(quat_m[0])
+        imu.orientation.x = float(quat_m[1])
+        imu.orientation.y = float(quat_m[2])
+        imu.orientation.z = float(quat_m[3])
+        imu.angular_velocity.x = float(omega[0])
+        imu.angular_velocity.y = float(omega[1])
+        imu.angular_velocity.z = float(omega[2])
         self.pub_imu.publish(imu)
 
         # NEU (12.10.2026): Basis-Position (qpos[0:3] = x, y, z der
@@ -437,6 +475,27 @@ class MujocoBridgeNode(Node):
                 self._lidar_count = 0
                 self._publish_scan(now, quat)
 
+    def _sensor_model(self, q, dq, quat, omega):
+        """Latenz (Ringpuffer nach Sim-Zeit) + Rauschen/Bias, wie sie ein echter Sensor liefert."""
+        t = float(self.data.time)
+        self._state_buf.append((t, q, dq, quat, omega))
+        while len(self._state_buf) > 1 and self._state_buf[1][0] <= t - self.sensor_latency:
+            self._state_buf.popleft()
+        _, q, dq, quat, omega = self._state_buf[0]
+        r = self._rng
+        q = q + r.normal(0.0, self.n_q, q.shape)
+        dq = dq + r.normal(0.0, self.n_dq, dq.shape)
+        omega = omega + self.gyro_bias + r.normal(0.0, self.n_gyro, 3)
+        if self.n_ori > 0.0:
+            v = r.normal(0.0, self.n_ori, 3)
+            d = np.concatenate([[1.0], 0.5 * v])
+            d /= np.linalg.norm(d)
+            w1, x1, y1, z1 = quat
+            w2, x2, y2, z2 = d
+            quat = np.array([w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2, w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                             w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2, w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
+        return q, dq, quat, omega
+
     def _publish_scan(self, now, quat):
         w, x, y, z = quat
         R = np.array([
@@ -452,6 +511,9 @@ class MujocoBridgeNode(Node):
         mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
                            geomid, dist, None, n, self.lidar_rmax)
         ranges = np.where((geomid >= 0) & (dist >= 0) & (dist < self.lidar_rmax), dist, np.inf)
+        if self.realistic:
+            ranges = ranges + self._rng.normal(0.0, self.n_lidar, n)
+            ranges[self._rng.random(n) < self.p_drop] = np.inf     # Ausfaelle (keine Rueckmeldung)
         sc = LaserScan()
         sc.header.stamp = now
         sc.header.frame_id = "lidar_link"

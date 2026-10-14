@@ -45,8 +45,10 @@ class Result:
     trace: list = field(default_factory=list)   # (t, x, y, z, yaw)
 
 
-def run_loop(cmd_fn, dur, delay_ms=0.0, decimation=None, jitter=0, seed=0):
-    """cmd_fn(t, yaw_deg) -> [vx, vy, wz]. Regelt mit Policy-Takt 50 Hz (Sim-Zeit)."""
+def run_loop(cmd_fn, dur, delay_ms=0.0, decimation=None, jitter=0, seed=0, noise=None):
+    """cmd_fn(t, yaw_deg) -> [vx, vy, wz]. Regelt mit Policy-Takt 50 Hz (Sim-Zeit).
+    noise: dict mit Standardabweichungen fuer die Beobachtungen, z.B.
+      {"q": 0.001, "dq": 0.02, "gyro": 0.01, "gyro_bias": 0.005, "ori": 0.005}  (rad, rad/s)"""
     cfg = load_config()
     c = load_controller29(cfg)
     m = mujoco.MjModel.from_xml_path(BRINGUP + cfg["xml_path"])
@@ -61,6 +63,8 @@ def run_loop(cmd_fn, dur, delay_ms=0.0, decimation=None, jitter=0, seed=0):
     delay_steps = int(round(delay_ms / 1000.0 / m.opt.timestep))
     snaps = []
     rng = np.random.default_rng(seed)
+    nz = noise or {}
+    gyro_bias = rng.normal(0.0, nz.get("gyro_bias", 0.0), 3)
     next_ctrl = dec
     res = Result()
     legs = []
@@ -72,6 +76,16 @@ def run_loop(cmd_fn, dur, delay_ms=0.0, decimation=None, jitter=0, seed=0):
             snaps.pop(0)
         if i + 1 >= next_ctrl:
             q, dq, quat, om = snaps[0]
+            if nz:
+                q = q + rng.normal(0.0, nz.get("q", 0.0), q.shape)
+                dq = dq + rng.normal(0.0, nz.get("dq", 0.0), dq.shape)
+                om = om + gyro_bias + rng.normal(0.0, nz.get("gyro", 0.0), 3)
+                if nz.get("ori", 0.0) > 0:          # kleine Drehung um zufaellige Achse
+                    v = rng.normal(0.0, nz["ori"], 3)
+                    dqt = np.concatenate([[1.0], 0.5 * v]); dqt /= np.linalg.norm(dqt)
+                    w1, x1, y1, z1 = quat; w2, x2, y2, z2 = dqt
+                    quat = np.array([w1*w2 - x1*x2 - y1*y2 - z1*z2, w1*x2 + x1*w2 + y1*z2 - z1*y2,
+                                     w1*y2 - x1*z2 + y1*w2 + z1*x2, w1*z2 + x1*y2 - y1*x2 + z1*w2])
             cmd = np.asarray(cmd_fn(d.time, yaw_deg(quat)), dtype=np.float32)
             tgt = c.compute_joint_targets(q, dq, quat, om, cmd)
             next_ctrl = i + 1 + dec + (int(rng.integers(-jitter, jitter + 1)) if jitter else 0)

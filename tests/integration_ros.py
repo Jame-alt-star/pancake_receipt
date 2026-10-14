@@ -80,6 +80,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="g1_policy_29dof.yaml")
     ap.add_argument("--keep-log", default=None)
+    ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
     a = ap.parse_args()
     has_clip = "29dof" in a.config
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
@@ -90,7 +91,7 @@ def main():
     os.makedirs(logdir, exist_ok=True)
     logfile = os.path.join(logdir, "launch.log")
     proc = subprocess.Popen(["ros2", "launch", "roboter_steuerung", "steuereinheit.launch.py",
-                             f"config_file:={a.config}"], stdout=open(logfile, "w"),
+                             f"config_file:={a.config}"] + (["realistic_sensors:=true"] if a.realistisch else []), stdout=open(logfile, "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init()
     pr = Probe()

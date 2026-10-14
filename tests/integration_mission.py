@@ -120,6 +120,8 @@ def launch(logfile):
     nav = ["nav2:=true", "headless:=true"] if NAV2 else ["nav_testdouble:=true"]   # Nav2 + Viewer: zu wenig RAM
     if SLAM:
         nav += ["slam:=true"]
+    if "--realistisch" in sys.argv:
+        nav += ["realistic_sensors:=true"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
         nav += ["scene_file:=models/robots/g1_description/scene_testwelt_29dof.xml",
