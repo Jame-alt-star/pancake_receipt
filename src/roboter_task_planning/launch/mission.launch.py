@@ -25,6 +25,8 @@ def generate_launch_description():
         DeclareLaunchArgument("nav_testdouble", default_value="false"),
         DeclareLaunchArgument("headless", default_value="false",
                               description="MuJoCo ohne Viewer-Fenster (weniger CPU/Speicher)"),
+        DeclareLaunchArgument("record_path", default_value="",
+                              description=".npz-Datei fuer die Posenaufzeichnung (Demo-Video)"),
         DeclareLaunchArgument("odom_quelle", default_value="ground_truth",
                               description="ground_truth oder beinodometrie"),
         DeclareLaunchArgument("realistic_sensors", default_value="false",
@@ -49,6 +51,7 @@ def generate_launch_description():
                           "lidar": LaunchConfiguration("lidar"),
                           "realistic_sensors": LaunchConfiguration("realistic_sensors"),
                           "odom_quelle": LaunchConfiguration("odom_quelle"),
+                          "record_path": LaunchConfiguration("record_path"),
                           "cmd_vel_timeout_s": LaunchConfiguration("cmd_vel_timeout_s")}.items())
     balance = Node(package="roboter_steuerung", executable="balance_dienst_node", output="screen")
     double = Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen",

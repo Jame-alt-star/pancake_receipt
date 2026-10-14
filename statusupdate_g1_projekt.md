@@ -302,3 +302,7 @@ Neues Paket `roboter_navigation` (Layer 2, **Platzhalter** bis die Variante des 
 **Tests:** `integration_ros.py --realistisch --beinodometrie` 29/29 (Schätzfehler nach allen Szenarien inkl. schneller Spiralen 24,8 cm); `integration_mission.py --welt --realistisch` 14/14; `integration_mission.py --slam --realistisch --beinodometrie` 22/22 (Endabstand zu b 0,16 m, Karte vollständig); `tests/test_beinodometrie.py` (Fehler < 2 % der Strecke).
 
 **Was weiterhin fehlt gegenüber echter Hardware:** echte Reibung/Motorverhalten, echte Lidar-Physik (3D-Punktwolke, Reflexionen), echte Unitree-SDK-Bridge, Sicherheitskette beim Hochfahren. Beinodometrie nimmt an, dass der Standfuß nicht rutscht.
+
+
+## Demo-Szenario "Kontrollrundgang im Lager" (14.10.2026)
+Szene `scene_demo_lager_29dof.xml` (Halle mit Regalen und Kistenstapeln, Büro mit 1,6 m breiter Tür, Ladestation), Mission `demo_lager.yaml`: K1 (Regalgang) → K2 (Hallenecke) → K3 (Büro) → balancieren → warten → Ladestation; danach NOT-AUS-Sequenz. Lauf in der realistischsten Konfiguration (SLAM, realistische Sensorik, Beinodometrie): **Mission erfolgreich in ~100 s, ohne Neuplanung**. Video (127 s, Verfolgerkamera, Lidar-Treffer, Leitstand-Karte, Auftragsliste) wird offline aus der aufgezeichneten Pose gerendert; Skripte in `demo/` (`run_demo.py`, `render_demo.py`, `README.md`). `mujoco_node` hat dafür den Parameter `record_path`.

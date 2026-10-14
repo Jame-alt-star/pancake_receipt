@@ -60,6 +60,9 @@ def generate_launch_description():
         "odom_quelle", default_value="ground_truth",
         description="ground_truth (perfekte Simulationswerte) oder beinodometrie (Schaetzer aus Gelenken + IMU)")
     odom_gt = PythonExpression(["'", LaunchConfiguration("odom_quelle"), "' == 'ground_truth'"])
+    record_arg = DeclareLaunchArgument(
+        "record_path", default_value="",
+        description="Pfad einer .npz-Datei: Roboterpose (25 Hz) fuer Demo-Videos aufzeichnen.")
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "
@@ -74,6 +77,7 @@ def generate_launch_description():
         parameters=[{"config_file": config_file, "headless": headless, "scene_file": scene,
                      "lidar": LaunchConfiguration("lidar"),
                      "realistic_sensors": LaunchConfiguration("realistic_sensors"),
+                     "record_path": LaunchConfiguration("record_path"),
                      "publish_odom": odom_gt, "publish_tf": odom_gt}],
     )
 
@@ -100,6 +104,7 @@ def generate_launch_description():
         headless_arg,
         lidar_arg,
         realistic_arg,
+        record_arg,
         odom_arg,
         scene_arg,
         timeout_arg,

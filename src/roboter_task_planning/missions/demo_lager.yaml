@@ -1,0 +1,30 @@
+# Demo "Kontrollrundgang im Lager" (Szene scene_demo_lager_29dof.xml).
+# Der Roboter faehrt von der Ladestation-Naehe (Start) die Pruefpunkte K1 (Regalgang), K2 (Hallenecke)
+# und K3 (Buero, durch die Tuer) an, balanciert und wartet am Buero-Pruefpunkt und kehrt zur
+# Ladestation L zurueck. Hindernisse (Kistenstapel, Regale) umfaehrt Nav2 anhand des Lidars.
+orte:
+  start: {x: 0.0, y: 0.0}
+  k1:    {x: 3.0, y: 0.0}
+  k2:    {x: 5.5, y: -2.6}
+  k3:    {x: 8.5, y: 1.5}
+  lader: {x: 0.0, y: -2.6}
+verbindungen:
+  - [start, k1]
+  - [k1, k2]
+  - [k2, k3]
+  - [k3, lader]
+  - [start, lader]
+start_ort: start
+ziele:
+  - {art: besucht,    ort: k1}
+  - {art: besucht,    ort: k2}
+  - {art: besucht,    ort: k3}
+  - {art: balanciert, ort: k3}
+  - {art: gewartet,   ort: k3}
+  - {art: am_ort,     ort: lader}
+parameter:
+  warte_s: 3.0
+  balancier_toleranz_grad: 5.0
+  nav_toleranz_m: 0.3
+  nav_geschwindigkeit: 0.4
+  max_replans: 2

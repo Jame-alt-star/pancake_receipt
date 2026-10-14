@@ -185,6 +185,13 @@ class MujocoBridgeNode(Node):
         self._state_buf = deque()      # (sim_time, q, dq, quat, omega)
         self._cmd_buf = deque()        # (sim_time_ankunft, cmd)
 
+        # NEU (14.10.2026): Aufzeichnung der Roboterpose fuer Demo-Videos (Offline-Rendering). Schreibt
+        # (Wandzeit, Simzeit, qpos) mit 25 Hz in eine .npz-Datei; die Simulation bleibt in Echtzeit.
+        self.declare_parameter("record_path", "")
+        self.record_path = str(self.get_parameter("record_path").value)
+        self._rec = {"wall": [], "t": [], "qpos": []}
+        self._rec_next = 0.0
+        self._rec_flushed = time.time()
         self.declare_parameter("render_decimation", 25)
         self.render_decimation = max(1, int(self.get_parameter("render_decimation").value))
         self.declare_parameter("headless", False)
@@ -350,6 +357,13 @@ class MujocoBridgeNode(Node):
                 _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
                 _t1 = time.perf_counter()
+                if self.record_path and self.data.time >= self._rec_next:
+                    self._rec_next = self.data.time + 0.04
+                    self._rec["wall"].append(time.time())
+                    self._rec["t"].append(float(self.data.time))
+                    self._rec["qpos"].append(self.data.qpos.copy())
+                    if time.time() - self._rec_flushed > 15.0:
+                        self._flush_recording()
 
                 # Sensor-Zustaende publizieren - bei JEDEM Physikschritt,
                 # damit steuereinheit_node.py moeglichst aktuelle Daten
@@ -536,7 +550,15 @@ class MujocoBridgeNode(Node):
         sc.ranges = ranges.astype(np.float32)   # numpy-Array statt Python-Liste (1.6 ms -> 0.06 ms)
         self.pub_scan.publish(sc)
 
+    def _flush_recording(self):
+        if not self.record_path or not self._rec["t"]:
+            return
+        self._rec_flushed = time.time()
+        np.savez_compressed(self.record_path, wall=np.array(self._rec["wall"]), t=np.array(self._rec["t"]),
+                            qpos=np.array(self._rec["qpos"]))
+
     def destroy_node(self):
+        self._flush_recording()
         # Hintergrund-Thread aktiv stoppen, bevor der Knoten zerstoert wird -
         # sonst liefe die Simulationsschleife theoretisch im Hintergrund weiter.
         self.is_running = False
