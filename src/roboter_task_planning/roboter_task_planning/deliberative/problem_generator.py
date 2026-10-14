@@ -1,4 +1,13 @@
-"""Erzeugt aus Weltwissen + Mission ein PDDL-Problem (Layer 1)."""
+"""Erzeugt aus Weltwissen + Mission ein PDDL-Problem (Layer 1).
+
+Abbildung: Orte -> Objekte (Typ ort); erreichte Fakten (besucht/balanciert/gewartet) -> Init;
+verbindungen -> (verbunden a b) in beide Richtungen mit Kosten = Luftlinie in cm (ganzzahlig, weil
+Fast Downward ganzzahlige Aktionskosten verlangt); der dynamische Ort der Neuplanung bekommt nur
+ausgehende Kanten (siehe WorldKnowledge.aktualisiere_position); Ziele -> (:goal ...), am_ort -> (at o).
+Die Kosten von balanciere/warte (je 100, siehe domain.pddl) entsprechen 1 m Weg: sie sind Pflicht-
+schritte und beeinflussen die Wegwahl nicht, ein Wert in der Groessenordnung der Strecken haelt die
+Kostenfunktion aber lesbar.
+"""
 import os
 
 from roboter_task_planning.executive.world_knowledge import DYNAMISCHER_ORT, WorldKnowledge

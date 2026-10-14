@@ -7,6 +7,8 @@ import tempfile
 
 from roboter_task_planning.deliberative.i_planner import IPlanner, Plan, PlanSchritt, PlanningFailed
 
+# A* mit LM-Cut-Heuristik: optimal (kuerzester Weg) und fuer Missionen mit wenigen Orten in
+# Millisekunden geloest. Fuer sehr viele Orte waere eine nicht-optimale Suche (z. B. lama) schneller.
 DEFAULT_SEARCH = "astar(lmcut())"
 _ACTION = re.compile(r"^\(([a-z0-9_\-]+)((?:\s+[a-z0-9_\-]+)*)\)\s*$")
 _COST = re.compile(r";\s*cost\s*=\s*(\d+)")

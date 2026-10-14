@@ -17,8 +17,11 @@ from rclpy.node import Node
 
 from roboter_interfaces.action import GehAktion
 
-WZ_MAX = 0.2        # Trainingsbereich der Policy
-TIMEOUT_S = 150.0
+# Drehrate zum Ausrichten. Hinweis (Review U8): seit 13.10. ist der Kommandobereich +-1.0; im Stand
+# setzt die Policy kleine wz kaum um (0.2 -> ~0.025 rad/s). Das Testdouble richtet daher langsam aus;
+# es bleibt bewusst bei 0.2 (bekanntes, getestetes Verhalten der Mission-Tests), Nav2 nutzt 1.0.
+WZ_MAX = 0.2
+TIMEOUT_S = 150.0   # pro Ziel; langsames Ausrichten (s. o.) braucht bis ~60 s
 
 
 class NavTestdouble(Node):
@@ -46,6 +49,8 @@ class NavTestdouble(Node):
         self.pub.publish(t)
 
     def _execute(self, gh):
+        """Ausrichten (auf der Stelle drehen, solange der Winkelfehler > 0.35 rad), dann geradeaus mit
+        Kurskorrektur; Ziel erreicht bei Abstand < toleranz_m. Abbrechbar, mit Zeitlimit."""
         g = gh.request
         tol = float(self.get_parameter("toleranz_m").value)
         v = max(0.3, min(float(g.ziel_geschwindigkeit_m_pro_s) or 0.4, 0.8))

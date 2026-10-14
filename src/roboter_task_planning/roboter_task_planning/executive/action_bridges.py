@@ -12,15 +12,19 @@ from roboter_task_planning.deliberative.i_planner import PlanSchritt
 from roboter_task_planning.executive.i_action_bridge import BridgeResult, IActionBridge
 from roboter_task_planning.executive.world_knowledge import Mission
 
-GEH_ACTION = "/geh_aktion"           # GehAktion (Layer 3 / Testdouble)
-BALANCIER_ACTION = "/balanciere"     # BalancierAktion (balance_dienst_node)
-NAV2_ACTION = "navigate_to_pose"     # nav2_msgs/NavigateToPose (Layer 2, Kollege)
+GEH_ACTION = "/geh_aktion"           # GehAktion (SysML GehAktionPort): Server nur im Testdouble
+BALANCIER_ACTION = "/balanciere"     # BalancierAktion (balance_dienst_node, Layer 3)
+NAV2_ACTION = "navigate_to_pose"     # nav2_msgs/NavigateToPose (Layer 2, Standard-Backend)
 NAV2_ACTIVE_SRV = "/lifecycle_manager_navigation/is_active"   # std_srvs/Trigger
 
 
 def run_action(client: ActionClient, goal, cancel: threading.Event, timeout_s: float,
                server_wait_s: float = 5.0):
-    """Sendet ein Goal und wartet blockierend (Executor laeuft in einem anderen Thread).
+    """Sendet ein Goal und wartet blockierend; der Executor des Knotens laeuft in anderen Threads
+    (MultiThreadedExecutor in mission_node), daher wird hier nur gepollt.
+    Zeiten: server_wait_s bis der Action-Server erreichbar ist; 10 s bis das Goal angenommen ist
+    (Nav2 nimmt sonst sofort an - mehr deutet auf einen haengenden Server); nach einem Cancel
+    hoechstens 5 s auf das Ergebnis warten, damit ein haengender Server die Mission nicht blockiert.
     Rueckgabe: (status_ok, result_msg_or_None, text)."""
     if not client.wait_for_server(timeout_sec=server_wait_s):
         return False, None, "Action-Server nicht erreichbar"
@@ -51,8 +55,10 @@ def run_action(client: ActionClient, goal, cancel: threading.Event, timeout_s: f
 class NavigationBridge(IActionBridge):
     """'gehe_zu(von, nach)': Ziel = Koordinaten des Ortes 'nach'.
     backend='gehaktion': roboter_interfaces/GehAktion (Layer 3 bzw. Testdouble)
-    backend='nav2':      nav2_msgs/NavigateToPose (Layer 2 des Kollegen, frame 'map') - hier
-                         NICHT getestet (nav2_msgs nicht installiert)."""
+    backend='nav2':      nav2_msgs/NavigateToPose (Layer 2, frame 'map') - Standard; getestet mit der
+                         Platzhalter-Konfiguration aus roboter_navigation (Testwelt, SLAM).
+    Koordinaten kommen aus dem Weltwissen (orte=), damit auch der dynamische Ort der Neuplanung
+    aufloesbar ist."""
     aktionen = ("gehe_zu",)
 
     def __init__(self, node: Node, backend: str = "nav2", timeout_s: float = 180.0):

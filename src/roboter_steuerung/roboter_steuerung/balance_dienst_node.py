@@ -25,9 +25,9 @@ from sensor_msgs.msg import Imu
 from roboter_interfaces.action import BalancierAktion
 from roboter_interfaces.srv import GleichgewichtService
 
-STABIL_ZEIT_S = 1.0
-MAX_GESCHW_M_S = 0.03
-TIMEOUT_S = 20.0
+STABIL_ZEIT_S = 1.0      # so lange muessen Neigung und Geschwindigkeit ununterbrochen im Rahmen sein
+MAX_GESCHW_M_S = 0.03    # "steht": im Stand gemessen < 0.01 m/s Drift, Gehen >= 0.3 m/s
+TIMEOUT_S = 20.0         # Bremsen aus voller Fahrt dauert ~2-3 s; 20 s mit grosser Reserve
 
 
 def neigung_grad(qw, qx, qy, qz) -> float:

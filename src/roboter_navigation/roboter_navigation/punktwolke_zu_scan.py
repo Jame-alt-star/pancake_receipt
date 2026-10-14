@@ -88,6 +88,9 @@ class PunktwolkeZuScan(Node):
         self.quat = np.array([o.w, o.x, o.y, o.z])
 
     def _cloud(self, m: PointCloud2):
+        # Pro Punktwolke: (1) waagerechter Scan je Winkel (naechster Punkt im Hoehenband) fuer SLAM
+        # und Collision-Monitor, (2) Hinderniswolke (Hoehenband, 5 cm ausgeduennt) fuer die Costmaps.
+        # Ausrichtung ueber die zuletzt empfangene IMU-Orientierung.
         if m.point_step != 12 or m.width == 0:
             pts = np.zeros((0, 3))
         else:

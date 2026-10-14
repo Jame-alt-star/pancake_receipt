@@ -20,8 +20,8 @@ from roboter_steuerung.states.not_aus_state import NotAusState
 # _ramp_cmd() unten), fuer alle drei Kommando-Achsen (vx/vy/yaw_rate)
 # gemeinsam verwendet. Bewusst ein einzelner, noch nicht empirisch
 # feinabgestimmter Startwert (aehnlich CMD_NULL_SCHWELLE in den
-# States) - 1.0 heisst z.B., ein Sprung von cmd_init [0.5, 0, 0] auf
-# [0, 0, 0] dauert ca. 0.5s statt einem einzigen Regelungstakt.
+# States) - 1.0 heisst z.B., ein Wechsel von vx 0.5 auf 0 dauert ca. 0.5 s
+# statt einem einzigen Regelungstakt. In Bereitschaft/NotAus steht die Rampe auf 0.
 CMD_RAMP_RATE = 1.0
 
 # NEU (12.10.2026): Heading-Hold/Positions-Haltung - siehe
@@ -163,13 +163,8 @@ class SteuereinheitNode(Node):
         else:
             raise ValueError(f"Unbekannter controller_type in der Config: {controller_type!r}")
 
-        # 3. Start-/Default-Geschwindigkeitskommando aus der YAML. Wird
-        # weiter unten per /cmd_vel-Subscriber zur Laufzeit ueberschrieben,
-        # sobald eine erste Nachricht ankommt - bis dahin gilt dieser
-        # Default, damit der Roboter nicht ohne jedes Kommando (z.B. mit
-        # lauter Nullen) startet. NEU (12.10.2026): cmd_target ist das
-        # angeforderte Ziel, cmd der aktuell gerampte+korrigierte Wert -
-        # beide starten gleich, es gibt also am Anfang nichts auszurampen.
+        # 3. Kommandowerte: cmd_target = zuletzt per /cmd_vel angefordertes Ziel, cmd_ramped =
+        # gerampter Wert, cmd = an die Policy uebergebener Wert (Rampe + Kurshaltung, begrenzt).
         # GEAENDERT (14.10.2026, Review L1): Startwert immer 0. Ein cmd_init != 0 wurde
         # nach der Freigabe als Sprung an die Policy gegeben (die Rampe lief vorher schon
         # in Bereitschaft hoch); cmd_init aus der YAML wird nicht mehr verwendet.
@@ -212,17 +207,9 @@ class SteuereinheitNode(Node):
         self._last_cmd_vel_t = None
         self._timeout_gemeldet = False
 
-        # NEU (12.10.2026, Realismus-Fix): ohne dieses Flag wuerde
-        # BereitschaftState sofort anhand von cmd_target entscheiden -
-        # und cmd_target startet mit cmd_init (haeufig != 0), der
-        # Roboter wuerde also direkt nach dem Hochfahren von sich aus
-        # loslaufen, OHNE dass je ein Bediener ein Kommando gesendet
-        # hat. True wird es erst in _cmd_vel_callback(), sobald die
-        # ERSTE echte /cmd_vel-Nachricht ankommt (siehe dort) - das ist
-        # die eigentliche "Freigabe", nach der BereitschaftState
-        # wartet (siehe bereitschaft_state.py). cmd_init bleibt dadurch
-        # nur noch ein Platzhalter-Anfangswert, der erst nach der
-        # Freigabe tatsaechlich wirksam werden kann.
+        # Bewegungsfreigabe (Realismus-Fix 12.10.2026): nach dem Hochfahren bleibt der Roboter in
+        # Bereitschaft stehen, bis eine bewusste Freigabe kommt (siehe bereitschaft_state.py).
+        # NotAus entzieht die Freigabe; nach der Entwarnung ist eine neue noetig.
         self.bewegung_freigegeben = False
         # GEAENDERT (14.10.2026, Review B1/L3): Freigabe ueber einen EIGENEN Kanal /freigabe
         # (std_msgs/Bool, true = freigeben, false = Freigabe entziehen) statt durch irgendein
@@ -249,12 +236,9 @@ class SteuereinheitNode(Node):
         # an die Policy gegeben. Grund fuer das fruehere Scheitern (12.10.)
         # war sehr wahrscheinlich dieselbe Akkumulation wie bei der
         # Kurshaltung (cmd[0] = cmd[0] + correction jeden Takt).
-        # ACHTUNG: nutzt /base_position (Simulations-Ground-Truth); auf
-        # echter Hardware braeuchte es Odometrie/Lokalisierung.
+        # Position aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
         self.position_hold_aktiv = bool(self.config.get("position_hold", False))
         self.pos_hold_corr = np.zeros(2, dtype=np.float32)
-        # NEU (14.10.2026): Position fuer die Positionshaltung aus /odom (Ground-Truth oder
-        # Beinodometrie, je nach odom_quelle) statt direkt aus /base_position.
         self._odom_xyz = None
         if self.position_hold_aktiv:
             self.create_subscription(Odometry, "/odom", self._odom_callback, 10)
@@ -263,14 +247,13 @@ class SteuereinheitNode(Node):
         # Twist) - ersetzt das bisherige "self.cmd wird nur einmal beim
         # Start gesetzt und nie mehr veraendert". Mapping auf den vom
         # RL-Controller erwarteten 3er-Kommandovektor [vx, vy, yaw_rate]
-        # (siehe cmd_init oben, 3 der 47 Beobachtungswerte in
-        # rl_locomotion_controller.py): linear.x -> vorwaerts/-rueckwaerts
+        # (velocity_commands, Teil der Policy-Beobachtung): linear.x -> vorwaerts/-rueckwaerts
         # (m/s), linear.y -> seitwaerts (m/s), angular.z -> Drehrate um die
         # Hochachse (rad/s). linear.z/angular.x/angular.y werden bewusst
         # ignoriert, die Policy kennt nur ebene Fortbewegung. Damit kann
         # jetzt ein beliebiger Standard-ROS2-Publisher (Joystick-Node,
-        # Tastatursteuerung, "ros2 topic pub", spaeter Nav2) die
-        # Laufrichtung zur Laufzeit aendern, ohne den Knoten neu zu starten.
+        # Tastatursteuerung, "ros2 topic pub", Nav2) die Laufrichtung zur Laufzeit aendern.
+        # /cmd_vel gibt seit 14.10.2026 NICHT mehr frei (siehe /freigabe).
         self.sub_cmd_vel = self.create_subscription(
             Twist, "/cmd_vel", self._cmd_vel_callback, 10
         )
@@ -553,14 +536,9 @@ class SteuereinheitNode(Node):
             self.cmd = np.zeros(3, dtype=np.float32)
         self._apply_heading_hold(quat)
         self._clip_cmd()
-        # ZURUECKGEBAUT (12.10.2026): _apply_position_hold() wurde testweise
-        # aktiviert, hat beim Stehen-Test aber zum Umfallen gefuehrt - die
-        # aktive vx/vy-Korrektur hat die bisher stabile Variante (cmd hart
-        # auf [0,0,0]) offenbar wieder naeher an ihre Kippgrenze gebracht
-        # (siehe Risiko-Hinweis im Docstring von _apply_position_hold()
-        # unten, der sich damit bestaetigt hat). Methode bleibt im Code
-        # erhalten (fuer eine spaetere, vorsichtiger abgestimmte Variante
-        # oder eine andere Policy), wird aber aktuell NICHT aufgerufen.
+        # Positionshaltung nur im Zustand Balancieren (Schalter position_hold in der YAML). Der
+        # erste Versuch am 12.10. fiel um; Ursache war die Akkumulation der Korrektur auf
+        # self.cmd (wie bei der Kurshaltung). Seit 13.10. getrennt in pos_hold_corr: stabil.
         if self.position_hold_aktiv:
             from roboter_steuerung.states.balancieren_state import BalancierenState
             if isinstance(self.state, BalancierenState) and self._odom_xyz is not None:

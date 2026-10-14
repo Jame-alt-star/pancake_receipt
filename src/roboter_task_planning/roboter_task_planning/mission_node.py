@@ -6,6 +6,12 @@ Schnittstellen:
   Service  /mission/abort   (std_srvs/Trigger)
   Topic    /mission/status  (std_msgs/String, JSON; TRANSIENT_LOCAL)
 Parameter: mission_file, nav_backend ('nav2'|'gehaktion'), auto_start (bool)
+
+Thread-Modell: der Knoten laeuft in einem MultiThreadedExecutor (alle Callbacks reentrant). Eine
+Mission laeuft in einem eigenen Thread (MissionExecutor.run blockiert, Bridges pollen ihre Action-
+Futures); Executor-Threads bedienen parallel Status, Services, /not_aus und die Action-Clients.
+Abbruch (Service oder NotAus) ueber ein threading.Event, das die Bridges regelmaessig pruefen.
+Beim Start gibt der Knoten die Bewegung frei (/freigabe): der Missionsstart ist die Bedieneraktion.
 """
 import json
 import threading

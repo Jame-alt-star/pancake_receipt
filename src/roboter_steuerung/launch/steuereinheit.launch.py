@@ -52,7 +52,7 @@ def generate_launch_description():
         description="cmd_vel-Watchdog [s]: ohne neue Nachricht wird das Kommando auf 0 gesetzt (0 = aus).")
     lidar_arg = DeclareLaunchArgument(
         "lidar", default_value="false",
-        description="true = simuliertes 2D-Lidar (/scan) in mujoco_node (fuer Nav2/SLAM).")
+        description="true = simuliertes Lidar in mujoco_node (Modus ueber lidar_2d/lidar_3d; fuer Nav2/SLAM).")
     realistic_arg = DeclareLaunchArgument(
         "realistic_sensors", default_value="false",
         description="true = Sensorrauschen, Gyro-Bias, Latenz und Lidar-Ausfaelle statt perfekter Simulationswerte.")
@@ -68,7 +68,7 @@ def generate_launch_description():
         description="false = kein eigener 2D-Scan (nur 3D-Punktwolke, /scan wird daraus abgeleitet).")
     lidar3d_arg = DeclareLaunchArgument(
         "lidar_3d", default_value="false",
-        description="true = zusaetzlich 3D-Lidar als PointCloud2 (/points, 16 Ringe, 5 Hz).")
+        description="true = 3D-Lidar als PointCloud2 (/points, 24 Ringe, 5 Hz).")
     scene_arg = DeclareLaunchArgument(
         "scene_file", default_value="",
         description="MuJoCo-Szene relativ zu r1_bringup (ueberschreibt xml_path der Config), z.B. "

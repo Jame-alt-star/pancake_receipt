@@ -10,7 +10,7 @@ class BereitschaftState(IRobotState):
     RoboterZustaende.sysml): Uebergang zwischen StartState und der
     aktiven Bewegungsregelung (Gehen/Balancieren) - der Roboter wartet
     hier auf eine bewusste Freigabe (node.bewegung_freigegeben, siehe
-    steuereinheit_node._cmd_vel_callback()), bevor er in Gehen/
+    steuereinheit_node._setze_freigabe(), Kanal /freigabe), bevor er in Gehen/
     Balancieren wechselt (siehe FIX 1 unten).
 
     FIX 1 (12.10.2026, Nutzerwunsch - Realismus): eine fruehere Version
@@ -55,7 +55,7 @@ class BereitschaftState(IRobotState):
         if not node.bewegung_freigegeben:
             if not self._warte_gemeldet:
                 node.get_logger().info(
-                    "Zustand: Bereitschaft - warte auf erstes /cmd_vel-Kommando (Freigabe)."
+                    "Zustand: Bereitschaft - warte auf Freigabe (/freigabe)."
                 )
                 self._warte_gemeldet = True
 
@@ -65,7 +65,9 @@ class BereitschaftState(IRobotState):
             node.pub_balance_mode.publish(Bool(data=False))
             quat, omega = node.bridge.read_imu()
             joint_pos, joint_vel = node.bridge.read_joint_states()
-            # NEU (13.10.2026): Kurshaltung auch beim Warten auf die Freigabe.
+            # Kurshaltung auch beim Warten auf die Freigabe (13.10.2026). cmd[2] ist hier NUR die
+            # Kurshaltungs-Korrektur: die Rampe steht in Bereitschaft auf 0 (seit 14.10.2026,
+            # Review B5 - vorher konnte eine alte Drehrate des Nutzers durchgereicht werden).
             # Gemessen: ohne sie driftet der Roboter in Bereitschaft (~0.3 m /
             # 60 s, Fuesse heben sich, kleine Schritte), mit ihr stehen die
             # Beine praktisch still (|dq| 0.0004 rad/s, Basis 0.6 cm / 50 s).

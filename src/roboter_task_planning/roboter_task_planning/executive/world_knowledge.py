@@ -12,6 +12,8 @@ DYNAMISCHER_ORT = "pos_aktuell"      # wird bei Neuplanung an der aktuellen Posi
 
 @dataclass
 class Mission:
+    """Unveraenderliche Missionsbeschreibung aus der YAML: Orte (map-Frame, m), ungerichtete
+    Verbindungen, Ziele (art, ort), optionaler Startort und Parameter (Defaults unten)."""
     orte: Dict[str, Tuple[float, float]]
     verbindungen: Set[frozenset]
     ziele: List[Tuple[str, str]]               # (art, ort)
@@ -72,7 +74,9 @@ class Mission:
 
 
 class WorldKnowledge:
-    """Veraenderlicher Zustand waehrend der Missionsausfuehrung."""
+    """Veraenderlicher Zustand waehrend der Missionsausfuehrung: aktueller Ort, erreichte Fakten,
+    Orte inkl. dynamischem Ort der Neuplanung. Wird nach jedem erfolgreichen Schritt aktualisiert;
+    daraus erzeugt problem_generator das naechste PDDL-Problem."""
 
     def __init__(self, mission: Mission, current_ort: str):
         self.mission = mission

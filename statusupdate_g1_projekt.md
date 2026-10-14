@@ -1,6 +1,6 @@
 # Statusupdate – G1 Humanoid-Projekt
 
-**Stand: 12.10.2026**
+**Verlaufsprotokoll ab 12.10.2026 (chronologisch; aktueller Stand am Ende und in README.md).** Das Projekt ist ein Arbeitsprojekt (keine Thesis).
 
 ## Ausgangspunkt
 
@@ -26,7 +26,7 @@ Zusätzlich wurde eine Kurshaltung ergänzt (einfacher Regelkreis auf Basis der 
 
 Für die Navigation (Layer 2) wurde Nav2/SLAM als klassischer, etablierter Ansatz festgelegt statt einer selbst trainierten, kamerabasierten Policy – geringeres Risiko, keine zusätzliche Trainingszeit nötig.
 
-Für die Missionsplanung (Layer 1) wurde ein eigener Dispatcher mit Fast Downward (PDDL-Planer) festgelegt statt des Fremdframeworks PlanSys2 – passt direkt auf die vorhandene Aktionsstruktur und bleibt vollständig nachvollziehbar für die Thesis.
+Für die Missionsplanung (Layer 1) wurde ein eigener Dispatcher mit Fast Downward (PDDL-Planer) festgelegt statt des Fremdframeworks PlanSys2 – passt direkt auf die vorhandene Aktionsstruktur und bleibt vollständig nachvollziehbar.
 
 Außerdem wurde geklärt, dass Greifen/Manipulation tatsächlich ein festes Ziel der Arbeit ist. Das aktuelle Robotermodell (12 Freiheitsgrade, nur Beine) reicht dafür nicht aus, da die Arme bislang keine Gelenke haben. Eine Umstellung auf ein größeres Modell (23 oder 29 Freiheitsgrade) ist deshalb als eigener, klar abgegrenzter Arbeitsschritt eingeplant. Dafür wurde auch recherchiert, wie vergleichbare Projekte das lösen: Eine separate Greif-Policy, die zusätzlich zur bestehenden Lauf-Policy läuft (nicht gemeinsam neu trainiert), ist ein in der Praxis bereits erprobtes Muster. Geklärt ist zudem, dass Greifen und Gehen nicht gleichzeitig, sondern nacheinander ablaufen sollen (erst stehen bleiben, dann greifen) – das reduziert den Aufwand und das Risiko erheblich.
 
@@ -365,3 +365,11 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 - **Ballast entfernt** (in Git abrufbar): `src/_backup_vor_lockstep_*`, `g1_29dof.xml.bak_vor_armature_fix`, leere `task_planner_node.py`, `standalone_test.py`; `.pytest_cache/` ignoriert.
 - **B8 teilweise:** Fast Downward: `.py` mit python3, Wrapper aus PATH direkt; Dateien mit Kontextmanager.
 - **Tests:** pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14, SLAM realistisch 22/22. (Ein erster Pipeline-Lauf scheiterte, weil eine Simulation aus einem Vortest noch lief – Testumgebung, nicht Code; sauber wiederholt 32/32.)
+
+
+## Review-Paket 4: Kommentare und Dokumentation (14.10.2026) – v1.8
+- Veraltete/widersprüchliche Kommentare korrigiert: `steuereinheit_node.py` (Positionshaltung „NICHT aufgerufen“, `/base_position`, „47 Beobachtungswerte“, `cmd_init`, Freigabe per `/cmd_vel`), `balancieren_state.py` (vx/vy-Eingabe), `not_aus_state.py` („trabt“ nur 12-DOF, Freigabe-Schritt umgesetzt), `bereitschaft_state.py`, `mujoco_node.py` (Topic-Liste, „bei jedem Physikschritt“, „47-Werte-Policy“, Profiling dauerhaft dokumentiert, `if True:` aufgelöst, Rauschwerte als Annahmen gekennzeichnet), `steuereinheit.launch.py` (2D-Lidar, 16→24 Ringe), `action_bridges.py` (Nav2 getestet, GehAktion nur Testdouble), `nav_testdouble_node.py` (WZ_MAX), `g1_policy_29dof.yaml`.
+- Spärlich kommentierte Stellen ergänzt: Problem-Generator (Abbildung, ganzzahlige Kosten, Kosten 100), Planer (warum A*/LM-Cut), `run_action` (Zeiten), Missionsknoten (Thread-Modell), Weltwissen, Balance-Dienst-Konstanten (Herkunft), Beinodometrie-/Punktwolken-Callbacks, Testdouble, Lidar-/Aufnahmefunktionen.
+- Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben nach `docs/archiv/` (mit Hinweis); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben.
+- Hinweis: `CODE_REVIEW_PROMPT.md` (Review-Auftrag) wurde beim Commit von Paket 1 versehentlich per `git add -A` mitversioniert; Inhalt unkritisch, bleibt im Root.
+- Tests: pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14.

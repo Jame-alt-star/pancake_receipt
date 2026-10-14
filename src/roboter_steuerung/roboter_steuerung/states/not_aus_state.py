@@ -49,15 +49,13 @@ class NotAusState(IRobotState):
     eine Frage der richtigen Wartezeit.
 
     FIX (DIESE VERSION, nach Iteration 3): Phase 2 (hartes Einfrieren)
-    ERSATZLOS GESTRICHEN. NotAusState bleibt jetzt dauerhaft in der
-    nachweislich stabilen Variante aus Iteration 2 (Policy aktiv, cmd
-    hart auf [0,0,0], keine Heading-Hold-Korrektur fuer maximale
-    Vorhersagbarkeit). KONSEQUENZ: der Roboter steht bei NotAus nicht
-    woertlich bewegungslos still, sondern trabt/trittet weiter leicht
-    auf der Stelle, solange NotAus aktiv ist - das eigentliche Ziel
-    (nicht umfallen/beschaedigt werden, siehe Nutzervorgabe) ist damit
-    aber erfuellt, "woertlich einfrieren" war nur ein Mittel dazu und
-    erwies sich als nicht sicher erreichbar.
+    ERSATZLOS GESTRICHEN. NotAusState bleibt dauerhaft in der stabilen
+    Variante aus Iteration 2 (Policy aktiv, cmd hart auf [0,0,0], keine
+    Kurshaltung fuer maximale Vorhersagbarkeit).
+    Das Trippeln der Iterationen 1-3 betraf die 12-DOF-Policy. Mit der
+    29-DOF-Policy (gemessen 13./14.10.) stehen die Beine nach ~2-4 s
+    praktisch still (|dq| ~0.002 rad/s), der Roboter bremst aus voller
+    Fahrt innerhalb ~2-3 s ab.
 
     WICHTIGER KOMPROMISS (bewusst in Kauf genommen): das ist kein
     "Motoren sofort aus" mehr im wortwoertlichen Sinn, sondern ein aktiv
@@ -65,10 +63,11 @@ class NotAusState(IRobotState):
     Zweibeiner ohne passive Standstabilitaet ist ein echtes Sofort-Aus
     ohnehin gleichbedeutend mit einem Sturz.
 
-    OFFENER PUNKT (bewusst nicht umgesetzt): nach Entwarnung (/not_aus
-    wieder False) wechselt der Automat automatisch zurueck nach
-    BereitschaftState - es gibt KEINEN bewussten Freigabe-/Reset-
-    Schritt. Siehe auch BereitschaftState.
+    Nach der Entwarnung (/not_aus false) wechselt der Automat nach
+    BereitschaftState; der Roboter steht dort, bis eine NEUE Freigabe ueber
+    /freigabe kommt (seit 12.10. Freigabe-Pflicht, seit 14.10. eigener Kanal;
+    waehrend NotAus werden /cmd_vel und Freigaben ignoriert, siehe
+    steuereinheit_node._not_aus_callback/_setze_freigabe).
     """
 
     def execute(self, node) -> IRobotState:

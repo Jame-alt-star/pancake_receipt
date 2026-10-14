@@ -49,6 +49,9 @@ class BeinodometrieNode(Node):
         self.omega = np.array([m.angular_velocity.x, m.angular_velocity.y, m.angular_velocity.z])
 
     def _joints(self, m: JointState):
+        # Pro /joint_states-Nachricht (100 Hz) ein Schaetzschritt mit der zuletzt empfangenen IMU-
+        # Orientierung; Zeit aus dem Nachrichtenstempel (nicht Empfangszeit), damit Latenz und
+        # Jitter des Transports die Geschwindigkeitsschaetzung nicht verfaelschen.
         if self.quat is None or not m.position:
             return
         t = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9

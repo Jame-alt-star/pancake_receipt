@@ -96,7 +96,7 @@ cmd_training_range:
   ang_vel_z: [-1.0, 1.0]   # deploy.yaml: +-0.2 (Joystick-Grenze). Gemessen 13.10.2026: im Stand wird wz < ~0.5 fast ignoriert (0.2 -> 0.025 rad/s), +-1.0 ist stabil (60 s, 40 ms Verzoegerung, Jitter, Gehen bis vx 1.0) und dreht auch auf der Stelle (0.56 rad/s)
 
 # Positionshaltung im Stand (Zustand Balancieren), siehe steuereinheit_node.py
-# _apply_position_hold(). Nutzt /base_position (Simulations-Ground-Truth).
+# _apply_position_hold(). Position aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
 position_hold: true
 
 # Kombinierte Grenze (13.10.2026): bei |vx| > vx_ref wird |wz| linear bis wz_at_vmax (bei vx_max)

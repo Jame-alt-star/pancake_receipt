@@ -44,19 +44,11 @@ class BalancierenState(IRobotState):
     selbst die Stabilisierung uebernimmt - die Gains muessen nur noch die
     von der Policy vorgegebenen Zielwinkel verfolgen, wie beim Gehen auch.
 
-    ERGAENZUNG (12.10.2026, Heading-/Positions-Haltung): Variante 1/4
-    zeigte zwei Arten von Drift (Drehung UND reine seitliche Verschiebung
-    ohne Drehung, siehe steuereinheit_node.py fuer die Einordnung). Statt
-    cmd hier selbst zu konstruieren, wird jetzt EINFACH node.cmd
-    durchgereicht (genau wie in gehen_state.py) - node.cmd enthaelt zu
-    diesem Zeitpunkt bereits die in steuereinheit_node.py berechneten
-    Korrekturen (_apply_heading_hold()/_apply_position_hold()), die vx/vy/
-    yaw_rate nur so weit von 0 wegbewegen, wie es braucht, um Ausrichtung/
-    Position zu halten. RISIKO (siehe Docstring von
-    _apply_position_hold()): das ist nicht mehr exakt dieselbe Eingabe wie
-    bei der urspruenglichen, nachweislich stabilen Variante 1 (dort war
-    cmd hart [0,0,0]) - deshalb als zu beobachtender Testpunkt markiert,
-    nicht als automatisch gesicherte Verbesserung.
+    STAND 14.10.2026 (Eingabe an die Policy): vx/vy = abklingende Rampe (weiches Abbremsen nach
+    dem Gehen) + Positionshaltungs-Korrektur (node.pos_hold_corr, greift erst wenn die Rampe
+    abgeklungen ist, nur mit position_hold: true); yaw_rate = node.cmd[2] (Rampe + Kurshaltung).
+    Gemessen (29-DOF): mit Kurshaltung < 1 cm Drift in 120 s, Beine praktisch still (0.0004 rad/s);
+    die Positionshaltung hilft gegen Stoesse (0.6 m/s seitlich: 6 cm statt 24 cm Endabweichung).
 
     PBalanceController (Ankle-Strategy) bleibt als eigenstaendige
     Komponente im Code erhalten (siehe control/p_balance_controller.py) -
@@ -64,8 +56,7 @@ class BalancierenState(IRobotState):
     externe Stoesse gebraucht wird, waere das der naechste Ausbauschritt
     (zusaetzlich zur Policy, nicht als Ersatz).
 
-    Wechselt zurueck nach GehenState, sobald ein von Null verschiedenes
-    /cmd_vel-Kommando ankommt.
+    Wechselt nach GehenState, sobald ein von Null verschiedenes /cmd_vel-Kommando ansteht.
     """
 
     CMD_NULL_SCHWELLE = 0.05

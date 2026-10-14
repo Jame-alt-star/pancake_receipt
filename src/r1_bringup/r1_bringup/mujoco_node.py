@@ -65,12 +65,13 @@ def rotate_inverse(q, v):
 
 class MujocoBridgeNode(Node):
     """
-    Simulations-Knoten (Layer 4): laedt die MuJoCo-Szene, rechnet die
-    Physik + Low-Level-PD-Regelung in einem Hintergrund-Thread, und
-    kommuniziert mit steuereinheit_node.py AUSSCHLIESSLICH ueber ROS2-
-    Topics (/joint_states, /imu, /base_position raus, /joint_commands
-    rein). Kennt selbst keine RL-Policy, kein neuronales Netz - reine
-    Physik.
+    Simulations-Knoten (Layer 4): laedt die MuJoCo-Szene, rechnet Physik + Low-Level-PD-Regelung
+    in einem Hintergrund-Thread und kommuniziert ausschliesslich ueber ROS2-Topics:
+      raus: /joint_states, /imu (100 Hz), /odom + TF odom->base_link (Ground-Truth, abschaltbar),
+            /base_position (Ground-Truth, nur fuer Tests/Auswertung), /scan bzw. /points (Lidar),
+            TF base_link->lidar_link (statisch)
+      rein: /joint_commands
+    Kennt selbst keine RL-Policy - reine Physik und Sensormodell.
     """
 
     def __init__(self):
@@ -139,25 +140,16 @@ class MujocoBridgeNode(Node):
         # 3. ROS-2 Publisher & Subscriber
         self.pub_joint_states = self.create_publisher(JointState, "/joint_states", 10)
         self.pub_imu = self.create_publisher(Imu, "/imu", 10)
-        # NEU (12.10.2026): /base_position - die /imu-Nachricht (sensor_msgs/
-        # Imu) hat bewusst kein Positionsfeld (ein echtes IMU misst nie
-        # absolute Position, nur Orientierung/Drehrate/Beschleunigung) -
-        # deshalb ein eigenes, einfaches Topic dafuer. WICHTIG: das ist
-        # reiner Simulations-Ground-Truth (direkt aus qpos[0:3], siehe
-        # _publish_states()) - auf echter Hardware gaebe es das nicht
-        # einfach so, dafuer braeuchte es echte Odometrie/Lokalisierung.
-        # Bewusste Vereinfachung fuer den aktuellen Stand, kein Ersatz dafuer.
+        # /base_position: wahre Basisposition (Simulations-Ground-Truth, qpos[0:3]). Seit 14.10.2026
+        # nur noch fuer Tests/Auswertung - alle Positionsnutzer lesen /odom (Ground-Truth oder
+        # Beinodometrie). Auf echter Hardware gibt es dieses Topic nicht.
         self.pub_base_position = self.create_publisher(Point, "/base_position", 10)
-        # NEU (13.10.2026): /odom + TF (odom -> base_link) fuer Nav2 (Layer 2). Reiner
-        # Simulations-Ground-Truth (perfekte Odometrie, kein Drift/Rauschen). Abschaltbar, falls
-        # eine andere Quelle (z.B. robot_localization) Odometrie/TF liefert.
-        # NEU (13.10.2026): headless=True -> kein Viewer-Fenster. Spart bei Tests/Nav2-Betrieb
-        # viel CPU und Speicher (Rendering war der groesste Posten der Sim-Schleife).
-        # NEU (14.10.2026): realistische Sensorik (Schalter). Statt perfekter Simulationswerte:
-        # Rauschen auf Gelenken/IMU, konstanter Gyro-Bias, Latenz in beide Richtungen (Zustaende
-        # und Kommandos), Lidar-Rauschen/-Ausfaelle. Werte grob an typische G1-/DDS-Groessen
-        # angelehnt. Gemessen (synchroner Kreis): Policy bleibt bis 10x dieser Werte + 20 ms stabil.
-        # Odometrie (/odom, /base_position) bleibt hier noch Ground-Truth.
+        # Realistische Sensorik (Schalter realistic_sensors, 14.10.2026): Rauschen auf Gelenken/IMU,
+        # konstanter Gyro-Bias, Gier-Drift, Latenz in beide Richtungen (Zustaende und Kommandos),
+        # Lidar-Rauschen und (2D-Scan) Ausfaelle. Die Werte sind ANNAHMEN in plausibler Groesse
+        # (typische Encoder/MEMS-IMU/DDS), nicht aus einem G1-Datenblatt. Gemessen (synchroner Kreis):
+        # die Policy bleibt bis zum 10-Fachen dieser Werte plus 20 ms Latenz stabil.
+        # Die Position (/odom) ist davon unabhaengig: Ground-Truth oder Beinodometrie (odom_quelle).
         self.declare_parameter("realistic_sensors", False)
         self.declare_parameter("noise_joint_pos", 0.001)     # rad
         self.declare_parameter("noise_joint_vel", 0.02)      # rad/s
@@ -189,10 +181,14 @@ class MujocoBridgeNode(Node):
         self._rec = {"wall": [], "t": [], "qpos": []}
         self._rec_next = 0.0
         self._rec_flushed = time.time()
+        # Viewer-Bildrate: alle render_decimation Physikschritte (25 -> 20 Hz). headless=True ->
+        # kein Fenster (spart CPU/RAM, Pflicht mit Nav2+SLAM bei ~2,8 GB RAM).
         self.declare_parameter("render_decimation", 25)
         self.render_decimation = max(1, int(self.get_parameter("render_decimation").value))
         self.declare_parameter("headless", False)
         self.headless = self.get_parameter("headless").value
+        # /odom + TF odom->base_link fuer Nav2 (Ground-Truth, perfekt). Abschaltbar, wenn eine andere
+        # Quelle sie liefert (odom_quelle:=beinodometrie -> beinodometrie_node).
         self.declare_parameter("publish_odom", True)
         self.declare_parameter("publish_tf", True)
         self.declare_parameter("odom_frame", "odom")
@@ -204,9 +200,12 @@ class MujocoBridgeNode(Node):
         self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if self.publish_odom else None
         self.tf_broadcaster = TransformBroadcaster(self) if self.publish_tf else None
 
-        # NEU (13.10.2026): simuliertes 2D-Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2) fuer
-        # Nav2 (Costmaps) und SLAM. Frame lidar_link an base_link (0,0,lidar_z), Scan in der
-        # Koerperebene (kippt mit dem Roboter wie ein echter Torso-Lidar).
+        # Simuliertes Lidar (Raycast auf MuJoCo-Geoms der Gruppe 2 = Welt-Hindernisse). Frame lidar_link
+        # an base_link (0,0,lidar_z), kippt mit dem Roboter wie ein am Torso montierter Sensor.
+        # lidar_2d: eine Scanebene /scan (alter Modus); lidar_3d: Punktwolke /points (Standard in
+        # mission.launch, /scan wird dann von roboter_navigation/punktwolke_zu_scan abgeleitet).
+        # Takt: der Lidar-Zaehler laeuft in _publish_states (100 Hz bei simulation_dt 0.002 und
+        # PUBLISH_DECIMATION 5); lidar_rate_hz bezieht sich auf diese 100 Hz.
         self.declare_parameter("lidar", False)   # an per Launch-Argument lidar:=true (Nav2/SLAM)
         self.declare_parameter("lidar_rate_hz", 10.0)
         self.declare_parameter("lidar_rays", 360)
@@ -250,15 +249,14 @@ class MujocoBridgeNode(Node):
             # Lidar-Montage (base_link -> lidar_link) IMMER publizieren - im reinen 3D-Modus ebenso
             # (fehlte dort zunaechst: Nav2 konnte die Punktwolke nicht einordnen) und auch, wenn
             # odom->base_link vom Schaetzer kommt.
-            if True:
-                st = TransformStamped()
-                st.header.stamp = self.get_clock().now().to_msg()
-                st.header.frame_id = self.base_frame
-                st.child_frame_id = "lidar_link"
-                st.transform.translation.z = self.lidar_z
-                st.transform.rotation.w = 1.0
-                self._static_tf = StaticTransformBroadcaster(self)
-                self._static_tf.sendTransform(st)
+            st = TransformStamped()
+            st.header.stamp = self.get_clock().now().to_msg()
+            st.header.frame_id = self.base_frame
+            st.child_frame_id = "lidar_link"
+            st.transform.translation.z = self.lidar_z
+            st.transform.rotation.w = 1.0
+            self._static_tf = StaticTransformBroadcaster(self)
+            self._static_tf.sendTransform(st)
         self.sub_joint_commands = self.create_subscription(
             Float32MultiArray,
             "/joint_commands",
@@ -309,12 +307,10 @@ class MujocoBridgeNode(Node):
         # vergangen sind, driftete die angenommene Simulationszeit (fuer das
         # Phasensignal) weit von der tatsaechlichen Physik auseinander -
         # das hat den Roboter instabil werden lassen und umfallen lassen.
-        # Fix: nur noch alle RENDER_DECIMATION Physikschritte rendern (~50 Hz
-        # Bildwiederholung reicht fuers Auge voellig aus), mj_step()/
-        # _publish_states() bleiben bei jedem Schritt - das entlastet die
-        # Schleife so weit, dass sie near-Echtzeit auf ~500 Hz kommen sollte.
-        # Rendern nur alle N Physikschritte; viewer.sync() kostet ~16 ms (Software-GL unter WSLg)
-        # und bremst die Echtzeitschleife. Default 25 = 20 Hz Bild bei 500 Hz Physik (vorher 10).
+        # Fix (07.10.): nur alle RENDER_DECIMATION Physikschritte rendern. Seit 14.10. 25 statt 10
+        # (20 Hz Bild): viewer.sync() kostet ~16 ms (Software-GL unter WSLg) und loeste sporadische
+        # Stuerze im Pipeline-Test aus. Weitere Massnahmen (13.10.): Publish nur 100 Hz, absolute
+        # Zeitplanung (siehe unten).
         RENDER_DECIMATION = self.render_decimation
         render_counter = 0
         # NEU (13.10.2026): Publish nur alle PUBLISH_DECIMATION Schritte
@@ -329,7 +325,8 @@ class MujocoBridgeNode(Node):
         # sleep-Overshoot) werden durch kuerzere Wartezeit der folgenden
         # Schritte aufgeholt statt sich zu summieren.
         next_deadline = time.perf_counter()
-        # TEMP-PROFILING (13.10.2026): Zeitanteile der Schleife, alle 2s geloggt
+        # Profiling der Schleife (Parameter profile:=true): Zeitanteile Physik/Publish/Rendern/Warten,
+        # alle 2 s geloggt. Bleibt dauerhaft drin, kostet ohne profile nur perf_counter-Aufrufe.
         prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
         prof_t0 = time.perf_counter()
 
@@ -337,7 +334,7 @@ class MujocoBridgeNode(Node):
                       else mujoco.viewer.launch_passive(self.model, self.data))
         with viewer_ctx as viewer:
             # NEU: freie Kamera mit groesserem Abstand, direkt von hinten
-            # (Laufrichtung +X, siehe cmd_init in g1_policy.yaml), leicht
+            # (Laufrichtung beim Start +X), leicht
             # erhoeht - damit der ganze Roboter UND ein Stueck Laufweg
             # sichtbar sind, ohne jedes Mal manuell nachstellen zu muessen.
             # lookat wird unten im Render-Takt auf die Pelvis-Position
@@ -387,9 +384,7 @@ class MujocoBridgeNode(Node):
                     if time.time() - self._rec_flushed > 15.0:
                         self._flush_recording()
 
-                # Sensor-Zustaende publizieren - bei JEDEM Physikschritt,
-                # damit steuereinheit_node.py moeglichst aktuelle Daten
-                # bekommt (siehe Bugfix-Kommentar oben).
+                # Sensor-Zustaende publizieren: alle PUBLISH_DECIMATION Schritte (100 Hz), siehe oben.
                 publish_counter += 1
                 if publish_counter >= PUBLISH_DECIMATION:
                     self._publish_states()
@@ -449,10 +444,8 @@ class MujocoBridgeNode(Node):
         # IMU: direkt aus dem simulierten "Floating Base"-Zustand abgeleitet
         # (qpos[3:7] = Orientierungs-Quaternion [w,x,y,z], qvel[3:6] =
         # Winkelgeschwindigkeit) - KEIN simuliertes Sensormodell an einer
-        # konkreten Koerperstelle. Offener Punkt: der aeltere Stand hatte
-        # zwei getrennte IMUs (Torso + Becken); hier ist es bewusst nur
-        # eine, idealisierte - fuer die aktuelle 47-Werte-Policy ausreichend,
-        # aber weniger realitaetsnah als zwei echte Sensor-Sites.
+        # konkreten Koerperstelle (eine idealisierte IMU an der Basis; die 29-DOF-Policy erwartet
+        # Basis-Drehrate und Schwerkraftrichtung). Mit realistic_sensors verrauscht (_sensor_model).
         imu = Imu()
         imu.header.stamp = now
         imu.orientation.w = float(quat_m[0])
@@ -548,6 +541,8 @@ class MujocoBridgeNode(Node):
         return q, dq, quat, omega
 
     def _publish_cloud(self, now, quat):
+        """3D-Lidar: ein Raycast je Ring x Azimut (mj_multiRay, nur Welt-Geoms der Gruppe 2), Treffer
+        als PointCloud2 im lidar_link-Frame. Mit realistic_sensors Entfernungsrauschen."""
         w, x, y, z = quat
         R = np.array([
             [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
@@ -578,6 +573,8 @@ class MujocoBridgeNode(Node):
         self.pub_cloud.publish(msg)
 
     def _publish_scan(self, now, quat):
+        """2D-Lidar (eine Ebene in der Koerper-xy-Ebene des Sensors) als LaserScan; kein Treffer = inf.
+        Mit realistic_sensors Rauschen und Ausfaelle (inf)."""
         w, x, y, z = quat
         R = np.array([
             [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
@@ -609,6 +606,7 @@ class MujocoBridgeNode(Node):
         self.pub_scan.publish(sc)
 
     def _flush_recording(self):
+        """Schreibt die Posenaufzeichnung (record_path) als .npz; alle 15 s und beim Beenden."""
         if not self.record_path or not self._rec["t"]:
             return
         self._rec_flushed = time.time()

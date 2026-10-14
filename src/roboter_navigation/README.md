@@ -11,13 +11,20 @@ ros2 launch roboter_navigation navigation.launch.py
 ros2 launch roboter_task_planning mission.launch.py nav2:=true headless:=true
 ```
 
-- Navigation ohne Lokalisierung: `map→odom` statisch (Identität), Odometrie = Ground-Truth aus
-  `mujoco_node` (`/odom`, TF `odom→base_link`). Keine Sensorik, daher kein Hindernis-Layer.
+- Lokalisierung: `map→odom` statisch (Identität) oder mit `slam:=true` von `slam_toolbox`;
+  `/odom` + TF `odom→base_link` aus `mujoco_node` (Ground-Truth) oder `beinodometrie_node`.
+- Hindernisse: 3D-Lidar → `punktwolke_zu_scan` → `VoxelLayer` (beide Costmaps) und `/scan` für
+  SLAM und `collision_monitor` (siehe Abschnitt Lidar).
 - Geschwindigkeitsgrenzen = Kommandobereich der Policy (vx ≤ 0,6, wz ≤ 1,0, vx ≥ 0,3 beim Fahren). Drehen auf der Stelle braucht |wz| ≳ 0,8 (kleine wz werden im Stand fast ignoriert).
-- Ausgang `/cmd_vel` kommt vom `velocity_smoother` direkt an Layer 3.
-- Hinweis: Layer 3 hält das letzte `/cmd_vel` ohne Watchdog; Nav2 sendet zum Zielende Nullen.
+- Ausgang: `velocity_smoother` → `collision_monitor` → `/cmd_vel` → Layer 3.
+- Layer 3 hat einen `/cmd_vel`-Watchdog (in `mission.launch` 1 s); `/cmd_vel` gibt die Bewegung
+  nicht frei (Freigabe über `/freigabe`, bei Missionen durch den Missionsknoten).
 
 ## Lidar (Stand v1.4)
 - `nav2_params.yaml`: Standard mit einem 3D-Lidar. Costmaps = `VoxelLayer` auf `/punkte_hindernis`;
   `/scan` für SLAM und Collision-Monitor kommt aus `punktwolke_zu_scan` (dieses Paket).
 - `nav2_params_2d.yaml`: alte Variante mit einer Scanebene (`lidar_modus:=2d`).
+
+## Visualisierung
+`rviz2 -d $(ros2 pkg prefix roboter_navigation)/share/roboter_navigation/rviz/ansicht_3d.rviz`
+zeigt Karte, beide Costmaps, Punktwolke, Hinderniswolke, Voxel der lokalen Costmap, Plan und TF.

@@ -5,11 +5,13 @@ Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`).
 | Datei | Was | Voraussetzung | Dauer |
 |---|---|---|---|
 | `test_closed_loop.py` | Synchroner Regelkreis (echter Controller + echtes Modell, ohne ROS2/Viewer): Stehen, Gehen, Kurshaltung, Stopp, Robustheit gegen Verzögerung/Jitter/Takt-Abweichung, PD-Haltung ohne Policy fällt um (Begründung für `wait_for_controller`) | `pytest`, `mujoco`, `onnxruntime` | ~20 s |
-| `test_node_logic.py` | Knoten-Logik ohne laufendes ROS2: Rampe, Kurshaltung akkumuliert nicht (Regression -572 rad/s), cmd-Begrenzung, Zielrichtung | gesourcter Workspace (`rclpy`, `roboter_steuerung`) | ~5 s |
+| `test_node_logic.py` | Knoten-Logik ohne laufendes ROS2: Rampe, Kurshaltung akkumuliert nicht (Regression -572 rad/s), cmd-Begrenzung, Watchdog, Positionshaltung, NotAus/Freigabe | gesourcter Workspace (`rclpy`, `roboter_steuerung`) | ~5 s |
 | `arm_feasibility.py` / `test_arm_feasibility.py` | Machbarkeit Greifen im Stehen: Arme per IK bewegen, Last, Reichweite; Optionen `--obs-mask`, `--waist`, `--empfohlen`, `--phases`; pytest sichert den Betriebspunkt (0,30 m, ≤ 1 kg je Hand) | `mujoco`, `onnxruntime` | ~15 s |
+| `test_beinodometrie.py` | Genauigkeit der Beinodometrie im synchronen Kreis mit Sensorrauschen (< 2 % der Strecke) | `mujoco`, `onnxruntime` | ~10 s |
+| `test_punktwolke_zu_scan.py` | Scan-/Hinderniswolken-Ableitung aus der Punktwolke: Boden raus, niedrige Hindernisse drin, Neigungsausgleich, Ausdünnung | `numpy` | < 1 s |
 | `integration_watchdog.py` | `cmd_vel`-Watchdog: einzelnes Kommando, Roboter stoppt nach Timeout | gesourcter Workspace | ~1 min |
 | `integration_mission.py` | Layer 1 + 3 + 4 in der Simulation mit Nav2-Testdouble (`--nav2`: echtes Nav2 aus `roboter_navigation`, headless): Mission start→a→b läuft komplett, Plan, NotAus bricht ab, Start bei NotAus abgelehnt | gesourcter Workspace, Display, Fast Downward | ~2 min |
-| `integration_ros.py` | Echte Pipeline (`ros2 launch`): Start ohne Kommando (Startrennen), Freigabe, Gehen, zu großes `cmd_vel`, NotAus, Entwarnung ohne Freigabe, Neustart der Bewegung, Log ohne Instabilität/Traceback | gesourcter Workspace, Display (WSLg) | ~2,5 min |
+| `integration_ros.py` | Echte Pipeline (`ros2 launch`): Start ohne Kommando (Startrennen), Freigabe über `/freigabe` (`/cmd_vel` allein bewegt nicht), Gehen, zu großes `cmd_vel`, NotAus, `/cmd_vel` und Freigabe-Versuch während NotAus, Entwarnung mit laufendem `/cmd_vel` ohne Freigabe, Neustart der Bewegung, Log ohne Instabilität/Traceback | gesourcter Workspace, Display (WSLg) | ~2,5 min |
 
 ```bash
 source /opt/ros/jazzy/setup.bash && source install/setup.bash
