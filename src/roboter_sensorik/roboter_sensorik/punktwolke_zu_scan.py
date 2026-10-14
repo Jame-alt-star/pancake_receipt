@@ -71,10 +71,9 @@ def scan_aus_punkten(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, n_bins, r_mi
 class PunktwolkeZuScan(Node):
     def __init__(self):
         super().__init__("punktwolke_zu_scan")
-        # Lidar ueber Boden im aufrechten Stand [m]; < 0 = aus der Config (becken_hoehe_stand +
-        # lidar_hoehe_ueber_becken, Review U5)
+        # Lidar ueber Boden im aufrechten Stand [m]; < 0 = aus roboter_beschreibung (becken_hoehe_stand +
+        # lidar_hoehe_ueber_becken, eine Quelle fuer Simulation, Sensorik und Beinodometrie)
         self.declare_parameter("sensor_hoehe", -1.0)
-        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
         self.declare_parameter("min_hoehe", 0.12)       # Boden ausblenden
         self.declare_parameter("max_hoehe", 1.9)
         self.declare_parameter("bins", 360)
@@ -83,7 +82,9 @@ class PunktwolkeZuScan(Node):
         g = lambda n: self.get_parameter(n).value
         self.h0, self.hmin, self.hmax = float(g("sensor_hoehe")), float(g("min_hoehe")), float(g("max_hoehe"))
         if self.h0 < 0:
-            self.h0 = self._hoehe_aus_config(str(g("config_file")))
+            from roboter_beschreibung import lade as lade_roboter
+            r = lade_roboter()
+            self.h0 = float(r["becken_hoehe_stand"]) + float(r["lidar_hoehe_ueber_becken"])
         self.n, self.rmin, self.rmax = int(g("bins")), float(g("range_min")), float(g("range_max"))
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
         self.pub = self.create_publisher(LaserScan, "/scan", 10)
@@ -91,15 +92,6 @@ class PunktwolkeZuScan(Node):
         self.create_subscription(Imu, "/imu", self._imu, 10)
         self.create_subscription(PointCloud2, "/points", self._cloud, 5)
         self.get_logger().info("Punktwolke -> 2D-Scan aktiv (/points -> /scan).")
-
-    @staticmethod
-    def _hoehe_aus_config(config_file):
-        import os
-        import yaml
-        from ament_index_python.packages import get_package_share_directory
-        with open(os.path.join(get_package_share_directory("roboter_simulation"), "config", config_file)) as f:
-            c = yaml.safe_load(f)
-        return float(c.get("becken_hoehe_stand", 0.793)) + float(c.get("lidar_hoehe_ueber_becken", 0.45))
 
     def _imu(self, m: Imu):
         o = m.orientation

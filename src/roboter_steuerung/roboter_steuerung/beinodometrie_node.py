@@ -9,32 +9,28 @@ import os
 
 import numpy as np
 import rclpy
-import yaml
-from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, JointState
 from tf2_ros import TransformBroadcaster
 
+from roboter_beschreibung import lade as lade_roboter
 from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie
 
 
 class BeinodometrieNode(Node):
     def __init__(self):
         super().__init__("beinodometrie_node")
-        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
-        self.declare_parameter("start_position", [0.0, 0.0, -1.0])   # z < 0: aus Config (becken_hoehe_stand)
+        self.declare_parameter("start_position", [0.0, 0.0, -1.0])   # z < 0: becken_hoehe_stand aus roboter.yaml
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
-        share = get_package_share_directory("roboter_simulation")
-        with open(os.path.join(share, "config", self.get_parameter("config_file").value)) as f:
-            cfg = yaml.safe_load(f)
-        xml = os.path.join(share, cfg["xml_path"])
-        self.est = Beinodometrie(xml)
+        # Kinematik und Starthoehe aus der Roboterbeschreibung (gilt auf Hardware genauso).
+        roboter = lade_roboter()
+        self.est = Beinodometrie(roboter["modell_xml"])
         start = list(self.get_parameter("start_position").value)
         if start[2] < 0:
-            start[2] = float(cfg.get("becken_hoehe_stand", 0.793))
+            start[2] = float(roboter["becken_hoehe_stand"])
         self.est.reset(start)
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
@@ -44,7 +40,7 @@ class BeinodometrieNode(Node):
         self.tf = TransformBroadcaster(self)
         self.create_subscription(Imu, "/imu", self._imu, 10)
         self.create_subscription(JointState, "/joint_states", self._joints, 10)
-        self.get_logger().info(f"Beinodometrie aktiv (Modell {cfg['xml_path']}).")
+        self.get_logger().info(f"Beinodometrie aktiv (Modell {os.path.basename(roboter['modell_xml'])}).")
 
     def _imu(self, m: Imu):
         o = m.orientation

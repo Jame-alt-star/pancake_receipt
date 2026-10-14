@@ -2,40 +2,36 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>roboter_simulation</name>
-  <version>0.0.1</version>
+  <version>0.1.0</version>
   <description>
     Layer 4 (HAL): MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik (IMU, Gelenke, 3D-Lidar,
-    Odometrie), Hardware-Bridge-Interface und Policy-/Modell-Dateien.
+    Odometrie). Robotermodell aus roboter_beschreibung, Umgebung aus roboter_welten, Antriebsparameter
+    zur Laufzeit von der Steuerung (/antrieb/parameter).
   </description>
   <maintainer email="pascalfranz02@gmail.com">Pascal</maintainer>
   <license>Apache-2.0</license>
 
-  <!-- Echte Laufzeit-Abhaengigkeiten des aktuellen MuJoCo-Pfads
-       (mujoco_node.py, bridges/mujoco_bridge.py, bridges/i_hardware_bridge.py) -->
+  <!-- Laufzeit-Abhaengigkeiten von mujoco_node.py und szene.py -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>  <!-- TF (TransformStamped), /base_position (nur Simulation) -->
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>  <!-- /odom (Nav2, Layer 2) -->
   <exec_depend>tf2_ros</exec_depend>    <!-- TF odom -> base_link -->
-  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>roboter_beschreibung</exec_depend>  <!-- Robotermodell, Lidar-Hoehe -->
+  <exec_depend>roboter_interfaces</exec_depend>    <!-- Antriebsparameter -->
   <exec_depend>roboter_welten</exec_depend>  <!-- Umgebungen (Parameter welt) -->
   <!-- HINWEIS: "mujoco" (das Python-Paket der MuJoCo-Physik-Engine) fehlt
        hier bewusst - das ist kein ROS2-Paket mit eigenem rosdep-Key,
-       sondern wird separat per "pip install mujoco" installiert (siehe
-       auch mujoco_test/test_g1_mujoco.py im alten Workspace). Gehoert
+       sondern wird separat per "pip install mujoco" installiert (requirements.txt). Gehoert
        deshalb nicht in diese Liste, muss aber weiterhin manuell
        installiert sein, damit mujoco_node.py importierbar ist. -->
 
   <!-- Die alte R1/Gazebo-Phase liegt seit 15.10.2026 in archiv/gazebo_r1/. -->
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
 
   <export>

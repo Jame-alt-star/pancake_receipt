@@ -10,7 +10,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Bool
 
-from roboter_simulation.bridges.mujoco_bridge import MujocoBridge
+from roboter_steuerung.hardware.topic_bridge import TopicBridge
 from roboter_steuerung.states.start_state import StartState
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState
 from roboter_steuerung.states.not_aus_state import NotAusState
@@ -104,51 +104,31 @@ class SteuereinheitNode(Node):
     def __init__(self):
         super().__init__("steuereinheit_node")
 
-        # 1. Konfiguration laden - dieselbe YAML-Datei wie mujoco_node.py
-        # (siehe dort), damit z.B. simulation_dt/control_decimation an
-        # beiden Stellen zusammenpassen (siehe Taktung unten).
-        # NEU (DOF-Migration): Dateiname jetzt ueber den ROS2-Parameter
-        # "config_file" waehlbar (Standard seit 14.10.2026: g1_policy_29dof.yaml; 12-DOF: g1_policy.yaml; also
-        # exakt das bisherige 12-DOF-Verhalten unveraendert) - z.B.
-        #   ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
-        # schaltet auf die 29-DOF-Ganzkoerper-Policy um, siehe
-        # g1_policy_29dof.yaml. Beide Config-Dateien bleiben nebeneinander
-        # bestehen (siehe Projekt-Konvention: Alternativen zurueckstellen,
-        # nicht loeschen).
-        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
-        config_file = self.get_parameter("config_file").get_parameter_value().string_value
-
-        bringup_share = get_package_share_directory("roboter_simulation")
-        config_path = os.path.join(bringup_share, "config", config_file)
-        with open(config_path, "r") as f:
-            self.config = yaml.load(f, Loader=yaml.FullLoader)
+        # 1. Policy-Config laden (roboter_steuerung/config/policy_29dof.yaml): Netz, Verstaerkungen,
+        # Ruhepose, Skalierungen, Regeltakt, Kommandobereich. Gehoert zu Layer 3; die Simulation bekommt
+        # die Antriebsparameter daraus zur Laufzeit ueber die Bridge (/antrieb/parameter).
+        self.declare_parameter("policy_config", "policy_29dof.yaml")
+        policy_config = self.get_parameter("policy_config").value
+        share = get_package_share_directory("roboter_steuerung")
+        with open(os.path.join(share, "config", policy_config), "r") as f:
+            self.config = yaml.safe_load(f)
         self.get_logger().info(
-            f"[steuereinheit_node] aktive Config: {config_file} "
-            f"(controller_type={self.config.get('controller_type', 'rl_locomotion')}, "
-            f"num_actions={self.config.get('num_actions')})"
+            f"[steuereinheit_node] Policy-Config: {policy_config} "
+            f"(controller_type={self.config.get('controller_type')}, num_actions={self.config.get('num_actions')})"
         )
 
-        # NEU: policy_path in der YAML ist nur ein relativer String
-        # ("models/policies/motion.pt"). BUGFIX: RLLocomotionController hat
-        # diesen String bisher UNVERAENDERT an torch.jit.load() durchgereicht
-        # - das funktionierte nur zufaellig, wenn das Arbeitsverzeichnis beim
-        # Start von "ros2 launch" gerade zufaellig gepasst hat (fehlgeschlagen
-        # mit "ValueError: The provided filename models/policies/motion.pt
-        # does not exist", sobald es nicht passte). Fix nach demselben Muster
-        # wie xml_path in mujoco_node.py: erst mit dem Package-Share-
-        # Verzeichnis verbinden, mit Fallback auf den Source-Baum, falls der
-        # Share-Ordner (noch) nicht gefuellt ist.
-        policy_rel_path = self.config["policy_path"]
-        policy_path = os.path.join(bringup_share, policy_rel_path)
+        # policy_path ist relativ zum Share-Verzeichnis (frueher brach ein relativer Pfad, sobald das
+        # Arbeitsverzeichnis beim Start nicht passte).
+        policy_path = os.path.join(share, self.config["policy_path"])
         if not os.path.exists(policy_path):
             # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
             raise FileNotFoundError(f"Policy nicht gefunden: {policy_path} - 'colcon build' ausgefuehrt?")
         self.config["policy_path"] = policy_path
 
-        # 2. Hardware-Bridge und RL-Controller initialisieren. num_joints
-        # kommt aus num_actions in der YAML (Single Source of Truth) statt
-        # hartkodiert zu sein - siehe mujoco_bridge.py.
-        self.bridge = MujocoBridge(self, num_joints=self.config["num_actions"])
+        # 2. Hardware-Bridge und RL-Controller initialisieren. Die Bridge sendet kp/kd/Ruhepose der Policy
+        # einmal an Layer 4 (latched); num_joints aus num_actions (eine Stelle fuer die Gelenkanzahl).
+        self.bridge = TopicBridge(self, num_joints=self.config["num_actions"], kp=self.config["kps"],
+                                  kd=self.config["kds"], startpose=self.config["default_angles"])
         # controller_type in der YAML waehlt die ILocomotionController-Implementierung. Der alte
         # 12-DOF-TorchScript-Controller liegt seit 15.10.2026 in archiv/12dof/ (nicht mehr getestet).
         controller_type = self.config.get("controller_type", "rl_locomotion_29dof")
@@ -196,8 +176,8 @@ class SteuereinheitNode(Node):
 
         # NEU (13.10.2026): cmd_vel-Watchdog. Bleibt /cmd_vel laenger als cmd_vel_timeout_s aus
         # (z.B. Nav2 faellt aus), wird cmd_target auf 0 gesetzt, statt dass der Roboter mit dem
-        # letzten Kommando weiterlaeuft. 0 = aus. Parameter ueberschreibt den Config-Wert.
-        self.declare_parameter("cmd_vel_timeout_s", float(self.config.get("cmd_vel_timeout_s", 0.0)))
+        # letzten Kommando weiterlaeuft. 0 = aus (Wert aus config/steuerung.yaml bzw. Launch-Argument).
+        self.declare_parameter("cmd_vel_timeout_s", 0.0)
         self.cmd_vel_timeout_s = float(self.get_parameter("cmd_vel_timeout_s").value)
         self._last_cmd_vel_t = None
         self._timeout_gemeldet = False
@@ -221,18 +201,19 @@ class SteuereinheitNode(Node):
         # Haltungs-Korrekturen (_apply_heading_hold()/
         # _apply_position_hold()). None bis zur ersten gueltigen Messung -
         # vorher gibt es keine sinnvolle Referenz (siehe last_quat-Default
-        # in mujoco_bridge.py).
+        # in hardware/topic_bridge.py).
         self.target_yaw = None
         self.target_position = None
         # NEU (13.10.2026): Positionshaltung im Stand (nur Zustand
-        # Balancieren). Schalter in der YAML (position_hold: true). Die
+        # Balancieren). Parameter position_hold (config/steuerung.yaml). Die
         # Korrektur wird NICHT auf self.cmd addiert, sondern getrennt in
         # self.pos_hold_corr [vx, vy] abgelegt und von BalancierenState
         # an die Policy gegeben. Grund fuer das fruehere Scheitern (12.10.)
         # war sehr wahrscheinlich dieselbe Akkumulation wie bei der
         # Kurshaltung (cmd[0] = cmd[0] + correction jeden Takt).
         # Position aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
-        self.position_hold_aktiv = bool(self.config.get("position_hold", False))
+        self.declare_parameter("position_hold", True)
+        self.position_hold_aktiv = bool(self.get_parameter("position_hold").value)
         self.pos_hold_corr = np.zeros(2, dtype=np.float32)
         self._odom_xyz = None
         if self.position_hold_aktiv:
@@ -291,12 +272,8 @@ class SteuereinheitNode(Node):
         # ist, und von dort nach Gehen/Balancieren je nach cmd_target.
         self.state = StartState()
 
-        # 4. Regelungsschleife takten: simulation_dt * control_decimation,
-        # z.B. 0.002s * 10 = 0.02s -> 50 Hz. Muss mit der Taktung passen,
-        # mit der die Policy trainiert wurde (siehe rl_locomotion_controller.py).
-        # NEU (12.10.2026): als self.control_dt gemerkt, weil _ramp_cmd()
-        # pro Takt genau diese Zeitspanne braucht (siehe dort).
-        self.control_dt = float(self.config["simulation_dt"]) * int(self.config["control_decimation"])
+        # 3. Regelungsschleife im Takt der Policy (regeltakt_s, 0.02 s = 50 Hz; muss zum Training passen).
+        self.control_dt = float(self.config["regeltakt_s"])
         self.timer = self.create_timer(self.control_dt, self._control_loop)
         self.get_logger().info("Steuereinheit erfolgreich gestartet (50 Hz Regelkreis aktiv).")
 
@@ -378,7 +355,7 @@ class SteuereinheitNode(Node):
     def _yaw_from_quat(quat: np.ndarray) -> float:
         # Standard-Formel fuer die Gier-/Yaw-Komponente (Drehung um die
         # Hochachse) aus einer Quaternion in (w, x, y, z)-Reihenfolge -
-        # siehe mujoco_bridge.py fuer die Begruendung dieser Reihenfolge.
+        # siehe hardware/topic_bridge.py fuer die Begruendung dieser Reihenfolge.
         w, x, y, z = quat
         return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
 
@@ -503,7 +480,7 @@ class SteuereinheitNode(Node):
         # Bridge-Werte noch auf ihrem Initialwert (alles 0.0), weil noch
         # keine /joint_states- bzw. /imu-Nachricht von mujoco_node.py
         # angekommen ist. Eine echte Quaternion ist nie komplett 0 (siehe
-        # last_quat-Default in mujoco_bridge.py) - der Vergleich erkennt
+        # last_quat-Default in hardware/topic_bridge.py) - der Vergleich erkennt
         # diesen Fall also zuverlaessig und ueberspringt den Takt, statt
         # die Policy mit bedeutungslosen Nullwerten laufen zu lassen. Das
         # betrifft beide Zustaende gleich, deshalb kein Teil der
@@ -529,7 +506,7 @@ class SteuereinheitNode(Node):
             self.cmd = np.zeros(3, dtype=np.float32)
         self._apply_heading_hold(quat)
         self._clip_cmd()
-        # Positionshaltung nur im Zustand Balancieren (Schalter position_hold in der YAML). Der
+        # Positionshaltung nur im Zustand Balancieren (Parameter position_hold). Der
         # erste Versuch am 12.10. fiel um; Ursache war die Akkumulation der Korrektur auf
         # self.cmd (wie bei der Kurshaltung). Seit 13.10. getrennt in pos_hold_corr: stabil.
         if self.position_hold_aktiv:
@@ -573,7 +550,7 @@ class SteuereinheitNode(Node):
         # Zustand liest sich seine Sensordaten selbst erneut (kleine,
         # bewusst in Kauf genommene Redundanz zum Start-Gate oben - beide
         # Lesezugriffe sind nur guenstige Rueckgaben zuletzt gespeicherter
-        # Werte, siehe mujoco_bridge.py), fuehrt seine Logik aus und gibt
+        # Werte, siehe hardware/topic_bridge.py), fuehrt seine Logik aus und gibt
         # den fuer den naechsten Takt geltenden Zustand zurueck.
         self.state = self.state.execute(self)
 

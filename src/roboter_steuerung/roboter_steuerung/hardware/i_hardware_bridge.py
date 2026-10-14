@@ -5,16 +5,17 @@ import numpy as np
 
 class IRobotHardwareBridge(ABC):
     """
-    Abstrakte Basisklasse (Layer 4 / HAL) fuer alle Hardware- und
-    Simulationsschnittstellen.
+    Schnittstelle von Layer 3 zur Hardware bzw. Simulation (Layer 4). Liegt bewusst in Layer 3: die
+    Steuerung legt fest, was sie braucht; Layer 4 (Simulation oder spaeter die Unitree-SDK-Anbindung)
+    implementiert es. So haengt die Steuerung von keiner Simulation ab.
 
     Definiert nur den "Vertrag" (welche Methoden es geben muss), keine
     Umsetzung - deshalb ABC (Abstract Base Class): davon kann man kein
-    eigenes Objekt erzeugen, nur konkrete Unterklassen wie MujocoBridge.
+    eigenes Objekt erzeugen, nur konkrete Unterklassen wie TopicBridge.
 
     Zweck: steuereinheit_node.py und der RL-Controller kennen nur diese
     Methoden, nicht WIE/WOHIN sie tatsaechlich Daten lesen/schreiben.
-    Dadurch kann die Ausfuehrungsplattform (MuJoCo, spaeter Gazebo oder
+    Dadurch kann die Ausfuehrungsplattform (MuJoCo-Simulation oder
     echte Hardware per CycloneDDS/unitree_sdk2) ausgetauscht werden, ohne
     den Rest der Steuerungslogik anzufassen - das ist der Kernpunkt der
     gesamten Architektur-Entscheidung fuer dieses Interface.

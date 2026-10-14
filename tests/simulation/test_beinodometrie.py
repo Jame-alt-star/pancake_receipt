@@ -17,7 +17,7 @@ from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie  # 
 
 def _run(cmd_fn, dur, seed=0):
     cfg = load_config()
-    xml = BRINGUP + cfg["xml_path"]
+    xml = cfg["xml_path"]
     c = load_controller29(cfg)
     m = mujoco.MjModel.from_xml_path(xml)
     d = mujoco.MjData(m)

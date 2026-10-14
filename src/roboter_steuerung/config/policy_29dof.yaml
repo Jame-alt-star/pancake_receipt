@@ -1,40 +1,22 @@
-# Konfiguration fuer die G1-RL-Policy (29-DOF, Ganzkoerper - Beine, Taille,
-# beide Arme). Gegenstueck zu g1_policy.yaml (12-DOF, nur Beine) - bewusst
-# eine EIGENE Datei statt die alte zu ueberschreiben, damit der bisherige
-# 12-DOF-Pfad unveraendert erhalten/reproduzierbar bleibt (siehe
-# docs/statusupdate_g1_projekt.md, Abschnitt "DOF-Migration"). Auswahl zur
-# Laufzeit ueber den ROS2-Parameter "config_file" (Default bleibt
-# "g1_policy.yaml"), siehe steuereinheit.launch.py:
+# RL-Lauf-Policy des G1 (29 DOF, Ganzkoerper: Beine, Taille, beide Arme) - Layer 3.
+# Alles, was zur trainierten Policy gehoert: Netz, Gelenkverstaerkungen, Ruhepose, Skalierungen,
+# Beobachtungsformat, Regeltakt und der gemessene Kommandobereich. Gelesen von steuereinheit_node
+# (Controller, Kommandobegrenzung); die Simulation bekommt kps/kds/default_angles NICHT aus dieser Datei,
+# sondern zur Laufzeit von der Steuerung (Nachricht /antrieb/parameter, wie ein Motortreiber).
+# Robotermodell und Geometrie: roboter_beschreibung/config/roboter.yaml. Laufzeitparameter der Knoten:
+# config/steuerung.yaml.
 #
-#   ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
-#
-# Herkunft der Policy: Unitree's vortrainierte Ganzkoerper-Policy aus
-# unitree_rl_lab (Isaac-Lab-basiert), exportiert als ONNX
-# (policy_29dof.onnx, aus deploy/robots/g1_29dof/config/policy/velocity/v0/).
-# Motivation fuer den Umstieg: Vermutung, dass die beim 12-DOF-Modell
-# fest/unaktuiert stehenden Arme + Oberkoerper zum Kippen beitragen (nicht
-# gerade ausbalanciert) - siehe statusupdate fuer Details.
+# Herkunft der Policy: Unitree's vortrainierte Ganzkoerper-Policy aus unitree_rl_lab (Isaac-Lab-basiert),
+# exportiert als ONNX (policy_29dof.onnx, aus deploy/robots/g1_29dof/config/policy/velocity/v0/).
 
-# controller_type steuert in steuereinheit_node.py, welche
-# ILocomotionController-Implementierung instanziiert wird (Single Source
-# of Truth, wie num_actions) - "rl_locomotion" (Default, 12-DOF
-# TorchScript) oder "rl_locomotion_29dof" (diese Datei, ONNX).
+# ILocomotionController-Implementierung in steuereinheit_node.
 controller_type: "rl_locomotion_29dof"
 
-# Pfad zur ONNX-Policy (onnxruntime statt TorchScript - neue Abhaengigkeit,
-# siehe statusupdate fuer Installationshinweis).
-policy_path: "models/policies/policy_29dof.onnx"
-# MuJoCo-Szene mit allen 29 Freiheitsgraden (Beine+Taille+Arme) - bereits
-# vorbereitet (29 <motor>-Aktuatoren in exakt dieser Reihenfolge, siehe
-# rl_locomotion_controller_29dof.py/MUJOCO_JOINT_ORDER, sowie beide IMU-
-# Sites), keine Aenderung an der XML selbst noetig.
-xml_path: "models/robots/g1_description/g1_29dof.xml"
+# ONNX-Policy, relativ zum Share-Verzeichnis von roboter_steuerung.
+policy_path: "modelle/policy_29dof.onnx"
 
-# Physik-Zeitschritt und Regeltakt wie beim 12-DOF-Pfad (500 Hz Physik,
-# 50 Hz Regelung - 0.002s * 10 = 0.02s). Trifft sich mit step_dt: 0.02 aus
-# deploy.yaml der Original-Policy - kein Anpassungsbedarf.
-simulation_dt: 0.002
-control_decimation: 10
+# Regeltakt der Policy [s] (50 Hz, step_dt aus deploy.yaml). Muss zum Training passen.
+regeltakt_s: 0.02
 
 # PD-Reglerwerte (stiffness/damping aus unitree_rl_lab's deploy.yaml) -
 # dort bereits in MuJoCo-/SDK-Gelenkreihenfolge exportiert (nicht in
@@ -69,7 +51,7 @@ action_scale: 0.25
 
 # Beobachtungs-History: Isaac Lab haelt pro Beobachtungs-Term einen
 # Verlauf der letzten 5 Zeitschritte (nicht nur den aktuellen Wert wie
-# beim 12-DOF-Pfad) - siehe rl_locomotion_controller_29dof.py.
+# beim frueheren 12-DOF-Pfad) - siehe rl_locomotion_controller_29dof.py.
 history_length: 5
 
 num_actions: 29   # Anzahl gesteuerter Gelenke
@@ -79,25 +61,14 @@ num_actions: 29   # Anzahl gesteuerter Gelenke
 # ONNX-Eingabeform ([1, 480]) verifiziert.
 num_obs: 480
 
-# Start-/Default-Geschwindigkeitskommando [vx, vy, wz] - wie beim
-# 12-DOF-Pfad nur Anfangswert, wird per /cmd_vel ueberschrieben (siehe
-# steuereinheit_node.py). Liegt innerhalb der Trainings-Range (siehe
-# cmd_training_range unten).
-cmd_init: [0.0, 0.0, 0.0]   # wird seit 14.10.2026 nicht mehr verwendet (Start immer 0, siehe steuereinheit_node)
-
 # Trainings-Wertebereich der Policy (aus deploy.yaml). steuereinheit_node.py
 # begrenzt self.cmd (nach Rampe + Kurshaltung) per np.clip auf diese
 # Ranges und meldet einmalig eine Warnung, wenn /cmd_vel ausserhalb liegt
-# (umgesetzt und getestet 13.10.2026). Fehlt der Schluessel (12-DOF-
-# Config), wird nicht begrenzt.
+# (umgesetzt und getestet 13.10.2026).
 cmd_training_range:
   lin_vel_x: [-0.5, 1.0]
   lin_vel_y: [-0.3, 0.3]
   ang_vel_z: [-1.0, 1.0]   # deploy.yaml: +-0.2 (Joystick-Grenze). Gemessen 13.10.2026: im Stand wird wz < ~0.5 fast ignoriert (0.2 -> 0.025 rad/s), +-1.0 ist stabil (60 s, 40 ms Verzoegerung, Jitter, Gehen bis vx 1.0) und dreht auch auf der Stelle (0.56 rad/s)
-
-# Positionshaltung im Stand (Zustand Balancieren), siehe steuereinheit_node.py
-# _apply_position_hold(). Position aus /odom (Ground-Truth oder Beinodometrie, je nach odom_quelle).
-position_hold: true
 
 # Kombinierte Grenze (13.10.2026): bei |vx| > vx_ref wird |wz| linear bis wz_at_vmax (bei vx_max)
 # abgesenkt. Gemessen: vx 1.0 + wz 1.0 faellt in ~15-20 % der Laeufe (synchroner Kreis und ROS);
@@ -105,9 +76,3 @@ position_hold: true
 cmd_wz_limit_high_speed:
   vx_ref: 0.7
   wz_at_vmax: 0.5
-
-# Geometrie (zentral, Review U5): Beckenhoehe im aufrechten Stand (Startpose) und Montagehoehe des
-# Lidars ueber dem Becken. Genutzt von mujoco_node (Lidar), punktwolke_zu_scan (Hoehenband) und
-# beinodometrie_node (Starthoehe).
-becken_hoehe_stand: 0.793
-lidar_hoehe_ueber_becken: 0.45

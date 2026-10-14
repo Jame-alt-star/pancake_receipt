@@ -14,9 +14,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>python3-yaml</exec_depend>
-  <exec_depend>ament_index_python</exec_depend>
-  <exec_depend>roboter_simulation</exec_depend>   <!-- Config mit Sensorgeometrie (Lidar-Hoehe) -->
+  <exec_depend>roboter_beschreibung</exec_depend>   <!-- Sensorgeometrie (Lidar-Hoehe) -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <test_depend>python3-pytest</test_depend>

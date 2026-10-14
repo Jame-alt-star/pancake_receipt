@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>roboter_beschreibung</name>
+  <version>0.1.0</version>
+  <description>
+    Beschreibung des Unitree G1: MuJoCo-/URDF-Modelle von Unitree (modelle/g1_description, unveraendert) und
+    die Robotergeometrie (config/roboter.yaml). Gemeinsame Quelle fuer Simulation, Zustandsschaetzung und Sensorik.
+  </description>
+  <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
+  <license>Apache-2.0</license>   <!-- Modelle in modelle/g1_description: Lizenz von Unitree, siehe dortiges README -->
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

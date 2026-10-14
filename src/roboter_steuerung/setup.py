@@ -17,6 +17,8 @@ setup(
         # findet "ros2 launch roboter_steuerung ..." sie nach colcon build
         # nicht, obwohl sie im Quellcode (launch/) existieren.
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'modelle'), glob('modelle/*.onnx')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

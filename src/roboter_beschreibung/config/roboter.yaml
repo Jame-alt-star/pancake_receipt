@@ -1,0 +1,13 @@
+# Robotermodell und Geometrie des Unitree G1 (29 DOF). Gemeinsame Quelle fuer alle Schichten, die den
+# Koerper kennen muessen: Simulation (Modell), Beinodometrie (Kinematik, Starthoehe), Sensorik (Lidar-Hoehe).
+# Die Datei beschreibt den Roboter, nicht die Simulation: auf echter Hardware gilt sie genauso.
+
+# MuJoCo-Modell (Unitree, unveraendert bis auf Boden/Licht), relativ zum Share-Verzeichnis dieses Pakets.
+# Gelenk-/Aktuator-Reihenfolge = MUJOCO_JOINT_ORDER in roboter_steuerung/control/rl_locomotion_controller_29dof.py.
+modell_xml: "modelle/g1_description/g1_29dof.xml"
+
+# Beckenhoehe im aufrechten Stand (Startpose der Policy) [m].
+becken_hoehe_stand: 0.793
+
+# Montagehoehe des Lidars ueber dem Becken [m] (Sensor am Torso, kippt mit dem Roboter).
+lidar_hoehe_ueber_becken: 0.45

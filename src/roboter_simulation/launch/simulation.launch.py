@@ -2,7 +2,13 @@
 roboter_system/launch/system.launch.py zusammen.
 
     ros2 launch roboter_simulation simulation.launch.py welt:=testwelt lidar_modus:=3d
+
+Alle Parameter: config/simulation.yaml (wird immer geladen); die Argumente hier sind die Schalter, die beim
+Start bewusst gewaehlt werden.
 """
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -23,7 +29,7 @@ def generate_launch_description():
         return PythonExpression(["'", LaunchConfiguration("lidar_modus"), f"' == '{m}'"])
     sim = Node(
         package="roboter_simulation", executable="mujoco_node", name="mujoco_bridge_node", output="screen",
-        parameters=[{
+        parameters=[os.path.join(get_package_share_directory("roboter_simulation"), "config", "simulation.yaml"), {
             "welt": LaunchConfiguration("welt"),
             "headless": LaunchConfiguration("headless"),
             "lidar": PythonExpression(["'", LaunchConfiguration("lidar_modus"), "' != 'aus'"]),

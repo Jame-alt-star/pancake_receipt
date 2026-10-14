@@ -11,7 +11,7 @@ class StartState(IRobotState):
     von mujoco_node.py angekommen - erkennbar daran, dass sowohl die
     Gelenkwinkel als auch die Quaternion noch auf ihrem Initialwert
     (ueberall 0.0) stehen (eine echte Quaternion ist nie komplett 0,
-    siehe last_quat-Default in mujoco_bridge.py).
+    siehe last_quat-Default in hardware/topic_bridge.py).
 
     Sendet bewusst NICHTS an die Bridge, solange das der Fall ist -
     entspricht dem fruehen "Start-Gate" in

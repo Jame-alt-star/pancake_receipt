@@ -9,7 +9,7 @@
          Hindernis: Quader 0.5 x 1.6 bei (1.5, 0)
        Orte (orte.yaml): start (0,0), a (3,-1.5), b (5.8,1.5) - a und b liegen so, dass der
        direkte Weg das Hindernis bzw. die Trennwand kreuzt. -->
-  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus roboter_simulation) haengt die Simulation beim Laden
+  <!-- Nur die Umgebung: den Roboter (g1_29dof.xml aus roboter_beschreibung) haengt die Simulation beim Laden
        dazu (roboter_simulation/szene.py). Orte fuer Missionen: orte.yaml in diesem Ordner. -->
 
   <worldbody>

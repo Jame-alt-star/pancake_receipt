@@ -9,13 +9,21 @@ import numpy as np
 import yaml
 
 WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src") + "/"
-BRINGUP = WS + "roboter_simulation/"
+BRINGUP = WS + "roboter_simulation/"          # Simulationspaket (szene.py)
 STEUER = WS + "roboter_steuerung/"
+BESCHREIBUNG = WS + "roboter_beschreibung/"
+SIMULATION_DT = 0.002                         # wie config/simulation.yaml der Simulation
 
 
-def load_config(name="g1_policy_29dof.yaml"):
-    cfg = yaml.safe_load(open(BRINGUP + "config/" + name))
-    cfg["policy_path"] = BRINGUP + cfg["policy_path"]
+def load_config(name="policy_29dof.yaml"):
+    """Policy-Config aus dem Quellbaum, ergaenzt um Robotermodell (absolut) und Physiktakt wie im System:
+    xml_path aus roboter_beschreibung, simulation_dt aus der Simulation, control_decimation aus regeltakt_s."""
+    cfg = yaml.safe_load(open(STEUER + "config/" + name))
+    cfg["policy_path"] = STEUER + cfg["policy_path"]
+    roboter = yaml.safe_load(open(BESCHREIBUNG + "config/roboter.yaml"))
+    cfg["xml_path"] = BESCHREIBUNG + roboter["modell_xml"]
+    cfg["simulation_dt"] = SIMULATION_DT
+    cfg["control_decimation"] = int(round(float(cfg["regeltakt_s"]) / SIMULATION_DT))
     return cfg
 
 
@@ -51,7 +59,7 @@ def run_loop(cmd_fn, dur, delay_ms=0.0, decimation=None, jitter=0, seed=0, noise
       {"q": 0.001, "dq": 0.02, "gyro": 0.01, "gyro_bias": 0.005, "ori": 0.005}  (rad, rad/s)"""
     cfg = load_config()
     c = load_controller29(cfg)
-    m = mujoco.MjModel.from_xml_path(BRINGUP + cfg["xml_path"])
+    m = mujoco.MjModel.from_xml_path(cfg["xml_path"])
     d = mujoco.MjData(m)
     m.opt.timestep = float(cfg["simulation_dt"])
     kps = np.array(cfg["kps"], dtype=np.float32)

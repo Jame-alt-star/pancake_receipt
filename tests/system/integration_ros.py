@@ -37,13 +37,18 @@ class Probe(Node):
         self.freigabe_pub = self.create_publisher(Bool, "/freigabe", 10)
         self.p = None; self.quat = None; self.dq = None
         self.odom = None; self.tf_ok = False
-        self.create_subscription(Odometry, "/odom", lambda m: setattr(self, "odom", m), 10)
+        self.odom_vx = []        # twist.linear.x aller /odom-Nachrichten (fuer Auswertungen ueber eine Phase)
+        self.create_subscription(Odometry, "/odom", self._odom, 10)
         self.create_subscription(TFMessage, "/tf", self._tf, 10)
         self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
         self.create_subscription(Imu, "/imu", lambda m: setattr(self, "quat", (
             m.orientation.w, m.orientation.x, m.orientation.y, m.orientation.z)), 10)
         self.create_subscription(JointState, "/joint_states",
                                  lambda m: setattr(self, "dq", np.abs(np.array(m.velocity[:12])).mean()), 10)
+
+    def _odom(self, m):
+        self.odom = m
+        self.odom_vx.append(m.twist.twist.linear.x)
 
     def _tf(self, m):
         for t in m.transforms:
@@ -143,14 +148,18 @@ def main():
 
         print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
         pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t0 = time.time()
-        pr.spin(12)
+        pr.spin(6); pr.odom_vx.clear(); pr.spin(6)          # Geschwindigkeit ueber die zweite Haelfte auswerten
         dx = float(np.hypot(pr.p[0] - p0[0], pr.p[1] - p0[1])); dyaw = pr.yaw() - y0
         check("S3 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         check("S3 Strecke >= 3 m", dx > 3.0, f"dx={dx:.2f}")
         check("S3 geradeaus (|dyaw|<8 Grad)", abs(dyaw) < 8, f"dyaw={dyaw:.1f}")
         check("S3 Zustand Gehen", "-> Gehen" in read_log(logfile))
-        check("S3 /odom Twist linear.x > 0.2 (Koerper-Frame)", pr.odom is not None and pr.odom.twist.twist.linear.x > 0.2,
-              f"vx={pr.odom.twist.twist.linear.x:.2f}" if pr.odom else "")
+        # Median ueber 6 s statt eines Einzelwerts: am 15.10.2026 lag ein einzelner Wert der Beinodometrie bei
+        # 0.05 m/s; in 2400 Werten gleichmaessigen Gehens (Diagnose) war das Minimum 0.28. Das Minimum wird
+        # mit ausgegeben, damit Ausreisser sichtbar bleiben.
+        vx = np.array(pr.odom_vx)
+        check("S3 /odom Twist linear.x > 0.2 (Koerper-Frame, Median ueber 6 s)", len(vx) > 0 and np.median(vx) > 0.2,
+              f"median={np.median(vx):.2f} min={vx.min():.2f} n={len(vx)}" if len(vx) else "keine /odom-Nachricht")
 
         if has_clip:
             print("== S4 zu grosses cmd (vx=2.0, wz=1.0) -> Begrenzung")

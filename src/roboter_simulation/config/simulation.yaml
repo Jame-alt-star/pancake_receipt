@@ -1,0 +1,44 @@
+# Laufzeitparameter der Simulation (mujoco_bridge_node). simulation.launch.py laedt diese Datei immer;
+# Launch-Argumente (welt, headless, lidar_modus, realistic_sensors, record_path, odom) ueberschreiben nur die
+# Schalter, die beim Start bewusst gewaehlt werden. Robotermodell/Geometrie: roboter_beschreibung;
+# kp/kd/Startpose kommen von der Steuerung (/antrieb/parameter).
+
+mujoco_bridge_node:
+  ros__parameters:
+    simulation_dt: 0.002          # Physik-Zeitschritt [s] (500 Hz)
+    wait_for_controller: true     # Physik erst mit dem ersten /joint_commands starten (sonst kippt der Roboter)
+    render_decimation: 25         # Viewer alle 25 Physikschritte (20 Hz)
+    profile: false                # Zeitanteile der Schleife alle 2 s loggen
+
+    # Odometrie (Ground-Truth); false, wenn die Beinodometrie /odom und TF liefert
+    publish_odom: true
+    publish_tf: true
+    odom_frame: "odom"
+    base_frame: "base_link"
+
+    # Realistische Sensorik (nur mit realistic_sensors: true). ANNAHMEN in plausibler Groesse (typische
+    # Encoder/MEMS-IMU/DDS), nicht aus einem G1-Datenblatt; die Policy bleibt bis zum 10-Fachen stabil.
+    realistic_sensors: false
+    noise_joint_pos: 0.001        # rad
+    noise_joint_vel: 0.02         # rad/s
+    noise_gyro: 0.01              # rad/s
+    gyro_bias: 0.005              # rad/s (Std. des konstanten Bias)
+    noise_orientation: 0.005      # rad
+    yaw_drift_deg_per_min: 0.5    # langsame Gier-Drift der IMU-Orientierung
+    sensor_latency_ms: 10.0
+    command_latency_ms: 10.0
+    lidar_noise_m: 0.02
+    lidar_dropout: 0.01
+    noise_seed: 0
+
+    # Lidar (Raycast auf Welt-Geoms der Gruppe 2). Montagehoehe: roboter_beschreibung (lidar_hoehe_ueber_becken)
+    lidar: false
+    lidar_2d: true
+    lidar_3d: false
+    lidar_rate_hz: 10.0           # bezogen auf den 100-Hz-Publish-Takt; 3D-Wolke jede 2. Runde (5 Hz)
+    lidar_rays: 360
+    lidar_range_max: 10.0
+    lidar_geomgroup: 2
+    lidar_3d_rings: 24
+    lidar_3d_elev_min_deg: -40.0
+    lidar_3d_elev_max_deg: 10.0

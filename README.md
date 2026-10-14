@@ -1,13 +1,19 @@
 # G1-Humanoid: autonome Pipeline (Simulation)
 
 Unitree G1 (29 DOF) in MuJoCo mit RL-Lauf-Policy (ONNX), Navigation (Nav2/SLAM) und symbolischer
-Missionsplanung (PDDL/Fast Downward). Aufbau nach dem 4-Schichtenmodell der Software-Architektur.
+Missionsplanung (PDDL/Fast Downward). Aufbau nach dem 4-Schichtenmodell der Software-Architektur;
+Paketübersicht, Schnittstellen und Abhängigkeitsregeln: `docs/architektur.md`.
 
 ```
-Layer 1  Deliberative   roboter_task_planning   Mission (YAML) -> PDDL -> Fast Downward -> Dispatcher (ROS-2-Actions)
-Layer 2  Executive/Nav  roboter_navigation      Nav2 (+ optional slam_toolbox), Lidar-Costmaps       [Variante des Kollegen ersetzbar]
-Layer 3  Reactive       roboter_steuerung       Zustandsautomat (State Pattern), RL-Controller, Kurs-/Positionshaltung, NotAus, Watchdog
-Layer 4  HAL            r1_bringup              IRobotHardwareBridge, mujoco_node (Physik, Lidar, Odometrie, TF)
+Layer 1  Deliberative   roboter_task_planning   Mission (Auftrag) -> PDDL -> Fast Downward -> Dispatcher (ROS-2-Actions)
+Layer 2  Navigation     roboter_navigation      Nav2 (+ optional slam_toolbox)                       [Variante des Kollegen ersetzbar]
+         Sensorik       roboter_sensorik        3D-Punktwolke -> /scan + Hinderniswolke
+Layer 3  Reactive       roboter_steuerung       Zustandsautomat, RL-Policy (ONNX + policy_29dof.yaml), Kurs-/Positionshaltung,
+                                                NotAus, Watchdog, Hardware-Bridge (Schnittstelle zu Layer 4)
+Layer 4  HAL            roboter_simulation      mujoco_node (Physik, Sensoren, Lidar, Odometrie, TF)
+Roboter                 roboter_beschreibung    Unitree-G1-Modell + Geometrie (Becken-/Lidar-Hoehe)
+Umgebung                roboter_welten          je Welt: Szene (Simulation) + Orte (Missionen)
+Gesamt                  roboter_system          system.launch.py setzt die Schichten zusammen, RViz-Ansicht
 ```
 
 Schnittstellen: Freigabe per `/freigabe` (Bool, eigener Kanal; `/cmd_vel` gibt nicht frei, während NotAus
@@ -18,20 +24,22 @@ Layer 1 -> 3 per `BalancierAktion`; Sicherheit per `/not_aus` (latched).
 ```bash
 source /opt/ros/jazzy/setup.bash && colcon build && source install/setup.bash
 
-# Roboter allein (Viewer-Fenster), Steuerung per /cmd_vel
-ros2 launch roboter_steuerung steuereinheit.launch.py config_file:=g1_policy_29dof.yaml
+# Roboter allein (Layer 3+4, Viewer-Fenster), Steuerung per /cmd_vel
+ros2 launch roboter_system system.launch.py
 ros2 topic pub --once /freigabe std_msgs/msg/Bool "{data: true}"      # Bewegung freigeben (eigener Kanal)
 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.4}}"
 
-# Komplettes System in der Testwelt: Nav2 + SLAM + Mission (headless, wenig RAM)
-ros2 launch roboter_task_planning mission.launch.py nav2:=true slam:=true headless:=true \
-     config_file:=g1_policy_29dof.yaml \
-     mission_file:=$(ros2 pkg prefix roboter_task_planning)/share/roboter_task_planning/missions/patrouille.yaml
-ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten
+# Komplettes System: Mission + Nav2 + SLAM (headless, wenig RAM); die Welt kommt aus der Mission
+ros2 launch roboter_system system.launch.py mission:=patrouille navigation:=nav2 slam:=true headless:=true
+ros2 service call /mission/start std_srvs/srv/Trigger     # Mission starten (oder auto_start:=true)
 ros2 topic echo /mission/status                           # Fortschritt
 ros2 topic pub --once /not_aus std_msgs/msg/Bool "{data: true}"   # NotAus
 ```
-Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml`, `testwelt3d.yaml`, `demo_lager.yaml`
+`system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/testdouble), `nav2_params`,
+`slam`, `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`, `record_path`, `cmd_vel_timeout_s`,
+`auto_start`, `rviz`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
+
+Missionen (`roboter_task_planning/missions/`): `beispiel`, `testwelt`, `patrouille`, `testwelt3d`, `demo_lager`
 (Ziele `besucht`, `balanciert`, `gewartet`, `am_ort`). Eine Mission verweist mit `welt:` auf eine Welt aus
 `roboter_welten` (Szene für die Simulation + Orte); die Simulation startet automatisch in dieser Welt.
 
@@ -41,9 +49,9 @@ Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml`, `
   `slam:=true` korrigiert SLAM die Drift über `map→odom`. Das ist die Konfiguration, die der echten
   Hardware am nächsten kommt.
 
-- **Ein 3D-Lidar** (Standard, `lidar_modus:=3d`): Simulation publiziert nur `/points`; `punktwolke_zu_scan` leitet
+- **Ein 3D-Lidar** (Standard mit Navigation, `lidar_modus:=3d`): Simulation publiziert nur `/points`; `punktwolke_zu_scan` leitet
   `/scan` (SLAM, Collision-Monitor) und `/punkte_hindernis` (Nav2-VoxelLayer) ab. Sieht auch niedrige Hindernisse
-  (Test: `integration_mission.py --drei-d`). `lidar_modus:=2d` = alte Einzel-Scanebene zum Vergleich (`--nur-2d`).
+  (Test: `tests/system/integration_mission.py --drei-d`). `lidar_modus:=2d` = alte Einzel-Scanebene zum Vergleich (`--nur-2d`).
 - Demo-Video "Kontrollrundgang im Lager": `demo/README.md`.
 
 ## Voraussetzungen

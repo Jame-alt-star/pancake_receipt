@@ -60,7 +60,7 @@ def run(reach, load, dz, hold_extra, use_poshold=True, verbose=False, obs_mask=F
         waist=(0.0, 0.0, 0.0), y_lat=0.17, z_off=0.0, elbow_seed=0.0):
     cfg = load_config()
     ctl = load_controller29(cfg)
-    m = mujoco.MjModel.from_xml_path(BRINGUP + cfg["xml_path"])
+    m = mujoco.MjModel.from_xml_path(cfg["xml_path"])
     m.opt.timestep = float(cfg["simulation_dt"])
     lw = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "left_wrist_yaw_link")
     rw = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "right_wrist_yaw_link")

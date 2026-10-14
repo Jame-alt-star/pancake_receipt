@@ -3,7 +3,6 @@ import os
 import threading
 import time
 from collections import deque
-import yaml
 import numpy as np
 
 import mujoco
@@ -15,8 +14,11 @@ from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import Point, TransformStamped
 from nav_msgs.msg import Odometry
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
-from ament_index_python.packages import get_package_share_directory
 
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+
+from roboter_beschreibung import lade as lade_roboter
+from roboter_interfaces.msg import Antriebsparameter
 from roboter_simulation.szene import lade_welt
 
 
@@ -82,17 +84,6 @@ class MujocoBridgeNode(Node):
     def __init__(self):
         super().__init__("mujoco_bridge_node")
 
-        # 1. Config laden (gleiche Datei wie steuereinheit_node.py, damit
-        # z.B. simulation_dt/kps/kds an beiden Stellen zusammenpassen).
-        # NEU (DOF-Migration): Dateiname ueber den ROS2-Parameter
-        # "config_file" waehlbar (Standard seit 14.10.2026 g1_policy_29dof.yaml; 12-DOF: g1_policy.yaml - vorher
-        # das bisherige 12-DOF-Verhalten unveraendert), siehe
-        # steuereinheit_node.py fuer denselben Mechanismus und
-        # steuereinheit.launch.py fuer das Launch-Argument, das beide
-        # Knoten synchron umschaltet.
-        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
-        config_file = self.get_parameter("config_file").get_parameter_value().string_value
-
         # NEU (13.10.2026): Physik erst starten, wenn der Regler das erste
         # /joint_commands gesendet hat. Gemessen: steuereinheit_node
         # braucht ~7 s Wandzeit zum Hochfahren (Imports, ONNX-Laden); in
@@ -108,38 +99,26 @@ class MujocoBridgeNode(Node):
         self.declare_parameter("profile", False)
         self.profile = self.get_parameter("profile").get_parameter_value().bool_value
 
-        pkg_share = get_package_share_directory("roboter_simulation")
-        config_path = os.path.join(pkg_share, "config", config_file)
-
-        with open(config_path, "r") as f:
-            self.config = yaml.load(f, Loader=yaml.FullLoader)
-        self.get_logger().info(f"[mujoco_bridge_node] aktive Config: {config_file} (xml_path={self.config.get('xml_path')})")
-
-        # Robotermodell aus der Config (relativ zum Share-Verzeichnis), Umgebung als Welt aus
-        # roboter_welten ('' = nur Roboter auf der Ebene), zusammengesetzt in szene.py.
+        # Robotermodell und Geometrie aus roboter_beschreibung (gilt fuer Simulation und Hardware), Umgebung
+        # als Welt aus roboter_welten ('' = nur Roboter auf der Ebene), zusammengesetzt in szene.py.
+        self.roboter = lade_roboter()
         self.declare_parameter("welt", "")
         self.welt = self.get_parameter("welt").value
-        xml_path = os.path.join(pkg_share, self.config["xml_path"])
-        if not os.path.exists(xml_path):
-            # Kein hartkodierter Rueckfall auf ~/humanoid_robot mehr (Review Kat. 6): klare Meldung.
-            raise FileNotFoundError(f"Robotermodell nicht gefunden: {xml_path} - 'colcon build' ausgefuehrt?")
+        self.declare_parameter("simulation_dt", 0.002)   # Physik-Zeitschritt [s] (500 Hz)
+        self.simulation_dt = float(self.get_parameter("simulation_dt").value)
 
-        # Parameter initialisieren
-        self.simulation_dt = float(self.config["simulation_dt"])
-        self.kps = np.array(self.config["kps"], dtype=np.float32)
-        self.kds = np.array(self.config["kds"], dtype=np.float32)
-        self.default_angles = np.array(self.config["default_angles"], dtype=np.float32)
-        self.target_dof_pos = self.default_angles.copy()
-
+        # Antriebsparameter (kp, kd, Startpose) gehoeren zur Policy in Layer 3 und kommen von dort ueber
+        # /antrieb/parameter (latched), wie bei einem Motortreiber. Bis dahin steht die Simulation still und
+        # sendet nichts; die Steuerung wartet in ihrem Start-Gate auf die ersten Sensordaten.
+        self.kps = self.kds = self.default_angles = None
+        self._antrieb_neu = None
+        self.target_dof_pos = None
         # 2. MuJoCo Modell & Daten laden
-        self.model = lade_welt(xml_path, self.welt)
+        self.model = lade_welt(self.roboter["modell_xml"], self.welt)
         self.get_logger().info(f"[mujoco_bridge_node] Welt: {self.welt or '(keine, nur Ebene)'}")
         self.data = mujoco.MjData(self.model)
         self.model.opt.timestep = self.simulation_dt
 
-        # Ruhelage zuweisen, damit der Roboter nicht in der MuJoCo-
-        # Standardpose (meist alle Gelenke auf 0) startet
-        self.data.qpos[7:] = self.default_angles
         mujoco.mj_forward(self.model, self.data)
 
         # 3. ROS-2 Publisher & Subscriber
@@ -215,9 +194,9 @@ class MujocoBridgeNode(Node):
         self.declare_parameter("lidar_rate_hz", 10.0)
         self.declare_parameter("lidar_rays", 360)
         self.declare_parameter("lidar_range_max", 10.0)
-        # Montagehoehe ueber dem Becken aus der Config (lidar_hoehe_ueber_becken), damit Simulation,
+        # Montagehoehe ueber dem Becken aus roboter_beschreibung (lidar_hoehe_ueber_becken), damit Simulation,
         # Scan-Ableitung und Beinodometrie dieselbe Geometrie nutzen (Review U5).
-        self.declare_parameter("lidar_z", float(self.config.get("lidar_hoehe_ueber_becken", 0.45)))
+        self.declare_parameter("lidar_z", float(self.roboter["lidar_hoehe_ueber_becken"]))
         self.declare_parameter("lidar_geomgroup", 2)
         self.lidar_on = bool(self.get_parameter("lidar").value)
         self.lidar_period = max(1, int(round(100.0 / float(self.get_parameter("lidar_rate_hz").value))))
@@ -264,6 +243,9 @@ class MujocoBridgeNode(Node):
             st.transform.rotation.w = 1.0
             self._static_tf = StaticTransformBroadcaster(self)
             self._static_tf.sendTransform(st)
+        latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=QoSReliabilityPolicy.RELIABLE)
+        self.create_subscription(Antriebsparameter, "/antrieb/parameter", self._antrieb_callback, latched)
         self.sub_joint_commands = self.create_subscription(
             Float32MultiArray,
             "/joint_commands",
@@ -281,6 +263,27 @@ class MujocoBridgeNode(Node):
         self.sim_thread.daemon = True
         self.sim_thread.start()
 
+    def _antrieb_callback(self, msg: Antriebsparameter):
+        n = self.model.nu
+        if not (len(msg.kp) == len(msg.kd) == len(msg.startpose) == n):
+            self.get_logger().error(f"Antriebsparameter mit falscher Laenge ignoriert (erwartet {n} Gelenke).")
+            return
+        # Uebernahme im Simulationsthread (dort wird qpos gesetzt), hier nur ablegen.
+        self._antrieb_neu = (np.array(msg.kp, dtype=np.float32), np.array(msg.kd, dtype=np.float32),
+                             np.array(msg.startpose, dtype=np.float32))
+
+    def _uebernehme_antrieb(self):
+        """Antriebsparameter anwenden; beim ersten Mal den Roboter in die Ruhepose der Policy stellen."""
+        kps, kds, start = self._antrieb_neu
+        self._antrieb_neu = None
+        erstes_mal = self.kps is None
+        self.kps, self.kds, self.default_angles = kps, kds, start
+        if erstes_mal:
+            self.target_dof_pos = start.copy()
+            self.data.qpos[7:] = start
+            mujoco.mj_forward(self.model, self.data)
+            self.get_logger().info("[mujoco_bridge_node] Antriebsparameter von der Steuerung erhalten.")
+
     def _joint_commands_callback(self, msg: Float32MultiArray):
         # Laengen-Check als Sicherheitsnetz: eine falsch dimensionierte
         # Nachricht (z.B. durch einen Konfigurationsfehler) wird ignoriert,
@@ -291,7 +294,7 @@ class MujocoBridgeNode(Node):
             self._prof_gap = max(getattr(self, "_prof_gap", 0.0), _now - self._prof_last_cmd)
         self._prof_last_cmd = _now
         self._prof_ncmd = getattr(self, "_prof_ncmd", 0) + 1
-        if len(cmd_data) == len(self.target_dof_pos):
+        if self.target_dof_pos is not None and len(cmd_data) == len(self.target_dof_pos):
             if self.command_latency > 0.0 and self.controller_connected:
                 self._cmd_buf.append((float(self.data.time), cmd_data))   # wird im Sim-Thread verzoegert angewendet
             else:
@@ -355,6 +358,15 @@ class MujocoBridgeNode(Node):
 
             while viewer.is_running() and self.is_running:
                 step_start = time.time()
+
+                if self._antrieb_neu is not None:
+                    self._uebernehme_antrieb()
+                if self.kps is None:
+                    # Noch keine Antriebsparameter: nichts senden (die Steuerung laeuft noch nicht).
+                    viewer.sync()
+                    time.sleep(0.01)
+                    next_deadline = time.perf_counter()
+                    continue
 
                 if not self.controller_connected:
                     # Pausiert: Pose einfrieren, aber Sensorwerte (100 Hz)

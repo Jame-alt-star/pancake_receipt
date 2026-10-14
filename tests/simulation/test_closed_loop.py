@@ -73,7 +73,7 @@ def test_ohne_regler_faellt_um():
     import mujoco, numpy as np
     from sim_helpers import load_config, BRINGUP
     cfg = load_config()
-    m = mujoco.MjModel.from_xml_path(BRINGUP + cfg["xml_path"])
+    m = mujoco.MjModel.from_xml_path(cfg["xml_path"])
     d = mujoco.MjData(m)
     m.opt.timestep = 0.002
     tgt = np.array(cfg["default_angles"], dtype=np.float32)
@@ -93,7 +93,7 @@ def test_welten_laden_roboter_plus_umgebung():
     from sim_helpers import load_config, BRINGUP, WS
     sys.path.insert(0, BRINGUP)
     from roboter_simulation.szene import lade_modell
-    roboter = BRINGUP + load_config()["xml_path"]
+    roboter = load_config()["xml_path"]
     nur_roboter = mujoco.MjModel.from_xml_path(roboter)
     welten = WS + "roboter_welten/welten/"
     for name in sorted(os.listdir(welten)):

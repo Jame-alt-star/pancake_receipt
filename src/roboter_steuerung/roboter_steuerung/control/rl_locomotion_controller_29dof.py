@@ -9,7 +9,7 @@ from roboter_steuerung.control.i_locomotion_controller import ILocomotionControl
 # Gelenkreihenfolge wie MuJoCo/g1_29dof.xml sie deklariert (<motor>-
 # Reihenfolge, identisch zur Unitree-SDK-LowCmd-Reihenfolge). Das ist die
 # Reihenfolge, in der joint_positions/joint_velocities hier ankommen
-# (mujoco_bridge.py liest /joint_states direkt aus self.data.qpos[7:]) und
+# (mujoco_node.py publiziert /joint_states direkt aus self.data.qpos[7:]) und
 # in der compute_joint_targets() seine Rueckgabe liefern MUSS (mujoco_node.py
 # wendet target_dof_pos 1:1 auf self.data.ctrl[:] an, selbe Reihenfolge).
 MUJOCO_JOINT_ORDER = [
@@ -67,15 +67,10 @@ JOINT_IDS_MAP = np.array(
 
 class RLLocomotionController29Dof(ILocomotionController):
     """
-    ONNX-Variante von RLLocomotionController (siehe rl_locomotion_controller.py)
-    fuer Unitree's vortrainierte 29-DOF-Ganzkoerper-Policy aus unitree_rl_lab
-    (Isaac-Lab-basiert), statt der 12-DOF-nur-Beine-TorchScript-Policy aus
-    unitree_rl_gym. Gleiche Rolle/Schnittstelle (ILocomotionController,
-    Layer 3) - austauschbar mit RLLocomotionController, Auswahl ueber
-    controller_type in der jeweiligen g1_policy*.yaml (siehe
-    steuereinheit_node.py). Der 12-DOF-Pfad bleibt unveraendert bestehen -
-    diese Klasse ist eine Ergaenzung, kein Ersatz, solange sie nicht per
-    Config ausgewaehlt wird.
+    ONNX-Controller fuer Unitree's vortrainierte 29-DOF-Ganzkoerper-Policy aus unitree_rl_lab
+    (Isaac-Lab-basiert); loeste die 12-DOF-nur-Beine-TorchScript-Policy aus unitree_rl_gym ab
+    (archiv/12dof/rl_locomotion_controller.py). Schnittstelle ILocomotionController (Layer 3),
+    Auswahl ueber controller_type in config/policy_29dof.yaml (siehe steuereinheit_node.py).
 
     Zwei grundlegende Unterschiede zur 12-DOF-Variante:
 
@@ -128,7 +123,7 @@ class RLLocomotionController29Dof(ILocomotionController):
 
         # Alle Arrays unten sind in MuJoCo-Gelenkreihenfolge (siehe
         # MUJOCO_JOINT_ORDER) - genau wie kps/kds/default_angles in
-        # g1_policy_29dof.yaml bereits dort hinterlegt.
+        # policy_29dof.yaml bereits dort hinterlegt.
         self.kps = np.array(config["kps"], dtype=np.float32)
         self.kds = np.array(config["kds"], dtype=np.float32)
         self.default_angles = np.array(config["default_angles"], dtype=np.float32)

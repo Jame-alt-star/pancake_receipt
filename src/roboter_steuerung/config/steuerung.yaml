@@ -1,0 +1,24 @@
+# Laufzeitparameter der Layer-3-Knoten (eine Quelle; die Launch-Datei laedt diese Datei immer).
+# Launch-Argumente ueberschreiben nur, was beim Start bewusst gewaehlt wird (cmd_vel_timeout_s).
+# Die trainierte Policy selbst steht in policy_29dof.yaml.
+
+steuereinheit_node:
+  ros__parameters:
+    policy_config: "policy_29dof.yaml"   # Datei in config/ dieses Pakets
+    # /cmd_vel-Watchdog [s]: ohne neue Nachricht wird das Kommando 0 (0 = aus). system.launch.py setzt 1.0,
+    # sobald eine Navigation laeuft (dauernder Befehlsstrom), sonst 0 (Handbetrieb mit Einzelbefehlen).
+    cmd_vel_timeout_s: 0.0
+    # true = jedes /cmd_vel gibt frei (alter Handbetrieb); Standard: Freigabe nur ueber /freigabe.
+    freigabe_per_cmd_vel: false
+    # Positionshaltung im Zustand Balancieren (gemessen: ~1 cm in 60 s statt 32 cm Drift).
+    position_hold: true
+
+balance_dienst_node:
+  ros__parameters:
+    stabil_grenze_grad: 15.0   # Neigung, ab der /gleichgewicht "nicht stabil" meldet
+
+beinodometrie_node:
+  ros__parameters:
+    start_position: [0.0, 0.0, -1.0]   # z < 0: becken_hoehe_stand aus roboter_beschreibung
+    odom_frame: "odom"
+    base_frame: "base_link"
