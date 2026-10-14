@@ -24,7 +24,7 @@ class BeinodometrieNode(Node):
     def __init__(self):
         super().__init__("beinodometrie_node")
         self.declare_parameter("config_file", "g1_policy_29dof.yaml")
-        self.declare_parameter("start_position", [0.0, 0.0, 0.793])
+        self.declare_parameter("start_position", [0.0, 0.0, -1.0])   # z < 0: aus Config (becken_hoehe_stand)
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
         share = get_package_share_directory("r1_bringup")
@@ -32,7 +32,10 @@ class BeinodometrieNode(Node):
             cfg = yaml.safe_load(f)
         xml = os.path.join(share, cfg["xml_path"])
         self.est = Beinodometrie(xml)
-        self.est.reset(list(self.get_parameter("start_position").value))
+        start = list(self.get_parameter("start_position").value)
+        if start[2] < 0:
+            start[2] = float(cfg.get("becken_hoehe_stand", 0.793))
+        self.est.reset(start)
         self.odom_frame = self.get_parameter("odom_frame").value
         self.base_frame = self.get_parameter("base_frame").value
         self.quat = None

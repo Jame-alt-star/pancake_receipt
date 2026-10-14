@@ -1,5 +1,4 @@
 from roboter_steuerung.states.i_robot_state import IRobotState
-from std_msgs.msg import Bool
 
 
 class GehenState(IRobotState):
@@ -27,8 +26,6 @@ class GehenState(IRobotState):
         # NEU (12.10.2026): jeden Takt False melden, damit mujoco_node.py
         # beim Gehen die normalen (fuer die Policy abgestimmten) Gains
         # verwendet - siehe balancieren_state.py fuer das Gegenstueck.
-        # Aktuell ohne Wirkung, siehe Kommentar in steuereinheit_node.py.
-        node.pub_balance_mode.publish(Bool(data=False))
 
         quat, omega = node.bridge.read_imu()
         joint_pos, joint_vel = node.bridge.read_joint_states()

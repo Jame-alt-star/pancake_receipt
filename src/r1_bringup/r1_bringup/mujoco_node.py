@@ -51,16 +51,19 @@ class _NullViewer:
         pass
 
 
-def rotate_inverse(q, v):
-    """v (Weltkoordinaten) in das Koerper-Koordinatensystem mit Orientierung q=[w,x,y,z]."""
+def quat_zu_rotmat(q):
+    """Rotationsmatrix (Koerper -> Welt) aus Quaternion q=[w,x,y,z] (MuJoCo-Konvention)."""
     w, x, y, z = q
-    # R^T v  mit R aus Quaternion
-    r = np.array([
+    return np.array([
         [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
         [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
     ])
-    return r.T @ np.asarray(v, dtype=float)
+
+
+def rotate_inverse(q, v):
+    """v (Weltkoordinaten) in das Koerper-Koordinatensystem mit Orientierung q=[w,x,y,z]."""
+    return quat_zu_rotmat(q).T @ np.asarray(v, dtype=float)
 
 
 class MujocoBridgeNode(Node):
@@ -210,7 +213,9 @@ class MujocoBridgeNode(Node):
         self.declare_parameter("lidar_rate_hz", 10.0)
         self.declare_parameter("lidar_rays", 360)
         self.declare_parameter("lidar_range_max", 10.0)
-        self.declare_parameter("lidar_z", 0.45)           # ueber dem Becken [m]
+        # Montagehoehe ueber dem Becken aus der Config (lidar_hoehe_ueber_becken), damit Simulation,
+        # Scan-Ableitung und Beinodometrie dieselbe Geometrie nutzen (Review U5).
+        self.declare_parameter("lidar_z", float(self.config.get("lidar_hoehe_ueber_becken", 0.45)))
         self.declare_parameter("lidar_geomgroup", 2)
         self.lidar_on = bool(self.get_parameter("lidar").value)
         self.lidar_period = max(1, int(round(100.0 / float(self.get_parameter("lidar_rate_hz").value))))
@@ -542,13 +547,8 @@ class MujocoBridgeNode(Node):
 
     def _publish_cloud(self, now, quat):
         """3D-Lidar: ein Raycast je Ring x Azimut (mj_multiRay, nur Welt-Geoms der Gruppe 2), Treffer
-        als PointCloud2 im lidar_link-Frame. Mit realistic_sensors Entfernungsrauschen."""
-        w, x, y, z = quat
-        R = np.array([
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ])
+        als PointCloud2 im lidar_link-Frame. Mit realistic_sensors Entfernungsrauschen und Ausfaelle."""
+        R = quat_zu_rotmat(quat)
         origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
         dirs = self.cloud_dirs_local @ R.T
         n = len(dirs)
@@ -557,6 +557,8 @@ class MujocoBridgeNode(Node):
         mujoco.mj_multiRay(self.model, self.data, origin, dirs.reshape(-1), self.lidar_mask, True, -1,
                            geomid, dist, None, n, self.lidar_rmax)
         ok = (geomid >= 0) & (dist > 0.15) & (dist < self.lidar_rmax)
+        if self.realistic:
+            ok &= self._rng.random(n) >= self.p_drop        # Ausfaelle wie beim 2D-Scan (Review U6)
         d_ok = dist[ok]
         if self.realistic and len(d_ok):
             d_ok = d_ok + self._rng.normal(0.0, self.n_lidar, len(d_ok))
@@ -575,12 +577,7 @@ class MujocoBridgeNode(Node):
     def _publish_scan(self, now, quat):
         """2D-Lidar (eine Ebene in der Koerper-xy-Ebene des Sensors) als LaserScan; kein Treffer = inf.
         Mit realistic_sensors Rauschen und Ausfaelle (inf)."""
-        w, x, y, z = quat
-        R = np.array([
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ])
+        R = quat_zu_rotmat(quat)
         origin = self.data.qpos[0:3] + R @ np.array([0.0, 0.0, self.lidar_z])
         dirs = self.lidar_dirs_local @ R.T
         n = self.lidar_n
@@ -614,10 +611,13 @@ class MujocoBridgeNode(Node):
                             qpos=np.array(self._rec["qpos"]))
 
     def destroy_node(self):
-        self._flush_recording()
-        # Hintergrund-Thread aktiv stoppen, bevor der Knoten zerstoert wird -
-        # sonst liefe die Simulationsschleife theoretisch im Hintergrund weiter.
+        # Simulationsthread stoppen und abwarten (Review B8): erst danach die Aufnahme schreiben (sonst
+        # Race mit dem noch anhaengenden Thread) und den Knoten zerstoeren (sonst publiziert der Thread
+        # noch auf einen zerstoerten Knoten).
         self.is_running = False
+        if self.sim_thread.is_alive():
+            self.sim_thread.join(timeout=2.0)
+        self._flush_recording()
         super().destroy_node()
 
 

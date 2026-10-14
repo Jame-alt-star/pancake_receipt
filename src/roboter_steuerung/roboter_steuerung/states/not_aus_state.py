@@ -1,7 +1,6 @@
 import numpy as np
 
 from roboter_steuerung.states.i_robot_state import IRobotState
-from std_msgs.msg import Bool
 
 
 class NotAusState(IRobotState):
@@ -74,8 +73,6 @@ class NotAusState(IRobotState):
         # Policy bleibt dauerhaft aktiv, cmd hart auf [0,0,0] - siehe
         # Docstring/FIX oben. Kein Zeit-/Phasenwechsel mehr, nachdem
         # sich das in zwei Testlaeufen (1,5s und 6,0s) als nicht sicher
-        # herausgestellt hat.
-        node.pub_balance_mode.publish(Bool(data=False))
 
         quat, omega = node.bridge.read_imu()
         joint_pos, joint_vel = node.bridge.read_joint_states()

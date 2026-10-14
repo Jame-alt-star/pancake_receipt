@@ -13,12 +13,18 @@ import mujoco
 
 
 class Beinodometrie:
-    def __init__(self, xml_path: str, update_period_s: float = 0.01, hysterese_m: float = 0.003,
+    def __init__(self, xml_path: str, update_period_s: float = 0.009, hysterese_m: float = 0.003,
                  foot_bodies=("left_ankle_roll_link", "right_ankle_roll_link")):
         self.m = mujoco.MjModel.from_xml_path(xml_path)
         self.d = mujoco.MjData(self.m)
         self.feet = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, n) for n in foot_bodies]
+        # 0.009 statt 0.01 s (Review L7): /joint_states kommt nominal mit 100 Hz, aber mit Jitter;
+        # bei exakt 0.01 fiel ein Teil der Nachrichten unter die Schwelle und wurde uebersprungen.
         self.period = update_period_s
+        # Geschwindigkeit: Tiefpass (Zeitkonstante tau). Die Rohgeschwindigkeit aus der Fussbewegung
+        # pro 10-ms-Schritt ist stark verrauscht (Ausreisser beim Standbeinwechsel; gemessen
+        # Einzelwerte von -0.09 m/s bei 0.4 m/s Gehen). Die Position wird ungefiltert integriert.
+        self.vel_tau = 0.15
         self.hyst = hysterese_m
         self.pos = np.zeros(3)          # geschaetzte Basisposition (odom)
         self.vel = np.zeros(3)          # Weltgeschwindigkeit
@@ -61,7 +67,9 @@ class Beinodometrie:
             delta = foot - self._prev_foot                   # Fuss "bewegt" sich relativ zur Basis
             dt = t - self._t_last
             self.pos[:2] -= delta[:2]
-            self.vel[:2] = -delta[:2] / dt if dt > 0 else 0.0
+            if dt > 0:
+                a = dt / (self.vel_tau + dt)
+                self.vel[:2] += a * (-delta[:2] / dt - self.vel[:2])
         self.pos[2] = self._h0 - foot[2]
         if z[1 - self._stance] < z[self._stance] - self.hyst:
             self._stance = 1 - self._stance                  # Wechsel des Standbeins

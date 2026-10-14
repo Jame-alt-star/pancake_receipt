@@ -373,3 +373,17 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 - Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben nach `docs/archiv/` (mit Hinweis); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben.
 - Hinweis: `CODE_REVIEW_PROMPT.md` (Review-Auftrag) wurde beim Commit von Paket 1 versehentlich per `git add -A` mitversioniert; Inhalt unkritisch, bleibt im Root.
 - Tests: pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14.
+
+
+## Review-Paket 5: kleinere Punkte (14.10.2026) – v1.9
+- **B8:** `mujoco_node.destroy_node` stoppt den Simulationsthread mit `join`, schreibt erst danach die Aufnahme (kein Race, kein Publish auf zerstörten Knoten). Lidar-Taktannahme (100 Hz Publish) dokumentiert.
+- **U3:** `/base_position`-Abo und `read_base_position()` aus `MujocoBridge`/`IRobotHardwareBridge` entfernt (ungenutzt, auf Hardware nicht erfüllbar).
+- **U5:** Geometrie zentral in `g1_policy_29dof.yaml` (`becken_hoehe_stand`, `lidar_hoehe_ueber_becken`); genutzt von `mujoco_node`, `punktwolke_zu_scan`, `beinodometrie_node`.
+- **U6:** Lidar-Ausfälle mit `realistic_sensors` auch in der 3D-Punktwolke.
+- **U7:** `/balance_mode` entfernt (immer False, kein Abonnent). `nav_toleranz_m`/`nav_geschwindigkeit` nur im GehAktion-Backend wirksam – dokumentiert.
+- **L2:** Kurshaltung greift nur noch bei angeforderter Drehrate ≈ 0 (Schwelle 0,001 statt 0,05), damit sie nicht gegen kleine Nav2-Drehbefehle regelt.
+- **L7:** Beinodometrie verarbeitet jede 100-Hz-Nachricht (Mindestabstand 9 statt 10 ms). Folge: die Rohgeschwindigkeit pro 10 ms war stark verrauscht (Einzelwert −0,09 m/s bei 0,4 m/s Gehen, ein Pipeline-Test schlug fehl) → Tiefpass (τ 0,15 s) auf die Geschwindigkeit; neuer Test (Median-Fehler < 0,1 m/s, 99 %-Quantil < 0,3 m/s).
+- **Duplikate:** gemeinsame Quaternion→Rotationsmatrix in `mujoco_node`; `punktwolke_zu_scan` richtet jede Wolke nur noch einmal aus.
+- **Nur dokumentiert:** L6 (Start-Gate: NotAus wird mit den ersten Sensordaten wirksam), L8 (BackUp-Recovery unter der Totzone; sauberer Weg: eigener BT), U8 (Testdouble dreht bewusst mit 0,2).
+- **Tests:** pytest 33, Layer-1 18, Pipeline 32/32, Pipeline realistisch+Beinodometrie 2× 32/32 (Schätzfehler 20–22 cm), Watchdog 5/5, Missionen 14/14 (Testdouble, Testwelt, Patrouille, 3D-Palette 0,36 m), SLAM realistisch 2× 22/22.
+- **Damit ist das Code-Review vom 14.10. bis auf Kategorie 5 (SysML-Dateien nicht im Repo) abgearbeitet.**

@@ -4,7 +4,6 @@ import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import Imu, JointState
 from std_msgs.msg import Float32MultiArray
-from geometry_msgs.msg import Point
 
 from r1_bringup.bridges.i_hardware_bridge import IRobotHardwareBridge
 
@@ -32,10 +31,6 @@ class MujocoBridge(IRobotHardwareBridge):
         # Erkennungswert fuer den Warte-Check in steuereinheit_node.py.
         self.last_quat = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         self.last_omega = np.zeros(3, dtype=np.float32)
-        # NEU (12.10.2026): fuer read_base_position() - siehe dort und
-        # i_hardware_bridge.py fuer den Vorbehalt (reiner Simulations-
-        # Ground-Truth).
-        self.last_base_position = np.zeros(3, dtype=np.float32)
 
         # num_joints kommt von aussen (steuereinheit_node.py uebergibt
         # self.config["num_actions"] aus g1_policy.yaml) - so steht die
@@ -50,12 +45,11 @@ class MujocoBridge(IRobotHardwareBridge):
         self.cmd_pub = self.node.create_publisher(Float32MultiArray, "/joint_commands", 10)
 
         # Subscriber fuer Sensorwerte: mujoco_node.py veroeffentlicht laufend
-        # /joint_states, /imu und /base_position, hier wird nur der jeweils
-        # letzte Wert gemerkt (siehe _joint_callback/_imu_callback/
-        # _base_position_callback unten).
+        # /joint_states und /imu, hier wird nur der jeweils letzte Wert gemerkt.
+        # (Ein Abo auf /base_position samt read_base_position() wurde am 14.10.2026 entfernt -
+        # Review U3: ungenutzt und auf echter Hardware nicht erfuellbar; Position kommt aus /odom.)
         self.node.create_subscription(JointState, "/joint_states", self._joint_callback, 10)
         self.node.create_subscription(Imu, "/imu", self._imu_callback, 10)
-        self.node.create_subscription(Point, "/base_position", self._base_position_callback, 10)
 
     def _joint_callback(self, msg: JointState):
         # Wird von ROS2 automatisch bei jeder neuen /joint_states-
@@ -79,11 +73,6 @@ class MujocoBridge(IRobotHardwareBridge):
             dtype=np.float32
         )
 
-    def _base_position_callback(self, msg: Point):
-        # NEU (12.10.2026): wird automatisch bei jeder neuen /base_position-
-        # Nachricht aufgerufen (siehe mujoco_node.py/_publish_states()).
-        self.last_base_position = np.array([msg.x, msg.y, msg.z], dtype=np.float32)
-
     def read_imu(self) -> Tuple[np.ndarray, np.ndarray]:
         # .copy() ist wichtig: ohne Kopie koennte der Aufrufer (z.B. der
         # RL-Controller) versehentlich diese internen Merker-Werte
@@ -93,9 +82,6 @@ class MujocoBridge(IRobotHardwareBridge):
 
     def read_joint_states(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.last_joint_pos.copy(), self.last_joint_vel.copy()
-
-    def read_base_position(self) -> np.ndarray:
-        return self.last_base_position.copy()
 
     def send_joint_commands(self, target_positions: np.ndarray) -> None:
         # tolist(): ROS2-Nachrichten verstehen keine NumPy-Arrays direkt,

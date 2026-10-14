@@ -20,8 +20,9 @@ from rclpy.node import Node
 from sensor_msgs.msg import Imu, LaserScan, PointCloud2
 
 
-def hoehenband_maske(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max):
-    """Maske der Punkte im Hoehenband (waagerecht ausgerichtet) + waagerechte Koordinaten."""
+def waagerecht(pts, quat):
+    """Punkte (Sensorframe) mit der IMU-Orientierung waagerecht ausrichten: Roll/Nick entfernen,
+    Gier bleibt (Blickrichtung wie der Sensor)."""
     w, x, y, z = quat
     R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
                   [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
@@ -29,10 +30,27 @@ def hoehenband_maske(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max
     yaw = math.atan2(R[1, 0], R[0, 0])
     cy, sy = math.cos(yaw), math.sin(yaw)
     rz_t = np.array([[cy, sy, 0.0], [-sy, cy, 0.0], [0.0, 0.0, 1.0]])
-    level = pts @ (rz_t @ R).T
+    return pts @ (rz_t @ R).T
+
+
+def maske_aus_level(level, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max):
     h = level[:, 2] + sensor_hoehe
     r = np.hypot(level[:, 0], level[:, 1])
-    return (h >= min_hoehe) & (h <= max_hoehe) & (r >= r_min) & (r <= r_max), level
+    return (h >= min_hoehe) & (h <= max_hoehe) & (r >= r_min) & (r <= r_max)
+
+
+def scan_aus_level(level, mask, n_bins):
+    ang = np.arctan2(level[mask, 1], level[mask, 0])
+    idx = ((ang + math.pi) / (2 * math.pi) * n_bins).astype(int) % n_bins
+    ranges = np.full(n_bins, np.inf)
+    np.minimum.at(ranges, idx, np.hypot(level[mask, 0], level[mask, 1]))
+    return ranges
+
+
+def hoehenband_maske(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max):
+    """Maske der Punkte im Hoehenband (waagerecht ausgerichtet) + waagerechte Koordinaten."""
+    level = waagerecht(pts, quat)
+    return maske_aus_level(level, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max), level
 
 
 def ausduennen(pts, voxel=0.05):
@@ -46,28 +64,17 @@ def ausduennen(pts, voxel=0.05):
 def scan_aus_punkten(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, n_bins, r_min, r_max):
     """pts: (N,3) im Sensorframe; quat [w,x,y,z] der Basis (Sensor fest montiert, nicht gedreht).
     Gibt ranges (n_bins,) zurueck, inf = kein Treffer."""
-    w, x, y, z = quat
-    R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-                  [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-                  [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-    yaw = math.atan2(R[1, 0], R[0, 0])
-    cy, sy = math.cos(yaw), math.sin(yaw)
-    rz_t = np.array([[cy, sy, 0.0], [-sy, cy, 0.0], [0.0, 0.0, 1.0]])
-    level = pts @ (rz_t @ R).T                       # waagerecht, Blickrichtung wie der Sensor
-    h = level[:, 2] + sensor_hoehe                   # Hoehe ueber Boden
-    r = np.hypot(level[:, 0], level[:, 1])
-    ok = (h >= min_hoehe) & (h <= max_hoehe) & (r >= r_min) & (r <= r_max)
-    ang = np.arctan2(level[ok, 1], level[ok, 0])
-    idx = ((ang + math.pi) / (2 * math.pi) * n_bins).astype(int) % n_bins
-    ranges = np.full(n_bins, np.inf)
-    np.minimum.at(ranges, idx, r[ok])
-    return ranges
+    level = waagerecht(pts, quat)
+    return scan_aus_level(level, maske_aus_level(level, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max), n_bins)
 
 
 class PunktwolkeZuScan(Node):
     def __init__(self):
         super().__init__("punktwolke_zu_scan")
-        self.declare_parameter("sensor_hoehe", 1.24)    # Lidar ueber Boden im aufrechten Stand [m]
+        # Lidar ueber Boden im aufrechten Stand [m]; < 0 = aus der Config (becken_hoehe_stand +
+        # lidar_hoehe_ueber_becken, Review U5)
+        self.declare_parameter("sensor_hoehe", -1.0)
+        self.declare_parameter("config_file", "g1_policy_29dof.yaml")
         self.declare_parameter("min_hoehe", 0.12)       # Boden ausblenden
         self.declare_parameter("max_hoehe", 1.9)
         self.declare_parameter("bins", 360)
@@ -75,6 +82,8 @@ class PunktwolkeZuScan(Node):
         self.declare_parameter("range_max", 10.0)
         g = lambda n: self.get_parameter(n).value
         self.h0, self.hmin, self.hmax = float(g("sensor_hoehe")), float(g("min_hoehe")), float(g("max_hoehe"))
+        if self.h0 < 0:
+            self.h0 = self._hoehe_aus_config(str(g("config_file")))
         self.n, self.rmin, self.rmax = int(g("bins")), float(g("range_min")), float(g("range_max"))
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
         self.pub = self.create_publisher(LaserScan, "/scan", 10)
@@ -82,6 +91,15 @@ class PunktwolkeZuScan(Node):
         self.create_subscription(Imu, "/imu", self._imu, 10)
         self.create_subscription(PointCloud2, "/points", self._cloud, 5)
         self.get_logger().info("Punktwolke -> 2D-Scan aktiv (/points -> /scan).")
+
+    @staticmethod
+    def _hoehe_aus_config(config_file):
+        import os
+        import yaml
+        from ament_index_python.packages import get_package_share_directory
+        with open(os.path.join(get_package_share_directory("r1_bringup"), "config", config_file)) as f:
+            c = yaml.safe_load(f)
+        return float(c.get("becken_hoehe_stand", 0.793)) + float(c.get("lidar_hoehe_ueber_becken", 0.45))
 
     def _imu(self, m: Imu):
         o = m.orientation
@@ -95,8 +113,9 @@ class PunktwolkeZuScan(Node):
             pts = np.zeros((0, 3))
         else:
             pts = np.frombuffer(bytes(m.data), dtype=np.float32).reshape(-1, 3).astype(np.float64)
-        ranges = scan_aus_punkten(pts, self.quat, self.h0, self.hmin, self.hmax, self.n, self.rmin, self.rmax)
-        mask, _ = hoehenband_maske(pts, self.quat, self.h0, self.hmin, self.hmax, self.rmin, self.rmax)
+        level = waagerecht(pts, self.quat)                  # einmal je Wolke (vorher doppelt gerechnet)
+        mask = maske_aus_level(level, self.h0, self.hmin, self.hmax, self.rmin, self.rmax)
+        ranges = scan_aus_level(level, mask, self.n)
         hp = ausduennen(pts[mask]).astype(np.float32)
         hc = PointCloud2()
         hc.header = m.header

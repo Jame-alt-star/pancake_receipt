@@ -38,24 +38,6 @@ class IRobotHardwareBridge(ABC):
         pass
 
     @abstractmethod
-    def read_base_position(self) -> np.ndarray:
-        """
-        NEU (12.10.2026): liest die zuletzt bekannte Basis-Position
-        (Weltkoordinaten) aus, fuer die Positions-Haltung beim Stehen
-        (siehe steuereinheit_node.py/_apply_position_hold()).
-        Rueckgabe: [x, y, z]
-
-        WICHTIGER VORBEHALT: in der MuJoCo-Simulation (MujocoBridge) ist
-        das reiner Ground-Truth aus dem Simulationszustand - auf echter
-        Hardware gibt es keine derart einfache, direkte Positionsquelle,
-        dafuer braeuchte es echte Odometrie/Lokalisierung (z.B. aus
-        Nav2/SLAM). Eine spaetere Hardware-Implementierung dieser
-        Schnittstelle muesste das entsprechend ersetzen - hier bewusst
-        als einfache Annahme fuer den aktuellen Simulationsstand belassen.
-        """
-        pass
-
-    @abstractmethod
     def send_joint_commands(self, target_positions: np.ndarray) -> None:
         """
         Sendet Ziel-Gelenkwinkel an die Hardware oder Simulation. Wie das

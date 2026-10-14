@@ -1,4 +1,4 @@
-# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 14.10.2026 (v1.8)
+# Statusupdate G1-Humanoid-Projekt für Cowork — Stand 14.10.2026 (v1.9)
 
 Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen). Verlauf mit allen Messwerten:
 `statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
@@ -19,12 +19,13 @@ Git: `main`, Rücksprungpunkte siehe `git tag`.
 | Zustände | AkkuSchwach/Laden fehlen bewusst (keine echten Batteriedaten; Platzhalter-Akku abgelehnt) |
 
 ## Tests (alle grün, 14.10.2026)
-pytest `tests/` 32 · Layer-1 18 · `integration_ros.py` 32/32 (inkl. `/cmd_vel` und Freigabe-Versuch während/nach NotAus) · Watchdog 5/5 · `integration_mission.py` 14/14 (Testdouble, `--nav2`, `--welt`, `--patrouille`, `--drei-d`), Gegenprobe `--nur-2d` 13/13, `--slam --realistisch --beinodometrie` 22/22. Aufrufe: `tests/README.md`.
+pytest `tests/` 33 · Layer-1 18 · `integration_ros.py` 32/32 (auch mit `--realistisch --beinodometrie`) (inkl. `/cmd_vel` und Freigabe-Versuch während/nach NotAus) · Watchdog 5/5 · `integration_mission.py` 14/14 (Testdouble, `--nav2`, `--welt`, `--patrouille`, `--drei-d`), Gegenprobe `--nur-2d` 13/13, `--slam --realistisch --beinodometrie` 22/22. Aufrufe: `tests/README.md`.
 
 ## Code-Review vom 14.10.2026 – abgearbeitet
 - Paket 1 Sicherheit (B1, B5, L1, L3) → v1.5 · Paket 2 Layer 1 (B2, B3, B4, U4, L4, L5) → v1.6
 - Paket 3 Übergabe (B6, B7, U1, Kat. 6) → v1.7 · Paket 4 Kommentare/Doku (U2, Kat. 7) → v1.8
-- Offen: kleinere Punkte (B8-Rest, U3, U5–U8, L2, L6–L8, Quaternion-Duplikate) und Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code).
+- Paket 5 kleinere Punkte (B8, U3, U5–U7, L2, L7, Duplikate; L6/L8/U8 dokumentiert) → v1.9
+- Offen: Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code).
 
 ## Für den Kollegen (Nav2)
 Referenz: `src/roboter_navigation/config/nav2_params.yaml`. Besonderheiten der Policy: Drehen auf der Stelle erst ab |wz| ≈ 0,8 (kleine wz setzt sie im Stand kaum um); vx ≥ 0,3; RPP `max_angular_accel` hoch (bezieht sich auf die gemessene Drehrate); `PoseProgressChecker`; Hinderniserkennung in 3D (VoxelLayer), weil die 2D-ObstacleLayer niedrige Hindernisse wieder löscht. Vor `/cmd_vel` muss `/freigabe` gesendet sein (Missionen erledigen das selbst). In Jazzy brauchen `collision_monitor` und `docking_server` Konfiguration; `navigation_launch.py` mit `use_composition=True` startet den Container nicht selbst.

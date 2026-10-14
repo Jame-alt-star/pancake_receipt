@@ -1,7 +1,6 @@
 import numpy as np
 
 from roboter_steuerung.states.i_robot_state import IRobotState
-from std_msgs.msg import Bool
 
 
 class BereitschaftState(IRobotState):
@@ -61,8 +60,6 @@ class BereitschaftState(IRobotState):
 
             # FIX 2 (siehe Docstring): Policy aktiv halten, cmd hart auf
             # [0,0,0] - NICHT einfach nichts senden, das fuehrt sonst zu
-            # reiner PD-Haltung in mujoco_node.py und damit zum Umfallen.
-            node.pub_balance_mode.publish(Bool(data=False))
             quat, omega = node.bridge.read_imu()
             joint_pos, joint_vel = node.bridge.read_joint_states()
             # Kurshaltung auch beim Warten auf die Freigabe (13.10.2026). cmd[2] ist hier NUR die

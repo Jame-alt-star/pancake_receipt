@@ -33,7 +33,10 @@ CMD_RAMP_RATE = 1.0
 # greift dann ein. Bewusst derselbe Wert wie CMD_NULL_SCHWELLE in den
 # States, aus Konsistenzgruenden hier aber separat benannt (konzeptionell
 # unabhaengig).
-YAW_CMD_SCHWELLE = 0.05
+# GEAENDERT (14.10.2026, Review L2): vorher 0.05. Nav2 (RPP) gibt in sanften Kurven oft kleine wz
+# (< 0.05) aus; die Kurshaltung hielt dann den alten Kurs und regelte gegen den Pfadfolger. Jetzt
+# greift sie nur, wenn praktisch keine Drehung angefordert ist (Handbetrieb, Geradeausfahrt).
+YAW_CMD_SCHWELLE = 0.001
 LIN_CMD_SCHWELLE = 0.05
 # P-Verstaerkungen: wie stark ein Fehler (rad bzw. m) in eine korrigierende
 # Rate (rad/s bzw. m/s) uebersetzt wird. Noch nicht empirisch abgestimmt,
@@ -259,12 +262,7 @@ class SteuereinheitNode(Node):
         )
         self.sub_freigabe = self.create_subscription(Bool, "/freigabe", self._freigabe_callback, 10)
 
-        # NEU (12.10.2026): /balance_mode-Publisher - teilt mujoco_node.py
-        # mit, ob gerade der Stehen-Zustand (BalancierenState) aktiv ist.
-        # Aktuell OHNE Wirkung (mujoco_node.py hat (noch) keinen
-        # entsprechenden Subscriber/kein eigenes Stand-Gain-Set) - reine
-        # Vorbereitung fuer eine spaetere Erweiterung, bewusst schon verdrahtet.
-        self.pub_balance_mode = self.create_publisher(Bool, "/balance_mode", 10)
+        # (/balance_mode wurde am 14.10.2026 entfernt - Review U7: immer False, ohne Abonnenten.)
 
         # NEU (12.10.2026): /not_aus-Subscriber - Not-Aus (SysML:
         # RoboterZustandsautomat, Zustand "NotAus"). Recherche zur
@@ -276,7 +274,7 @@ class SteuereinheitNode(Node):
         # Software bekommt den resultierenden Fehlerzustand nur noch
         # gemeldet. Da hier keine solche physische Verdrahtung existiert
         # (MuJoCo-Simulation), wird Not-Aus rein softwareseitig ausgeloest
-        # - nach demselben Muster wie /balance_mode, aber mit expliziter
+        # - als eigenes Topic, aber mit expliziter
         # TRANSIENT_LOCAL-QoS ("gelatcht"): ein spaeter startender oder
         # neu verbindender Subscriber soll den zuletzt gesetzten Zustand
         # sofort kennen, nicht erst auf die naechste Nachricht warten
@@ -521,6 +519,9 @@ class SteuereinheitNode(Node):
         quat, omega = self.bridge.read_imu()
         joint_pos, joint_vel = self.bridge.read_joint_states()
         if np.all(joint_pos == 0.0) and np.all(quat == 0.0):
+            # Review L6: StartState.execute laeuft dadurch nie mit ungueltigen Daten; ein NotAus in
+            # dieser Phase wird im Callback gemerkt und mit den ersten Sensordaten wirksam (vorher kann
+            # die Policy ohnehin nicht laufen; die Physik pausiert bis zum ersten Kommando).
             return
 
         self._check_cmd_timeout(time.monotonic())

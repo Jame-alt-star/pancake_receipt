@@ -30,18 +30,21 @@ def _run(cmd_fn, dur, seed=0):
     est.reset(d.qpos[:3])
     rng = np.random.default_rng(seed)
     weg, last = 0.0, d.qpos[:2].copy()
+    v_fehler = []
     for i in range(int(dur / 0.002)):
         d.ctrl[:] = (tgt - d.qpos[7:]) * kps - d.qvel[6:] * kds
         mujoco.mj_step(m, d)
         if (i + 1) % 5 == 0:                          # 100 Hz Sensordaten mit Rauschen
             q = d.qpos[7:] + rng.normal(0, 0.001, 29)
-            est.update(d.time, q, d.qpos[3:7].copy())
+            _, v_est, _ = est.update(d.time, q, d.qpos[3:7].copy())
+            if d.time > 3.0:
+                v_fehler.append(float(np.linalg.norm(v_est[:2] - d.qvel[0:2])))
             weg += float(np.linalg.norm(d.qpos[:2] - last))
             last = d.qpos[:2].copy()
         if (i + 1) % 10 == 0:
             tgt = c.compute_joint_targets(d.qpos[7:].copy(), d.qvel[6:].copy(), d.qpos[3:7].copy(),
                                           d.qvel[3:6].copy(), np.array(cmd_fn(d.time), dtype=np.float32))
-    return float(np.linalg.norm(est.pos[:2] - d.qpos[:2])), weg, abs(est.pos[2] - d.qpos[2])
+    return float(np.linalg.norm(est.pos[:2] - d.qpos[:2])), weg, abs(est.pos[2] - d.qpos[2]), v_fehler
 
 
 @pytest.mark.parametrize("name,fn,dur", [
@@ -49,7 +52,16 @@ def _run(cmd_fn, dur, seed=0):
     ("gehen_drehen", lambda t: [0.5, 0, 0] if (t % 12) < 8 else [0, 0, 1.0], 40),
 ])
 def test_beinodometrie_unter_2_prozent(name, fn, dur):
-    err, weg, ez = _run(fn, dur)
+    err, weg, ez, v_fehler = _run(fn, dur)
     assert weg > 5.0
     assert err / weg < 0.02, f"{name}: Fehler {err:.2f} m auf {weg:.1f} m"
     assert ez < 0.03
+
+
+
+def test_geschwindigkeit_gefiltert():
+    """Geschwindigkeitsschaetzung beim Gehen: kein Einzelwert grob daneben (Tiefpass)."""
+    _, _, _, v_fehler = _run(lambda t: [min(0.4, t), 0, 0], 15)
+    v = np.array(v_fehler)
+    assert np.median(v) < 0.1, f"Median-Fehler {np.median(v):.3f} m/s"
+    assert np.percentile(v, 99) < 0.3, f"99%-Fehler {np.percentile(v, 99):.3f} m/s"

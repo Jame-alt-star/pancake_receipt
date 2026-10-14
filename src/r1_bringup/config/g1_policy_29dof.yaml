@@ -105,3 +105,9 @@ position_hold: true
 cmd_wz_limit_high_speed:
   vx_ref: 0.7
   wz_at_vmax: 0.5
+
+# Geometrie (zentral, Review U5): Beckenhoehe im aufrechten Stand (Startpose) und Montagehoehe des
+# Lidars ueber dem Becken. Genutzt von mujoco_node (Lidar), punktwolke_zu_scan (Hoehenband) und
+# beinodometrie_node (Starthoehe).
+becken_hoehe_stand: 0.793
+lidar_hoehe_ueber_becken: 0.45

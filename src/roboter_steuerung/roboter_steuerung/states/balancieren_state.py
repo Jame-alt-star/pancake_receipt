@@ -1,7 +1,6 @@
 import numpy as np
 
 from roboter_steuerung.states.i_robot_state import IRobotState
-from std_msgs.msg import Bool
 
 
 class BalancierenState(IRobotState):
@@ -63,8 +62,6 @@ class BalancierenState(IRobotState):
 
     def execute(self, node) -> IRobotState:
         # Policy laeuft normal weiter -> normale (Lauf-)Gains, keine
-        # Stand-Gains mehr noetig (siehe Docstring).
-        node.pub_balance_mode.publish(Bool(data=False))
 
         quat, omega = node.bridge.read_imu()
         joint_pos, joint_vel = node.bridge.read_joint_states()
