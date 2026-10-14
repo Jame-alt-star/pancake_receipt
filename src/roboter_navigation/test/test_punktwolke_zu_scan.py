@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "roboter_navigation"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from roboter_navigation.punktwolke_zu_scan import scan_aus_punkten  # noqa: E402
 
 H0 = 1.24

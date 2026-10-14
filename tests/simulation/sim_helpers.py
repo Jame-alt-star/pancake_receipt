@@ -8,7 +8,7 @@ import mujoco
 import numpy as np
 import yaml
 
-WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src") + "/"
+WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src") + "/"
 BRINGUP = WS + "r1_bringup/"
 STEUER = WS + "roboter_steuerung/"
 

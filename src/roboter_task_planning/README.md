@@ -38,7 +38,7 @@ ros2 topic echo /mission/status                           # JSON-Status
 ros2 service call /mission/abort std_srvs/srv/Trigger
 ```
 Produktiv: `nav2:=true` → `nav_backend=nav2`, Navigation liefert Nav2 (Layer 2); getestet mit der
-Platzhalter-Konfiguration aus `roboter_navigation` (`tests/integration_mission.py --welt/--slam`).
+Platzhalter-Konfiguration aus `roboter_navigation` (`tests/system/integration_mission.py --welt/--slam`).
 Beim Missionsstart gibt der Knoten die Bewegung über `/freigabe` frei.
 
 ## Voraussetzungen
@@ -62,6 +62,6 @@ Layer 2 (statisch oder SLAM).
 ## Tests
 ```bash
 python3 -m pytest src/roboter_task_planning/test/test_layer1.py       # Kern, braucht Fast Downward
-python3 tests/integration_mission.py                                  # Simulation, Nav2-Testdouble
+python3 tests/system/integration_mission.py                                  # Simulation, Nav2-Testdouble
 ```
 `nav_testdouble_node` ist ein TESTDOUBLE (ausrichten + geradeaus), keine Navigation.

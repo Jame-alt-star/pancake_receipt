@@ -1,5 +1,5 @@
 """Schnelle Tests (kein ROS2, kein Viewer): echter Controller + echtes Modell, synchroner Kreis.
-Aufruf: python3 -m pytest tests/test_closed_loop.py -v
+Aufruf: python3 -m pytest tests/simulation/test_closed_loop.py -v
 """
 import pytest
 from sim_helpers import run_loop

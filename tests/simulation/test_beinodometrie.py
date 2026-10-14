@@ -9,7 +9,8 @@ import mujoco
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "roboter_steuerung"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src", "roboter_steuerung"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sim_helpers import BRINGUP, load_config, load_controller29  # noqa: E402
 from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie  # noqa: E402
 

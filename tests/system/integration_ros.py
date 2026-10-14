@@ -2,7 +2,7 @@
 """Integrationstest der echten ROS2-Pipeline (mujoco_node + steuereinheit_node).
 
 Voraussetzung: ROS2 und Workspace gesourct, WSLg/Display fuer das MuJoCo-Fenster.
-Aufruf:   python3 tests/integration_ros.py [--config g1_policy_29dof.yaml] [--keep-log DIR]
+Aufruf:   python3 tests/system/integration_ros.py [--config g1_policy_29dof.yaml] [--keep-log DIR]
 
 Startet die Pipeline selbst (ros2 launch), fuehrt die Szenarien nacheinander in
 EINEM persistenten ROS-Prozess aus (viele kurzlebige ros2-CLI-Aufrufe stoeren die

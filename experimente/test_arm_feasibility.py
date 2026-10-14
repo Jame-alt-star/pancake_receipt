@@ -2,7 +2,7 @@
 
 Betriebspunkt (13.10.2026, synchroner Kreis): Policy sieht die Arme in Ruhepose (Armbewegung =
 Stoerung), Taille 0.15 rad nach hinten (Gegengewicht), Haende 0.30 m vor dem Becken,
-Last bis 1 kg je Hand. Siehe statusupdate_g1_projekt.md.
+Last bis 1 kg je Hand. Siehe docs/statusupdate_g1_projekt.md.
 """
 import pytest
 from arm_feasibility import run

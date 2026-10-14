@@ -49,10 +49,8 @@ class BalancierenState(IRobotState):
     Gemessen (29-DOF): mit Kurshaltung < 1 cm Drift in 120 s, Beine praktisch still (0.0004 rad/s);
     die Positionshaltung hilft gegen Stoesse (0.6 m/s seitlich: 6 cm statt 24 cm Endabweichung).
 
-    PBalanceController (Ankle-Strategy) bleibt als eigenstaendige
-    Komponente im Code erhalten (siehe control/p_balance_controller.py) -
-    falls spaeter eine aktive Stoerungsausgleichsregelung fuer echte
-    externe Stoesse gebraucht wird, waere das der naechste Ausbauschritt
+    Der fruehere PBalanceController (Ankle-Strategy, 12-DOF-Gelenkindizes) liegt in archiv/12dof/.
+    Eine aktive Stoerungsausgleichsregelung fuer echte Stoesse waere ein moeglicher Ausbau
     (zusaetzlich zur Policy, nicht als Ersatz).
 
     Wechselt nach GehenState, sobald ein von Null verschiedenes /cmd_vel-Kommando ansteht.

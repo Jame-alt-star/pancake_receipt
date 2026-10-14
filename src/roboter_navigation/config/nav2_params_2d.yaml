@@ -2,7 +2,7 @@
 # Generische Nav2-Konfiguration fuer den G1 in der Simulation (Layer 2) - PLATZHALTER.
 # Die Variante des Kollegen ersetzt diese Datei (oder wird per params_file:=... uebergeben).
 #
-# Randbedingungen aus Layer 3 (gemessen, siehe statusupdate_g1_projekt.md):
+# Randbedingungen aus Layer 3 (gemessen, siehe docs/statusupdate_g1_projekt.md):
 #   - Kommandobereich (Layer 3 clippt): vx -0.5..1.0, vy +-0.3, wz +-1.0 rad/s.
 #     Gemessen: kleine wz (< ~0.5) werden im STAND fast ignoriert (0.2 -> 0.025 rad/s), beim
 #     Gehen folgt die Policy gut (~75 %). Drehen auf der Stelle daher mit wz ~1.0 (-> ~0.5 rad/s).

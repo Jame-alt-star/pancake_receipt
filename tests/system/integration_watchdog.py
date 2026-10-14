@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Integrationstest cmd_vel-Watchdog (Layer 3): ein einzelnes /cmd_vel darf den Roboter nicht
-dauerhaft laufen lassen. Aufruf: python3 tests/integration_watchdog.py"""
+dauerhaft laufen lassen. Aufruf: python3 tests/system/integration_watchdog.py"""
 import os, signal, subprocess, sys, tempfile, time
 import numpy as np, rclpy
 from geometry_msgs.msg import Point, Twist

@@ -5,7 +5,6 @@ onnxruntime==1.31.0     # 29-DOF-Policy (rl_locomotion_controller_29dof)
 numpy==1.26.4           # (auch als python3-numpy aus apt)
 PyYAML==6.0.1           # (auch als python3-yaml aus apt)
 # optional:
-# torch==2.14.0         # nur fuer den alten 12-DOF-Pfad (config_file:=g1_policy.yaml)
 # imageio-ffmpeg==0.6.0 # nur fuer das Demo-Video (demo/render_demo.py), dazu opencv (python3-opencv) und Pillow
 # Nicht ueber pip: Fast Downward 24.06.1 (siehe src/roboter_task_planning/README.md),
 # ROS 2 Jazzy mit ros-jazzy-navigation2, ros-jazzy-nav2-bringup, ros-jazzy-slam-toolbox.

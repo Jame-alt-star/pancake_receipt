@@ -149,20 +149,12 @@ class SteuereinheitNode(Node):
         # kommt aus num_actions in der YAML (Single Source of Truth) statt
         # hartkodiert zu sein - siehe mujoco_bridge.py.
         self.bridge = MujocoBridge(self, num_joints=self.config["num_actions"])
-        # NEU (DOF-Migration): controller_type in der YAML waehlt die
-        # ILocomotionController-Implementierung (Single Source of Truth,
-        # wie num_actions) - fehlt der Schluessel (alte g1_policy.yaml),
-        # bleibt es beim bisherigen 12-DOF-TorchScript-Controller.
-        controller_type = self.config.get("controller_type", "rl_locomotion")
-        # Controller erst bei Bedarf importieren (Review B6): der 12-DOF-Controller braucht
-        # PyTorch, der 29-DOF-Controller nur onnxruntime. Vorher wurden beide immer importiert,
-        # damit war torch auch fuer den 29-DOF-Pfad Pflicht (ImportError auf frischen Rechnern).
+        # controller_type in der YAML waehlt die ILocomotionController-Implementierung. Der alte
+        # 12-DOF-TorchScript-Controller liegt seit 15.10.2026 in archiv/12dof/ (nicht mehr getestet).
+        controller_type = self.config.get("controller_type", "rl_locomotion_29dof")
         if controller_type == "rl_locomotion_29dof":
             from roboter_steuerung.control.rl_locomotion_controller_29dof import RLLocomotionController29Dof
             self.controller = RLLocomotionController29Dof(self.config)
-        elif controller_type == "rl_locomotion":
-            from roboter_steuerung.control.rl_locomotion_controller import RLLocomotionController
-            self.controller = RLLocomotionController(self.config)
         else:
             raise ValueError(f"Unbekannter controller_type in der Config: {controller_type!r}")
 

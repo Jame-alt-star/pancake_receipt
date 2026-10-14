@@ -10,7 +10,7 @@ Ablauf: 10 s Stehen -> Arme in Greifpose (3 s) -> halten (4 s) -> Anheben +dz (2
 (4 s) -> Ablegen (2 s) -> halten (3 s) -> zurueck zur Ruhepose (3 s) -> 5 s Stehen.
 Last: Zusatzmasse je Hand (Punktmasse am Handgelenk-Koerper, Traegheit vernachlaessigt).
 
-Aufruf: python3 tests/arm_feasibility.py [--reach 0.30] [--loads 0 0.5 1.0] [--hold 60]
+Aufruf: python3 experimente/arm_feasibility.py [--reach 0.30] [--loads 0 0.5 1.0] [--hold 60]
 """
 import argparse
 import sys
@@ -19,7 +19,7 @@ import os
 import numpy as np
 import mujoco
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "simulation"))
 from sim_helpers import load_config, load_controller29, BRINGUP, yaw_deg  # noqa: E402
 
 LARM = list(range(15, 22))

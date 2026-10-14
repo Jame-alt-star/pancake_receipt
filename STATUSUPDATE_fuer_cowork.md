@@ -1,7 +1,7 @@
 # Statusupdate G1-Humanoid-Projekt für Cowork — Stand 14.10.2026 (v1.9)
 
 Kurzfassung für Übergaben. Einstieg: `README.md` (Start, Tests, Grenzen). Verlauf mit allen Messwerten:
-`statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
+`docs/statusupdate_g1_projekt.md`. Alte Übergaben (u. a. die widerlegte Latenz-Hypothese): `docs/archiv/`.
 Git: `main`, Rücksprungpunkte siehe `git tag`.
 
 ## Rahmen
@@ -31,10 +31,10 @@ pytest `tests/` 33 · Layer-1 18 · `integration_ros.py` 32/32 (auch mit `--real
 Referenz: `src/roboter_navigation/config/nav2_params.yaml`. Besonderheiten der Policy: Drehen auf der Stelle erst ab |wz| ≈ 0,8 (kleine wz setzt sie im Stand kaum um); vx ≥ 0,3; RPP `max_angular_accel` hoch (bezieht sich auf die gemessene Drehrate); `PoseProgressChecker`; Hinderniserkennung in 3D (VoxelLayer), weil die 2D-ObstacleLayer niedrige Hindernisse wieder löscht. Vor `/cmd_vel` muss `/freigabe` gesendet sein (Missionen erledigen das selbst). In Jazzy brauchen `collision_monitor` und `docking_server` Konfiguration; `navigation_launch.py` mit `use_composition=True` startet den Container nicht selbst.
 
 ## Greifen im Stehen (zurückgestellt)
-`tests/arm_feasibility.py`: unveränderte Policy trägt Arme nur bis ~0,20 m vor dem Becken (Ursache: Arm-Beobachtungen außerhalb des Trainingsbereichs). Mit „blinder“ Policy für die Arme und Taille 0,15 rad nach hinten: 0,30 m Reichweite bis 1 kg je Hand stabil. Kein Hand-Modell, kein Zustand `Manipulieren`, keine Wahrnehmung.
+`experimente/arm_feasibility.py`: unveränderte Policy trägt Arme nur bis ~0,20 m vor dem Becken (Ursache: Arm-Beobachtungen außerhalb des Trainingsbereichs). Mit „blinder“ Policy für die Arme und Taille 0,15 rad nach hinten: 0,30 m Reichweite bis 1 kg je Hand stabil. Kein Hand-Modell, kein Zustand `Manipulieren`, keine Wahrnehmung.
 
 ## Bekannte Grenzen
-Ground-Truth-Odometrie als Standard (Schätzer optional); Lidar als Raycast; keine Kamera/Objekterkennung; Orte als Koordinaten vorgegeben (keine gespeicherte Karte/Lokalisierung, kein Teach-in); WSL2 ~2,8 GB RAM (Nav2+SLAM headless, Testserien einzeln, vorher `bash tests/stop_all.sh`). Beobachtet: in 1 von ~6 SLAM-realistisch-Läufen Abbruch einer Nav2-Etappe mit Türkontakt (nicht reproduziert).
+Ground-Truth-Odometrie als Standard (Schätzer optional); Lidar als Raycast; keine Kamera/Objekterkennung; Orte als Koordinaten vorgegeben (keine gespeicherte Karte/Lokalisierung, kein Teach-in); WSL2 ~2,8 GB RAM (Nav2+SLAM headless, Testserien einzeln, vorher `bash tests/system/stop_all.sh`). Beobachtet: in 1 von ~6 SLAM-realistisch-Läufen Abbruch einer Nav2-Etappe mit Türkontakt (nicht reproduziert).
 
 ## Arbeitsweise
 Messbare Behauptungen belegen, „getestet“ von „angenommen“ trennen. Vor riskanten Änderungen committen und taggen. Fast Downward liegt außerhalb des Repos (`~/tools/downward`, Anleitung in `src/roboter_task_planning/README.md`). Sprache der Kommentare/Doku: Deutsch.

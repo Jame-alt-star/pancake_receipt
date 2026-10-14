@@ -52,15 +52,15 @@ Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter
 (Anleitung: `src/roboter_task_planning/README.md`). Auf WSL2 mit ~2,8 GB RAM Simulation mit
 `headless:=true` betreiben.
 
-## Tests (alle bestanden, Stand siehe `statusupdate_g1_projekt.md`)
+## Tests (alle bestanden, Stand siehe `docs/statusupdate_g1_projekt.md`)
 | Aufruf | Umfang |
 |---|---|
-| `cd tests && python3 -m pytest -q` | Regelkreis ohne ROS, Knoten-Logik, Greif-Machbarkeit (~40 s) |
-| `python3 -m pytest src/roboter_task_planning/test/test_layer1.py` | Planer/Dispatcher-Kern (braucht Fast Downward) |
-| `python3 tests/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
-| `python3 tests/integration_watchdog.py` | `cmd_vel`-Watchdog |
+| `bash tests/alle_tests.sh` | **komplette Serie** in fester Reihenfolge (Build, pytest, alle Systemtests, ~25 min; `--schnell`, `--mit-slam`) |
+| `python3 -m pytest -q` | alle schnellen Tests: Unit-Tests der Pakete, Regelkreis ohne ROS, Greif-Regression (~1 min) |
+| `python3 tests/system/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
+| `python3 tests/system/integration_watchdog.py` | `cmd_vel`-Watchdog |
 | `... --realistisch --beinodometrie` | dieselben Integrationstests mit realistischer Sensorik und geschätzter Position |
-| `python3 tests/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte |
+| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte |
 
 Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist eine Kopie).
 
@@ -81,5 +81,5 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
 `v0.9-patrouille`, `v0.10-slam`, `v1.0`. Zurück: `git checkout <tag>`.
 
 ## Weitere Dokumente
-`statusupdate_g1_projekt.md` (Verlauf mit allen Messwerten), `STATUSUPDATE_fuer_cowork.md`,
+`docs/statusupdate_g1_projekt.md` (Verlauf mit allen Messwerten), `STATUSUPDATE_fuer_cowork.md`,
 `src/roboter_task_planning/README.md`, `src/roboter_navigation/README.md`, `tests/README.md`.

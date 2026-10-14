@@ -5,8 +5,7 @@
   <version>0.0.1</version>
   <description>
     Layer 4 (HAL): MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik (IMU, Gelenke, 3D-Lidar,
-    Odometrie), Hardware-Bridge-Interface und Policy-/Modell-Dateien. Die alten R1/Gazebo-Launches
-    sind Altbestand (siehe Kommentar unten).
+    Odometrie), Hardware-Bridge-Interface und Policy-/Modell-Dateien.
   </description>
   <maintainer email="pascalfranz02@gmail.com">Pascal</maintainer>
   <license>Apache-2.0</license>
@@ -15,7 +14,7 @@
        (mujoco_node.py, bridges/mujoco_bridge.py, bridges/i_hardware_bridge.py) -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>  <!-- NEU (12.10.2026): fuer /base_position (geometry_msgs/Point), siehe mujoco_node.py -->
+  <exec_depend>geometry_msgs</exec_depend>  <!-- TF (TransformStamped), /base_position (nur Simulation) -->
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>  <!-- /odom (Nav2, Layer 2) -->
   <exec_depend>tf2_ros</exec_depend>    <!-- TF odom -> base_link -->
@@ -29,18 +28,7 @@
        deshalb nicht in diese Liste, muss aber weiterhin manuell
        installiert sein, damit mujoco_node.py importierbar ist. -->
 
-  <!-- Generische Launch-Infrastruktur - wird noch von den alten
-       RViz/Gazebo-Launch-Dateien benutzt (siehe launch/), auch wenn
-       diese fuer den aktuellen MuJoCo-Workflow nicht mehr relevant sind. -->
-  <exec_depend>launch</exec_depend>
-  <exec_depend>launch_ros</exec_depend>
-
-  <!-- Alte R1/Gazebo-Phase (launch/*gazebo*, anzeigen_rviz, bridges/gazebo_bridge.py): deren
-       Abhaengigkeiten (robot_state_publisher, joint_state_publisher_gui, ros_gz_sim, ros_gz_bridge,
-       controller_manager, joint_state_broadcaster, joint_trajectory_controller, gz_ros2_control)
-       sind seit 14.10.2026 KEINE Pflicht mehr (Review Kat. 6: rosdep zog viele unnoetige Pakete).
-       Wer die alten Gazebo-Launches nutzt, installiert sie bei Bedarf manuell. -->
-  <exec_depend>nav_msgs</exec_depend>
+  <!-- Die alte R1/Gazebo-Phase liegt seit 15.10.2026 in archiv/gazebo_r1/. -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

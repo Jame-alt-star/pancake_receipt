@@ -1,30 +1,34 @@
 # Tests
 
-Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`).
+Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`), Workspace gesourct
+(`source /opt/ros/jazzy/setup.bash && source install/setup.bash`). Nach Codeänderungen erst `colcon build`
+(Install-Ordner ist eine Kopie).
 
-| Datei | Was | Voraussetzung | Dauer |
-|---|---|---|---|
-| `test_closed_loop.py` | Synchroner Regelkreis (echter Controller + echtes Modell, ohne ROS2/Viewer): Stehen, Gehen, Kurshaltung, Stopp, Robustheit gegen Verzögerung/Jitter/Takt-Abweichung, PD-Haltung ohne Policy fällt um (Begründung für `wait_for_controller`) | `pytest`, `mujoco`, `onnxruntime` | ~20 s |
-| `test_node_logic.py` | Knoten-Logik ohne laufendes ROS2: Rampe, Kurshaltung akkumuliert nicht (Regression -572 rad/s), cmd-Begrenzung, Watchdog, Positionshaltung, NotAus/Freigabe | gesourcter Workspace (`rclpy`, `roboter_steuerung`) | ~5 s |
-| `arm_feasibility.py` / `test_arm_feasibility.py` | Machbarkeit Greifen im Stehen: Arme per IK bewegen, Last, Reichweite; Optionen `--obs-mask`, `--waist`, `--empfohlen`, `--phases`; pytest sichert den Betriebspunkt (0,30 m, ≤ 1 kg je Hand) | `mujoco`, `onnxruntime` | ~15 s |
-| `test_beinodometrie.py` | Genauigkeit der Beinodometrie im synchronen Kreis mit Sensorrauschen (< 2 % der Strecke) | `mujoco`, `onnxruntime` | ~10 s |
-| `test_punktwolke_zu_scan.py` | Scan-/Hinderniswolken-Ableitung aus der Punktwolke: Boden raus, niedrige Hindernisse drin, Neigungsausgleich, Ausdünnung | `numpy` | < 1 s |
-| `integration_watchdog.py` | `cmd_vel`-Watchdog: einzelnes Kommando, Roboter stoppt nach Timeout | gesourcter Workspace | ~1 min |
-| `integration_mission.py` | Layer 1 + 3 + 4 in der Simulation mit Nav2-Testdouble (`--nav2`: echtes Nav2 aus `roboter_navigation`, headless): Mission start→a→b läuft komplett, Plan, NotAus bricht ab, Start bei NotAus abgelehnt | gesourcter Workspace, Display, Fast Downward | ~2 min |
-| `integration_ros.py` | Echte Pipeline (`ros2 launch`): Start ohne Kommando (Startrennen), Freigabe über `/freigabe` (`/cmd_vel` allein bewegt nicht), Gehen, zu großes `cmd_vel`, NotAus, `/cmd_vel` und Freigabe-Versuch während NotAus, Entwarnung mit laufendem `/cmd_vel` ohne Freigabe, Neustart der Bewegung, Log ohne Instabilität/Traceback | gesourcter Workspace, Display (WSLg) | ~2,5 min |
+**Komplette Serie:** `bash tests/alle_tests.sh` (Build, pytest, alle Systemtests nacheinander, Ergebnistabelle;
+`--schnell` nur Build + pytest, `--mit-slam` zusätzlich die SLAM-Mission).
 
-```bash
-source /opt/ros/jazzy/setup.bash && source install/setup.bash
-cd tests && python3 -m pytest -q                      # schnelle Tests
-cd .. && python3 tests/integration_ros.py             # 29-DOF-Pipeline
-```
+## Wo liegt was
+| Ort | Art | Inhalt |
+|---|---|---|
+| `src/roboter_steuerung/test/` | Unit (Layer 3) | `test_steuereinheit_logik.py`: Rampe, Kurshaltung akkumuliert nicht (Regression −572 rad/s), cmd-Begrenzung, Watchdog, Positionshaltung, NotAus/Freigabe |
+| `src/roboter_navigation/test/` | Unit (Sensorvorverarbeitung) | `test_punktwolke_zu_scan.py`: Boden raus, niedrige Hindernisse drin, Neigungsausgleich, Ausdünnung |
+| `src/roboter_task_planning/test/` | Unit (Layer 1) | `test_layer1.py`: Weltwissen, PDDL, Planer, Dispatcher, Neuplanung (braucht Fast Downward) |
+| `tests/simulation/` | Simulation + Controller ohne ROS | `test_closed_loop.py` (Stehen, Gehen, Kurshaltung, Robustheit gegen Verzögerung/Jitter), `test_beinodometrie.py` (< 2 % der Strecke), Helfer `sim_helpers.py` |
+| `tests/system/` | System (`ros2 launch`) | `integration_ros.py` (Pipeline: Startrennen, Freigabe, Gehen, Begrenzung, NotAus, Odometrie), `integration_watchdog.py`, `integration_mission.py` (Layer 1–4), `stop_all.sh` |
+| `experimente/` | Experiment + Regression | `arm_feasibility.py` (Greifen im Stehen, Optionen `--obs-mask`, `--waist`, `--empfohlen`, `--phases`), `test_arm_feasibility.py` sichert den Betriebspunkt (0,30 m, ≤ 1 kg je Hand) |
+
+`python3 -m pytest -q` sammelt alle schnellen Tests (siehe `pytest.ini`).
+
+## Systemtests einzeln
+| Aufruf | Dauer |
+|---|---|
+| `python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie]` | ~2,5 min |
+| `python3 tests/system/integration_watchdog.py` | ~1 min |
+| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --drei-d \| --nur-2d \| --slam] [--realistisch] [--beinodometrie]` | 2–6 min |
 
 Hinweise:
-- Nach Codeänderungen erst `colcon build` (Install-Ordner ist eine Kopie, kein Symlink).
-- `integration_ros.py` startet und beendet die Pipeline selbst; währenddessen keine eigenen `ros2 topic echo/hz`-Aufrufe (stören die Simulation).
-- Strenger Stillstand bei NotAus (Beine < 0,05 rad/s, Drift < 5 cm) gilt nur für 29-DOF; die 12-DOF-Policy trippelt bei cmd=0 (dokumentiert), dort wird nur „kein Sturz, Drift < 30 cm“ geprüft.
-
-## Hilfsmittel
-`bash tests/stop_all.sh` beendet Pipeline, Nav2/SLAM und Hilfsknoten nach abgebrochenen Tests (als eigener
-Befehl ausfuehren). `integration_mission.py` kennt `--nav2`, `--welt`, `--patrouille`, `--slam`
-(`--drei-d`: 3D-Lidar + niedrige Palette, `--nur-2d`: Gegenprobe, `--realistisch`, `--beinodometrie`; Nav2 laeuft headless; WSL2 hat nur ~2,8 GB RAM, Testserien daher einzeln und nacheinander starten).
+- Die Systemtests starten und beenden die Pipeline selbst; währenddessen keine eigenen `ros2 topic echo/hz`-Aufrufe.
+- Strenger Stillstand bei NotAus (Beine < 0,05 rad/s, Drift < 5 cm).
+- `--welt`, `--patrouille`, `--slam`, `--drei-d` nutzen echtes Nav2 headless. WSL2 hat ~2,8 GB RAM: Serien nacheinander.
+- `bash tests/system/stop_all.sh` beendet Reste nach abgebrochenen Tests. **Als eigenen Befehl ausführen**: die
+  Suchmuster dürfen nicht in der Kommandozeile des Aufrufers stehen, sonst beendet `pgrep -f` den Aufrufer.

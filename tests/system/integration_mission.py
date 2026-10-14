@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Integrationstest Layer 1 + 3 + 4 in der Simulation (Nav2-TESTDOUBLE statt Layer 2).
 
-Aufruf: python3 tests/integration_mission.py [--nav2]   (ROS2 + Workspace gesourct, Display noetig)
+Aufruf: python3 tests/system/integration_mission.py [--nav2]   (ROS2 + Workspace gesourct, Display noetig)
         --nav2: echtes Nav2 aus roboter_navigation (ros-jazzy-navigation2 muss installiert sein)
 Szenarien: (1) Mission laeuft komplett durch, (2) NotAus waehrend der Mission bricht ab.
 """

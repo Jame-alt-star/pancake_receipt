@@ -2,7 +2,7 @@
 # beide Arme). Gegenstueck zu g1_policy.yaml (12-DOF, nur Beine) - bewusst
 # eine EIGENE Datei statt die alte zu ueberschreiben, damit der bisherige
 # 12-DOF-Pfad unveraendert erhalten/reproduzierbar bleibt (siehe
-# statusupdate_g1_projekt.md, Abschnitt "DOF-Migration"). Auswahl zur
+# docs/statusupdate_g1_projekt.md, Abschnitt "DOF-Migration"). Auswahl zur
 # Laufzeit ueber den ROS2-Parameter "config_file" (Default bleibt
 # "g1_policy.yaml"), siehe steuereinheit.launch.py:
 #

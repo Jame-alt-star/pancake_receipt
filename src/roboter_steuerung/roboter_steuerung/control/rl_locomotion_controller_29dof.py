@@ -34,7 +34,7 @@ MUJOCO_JOINT_ORDER = [
 # Semantik in export_deploy_cfg.py bestaetigt (stiffness[joint_ids_map] =
 # asset_data_isaac_order) und gegen ALLE 29 Werte aus deploy.yaml's
 # default_joint_pos gegengeprueft (29/29 Treffer), nicht nur stichprobenhaft.
-# Siehe statusupdate_g1_projekt.md, Abschnitt "DOF-Migration" fuer die
+# Siehe docs/statusupdate_g1_projekt.md, Abschnitt "DOF-Migration" fuer die
 # vollstaendige Herleitung.
 POLICY_JOINT_ORDER = [
     "left_hip_pitch_joint", "right_hip_pitch_joint", "waist_yaw_joint",
