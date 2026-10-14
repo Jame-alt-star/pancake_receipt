@@ -1,0 +1,68 @@
+"""Scan-Ableitung aus der Punktwolke (roboter_navigation/punktwolke_zu_scan.py), ohne ROS."""
+import math
+import os
+import sys
+
+import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "roboter_navigation"))
+from roboter_navigation.punktwolke_zu_scan import scan_aus_punkten  # noqa: E402
+
+H0 = 1.24
+
+
+def quat_rpy(roll=0.0, pitch=0.0, yaw=0.0):
+    cr, sr, cp, sp, cy, sy = (math.cos(roll / 2), math.sin(roll / 2), math.cos(pitch / 2),
+                              math.sin(pitch / 2), math.cos(yaw / 2), math.sin(yaw / 2))
+    return np.array([cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
+                     cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy])
+
+
+def run(pts, quat):
+    return scan_aus_punkten(np.array(pts, float), quat, H0, 0.12, 1.9, 360, 0.2, 10.0)
+
+
+def bin_of(deg):
+    return int((math.radians(deg) + math.pi) / (2 * math.pi) * 360) % 360
+
+
+def test_boden_ausgeblendet_niedriges_hindernis_behalten():
+    pts = [[3.0, 0.0, -H0],            # Boden vorne
+           [2.0, 0.0, 0.30 - H0],      # niedrige Palette (0.30 m hoch) vorne
+           [0.0, 2.5, 0.0]]            # Wand links auf Sensorhoehe
+    r = run(pts, quat_rpy())
+    assert r[bin_of(0)] == np.float64(2.0)       # Palette sichtbar, Boden dahinter ignoriert
+    assert abs(r[bin_of(90)] - 2.5) < 1e-6
+    assert np.isinf(r[bin_of(180)])
+
+
+def test_nur_boden_ergibt_keinen_treffer():
+    r = run([[x, y, -H0] for x in (1, 2, 4) for y in (-1, 0, 1)], quat_rpy())
+    assert np.all(np.isinf(r))
+
+
+def test_neigung_des_roboters_wird_ausgeglichen():
+    # Roboter (und Sensor) 4 Grad nach vorn geneigt: ferner Boden liegt im Sensorframe "hoeher".
+    pitch = math.radians(4.0)
+    q = quat_rpy(pitch=pitch)
+    w, x, y, z = q
+    R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                  [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                  [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+    boden_welt = np.array([[8.0, 0.0, -H0]])
+    boden_sensor = boden_welt @ R          # Welt -> Sensorframe (R^T v)
+    assert boden_sensor[0, 2] + H0 > 0.12  # ohne Ausgleich waere der Boden ein "Hindernis"
+    assert np.all(np.isinf(run(boden_sensor, q)))
+
+
+def test_gierwinkel_bleibt_im_sensorframe():
+    r = run([[2.0, 0.0, 0.0]], quat_rpy(yaw=math.radians(90)))
+    assert abs(r[bin_of(0)] - 2.0) < 1e-6    # Scan ist im Sensorframe, nicht in Weltkoordinaten
+
+
+def test_ausduennen_und_hoehenband():
+    from roboter_navigation.punktwolke_zu_scan import ausduennen, hoehenband_maske
+    pts = np.array([[2.0, 0.0, -H0], [2.0, 0.0, 0.3 - H0], [2.01, 0.01, 0.3 - H0], [3.0, 1.0, 0.0]])
+    mask, _ = hoehenband_maske(pts, quat_rpy(), H0, 0.12, 1.9, 0.2, 10.0)
+    assert mask.tolist() == [False, True, True, True]          # Boden raus
+    assert len(ausduennen(pts[mask], 0.05)) == 2                 # zwei Nachbarpunkte -> einer

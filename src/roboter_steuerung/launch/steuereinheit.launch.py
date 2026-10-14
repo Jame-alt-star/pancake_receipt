@@ -63,6 +63,9 @@ def generate_launch_description():
     record_arg = DeclareLaunchArgument(
         "record_path", default_value="",
         description="Pfad einer .npz-Datei: Roboterpose (25 Hz) fuer Demo-Videos aufzeichnen.")
+    lidar2d_arg = DeclareLaunchArgument(
+        "lidar_2d", default_value="true",
+        description="false = kein eigener 2D-Scan (nur 3D-Punktwolke, /scan wird daraus abgeleitet).")
     lidar3d_arg = DeclareLaunchArgument(
         "lidar_3d", default_value="false",
         description="true = zusaetzlich 3D-Lidar als PointCloud2 (/points, 16 Ringe, 5 Hz).")
@@ -82,6 +85,7 @@ def generate_launch_description():
                      "realistic_sensors": LaunchConfiguration("realistic_sensors"),
                      "record_path": LaunchConfiguration("record_path"),
                      "lidar_3d": LaunchConfiguration("lidar_3d"),
+                     "lidar_2d": LaunchConfiguration("lidar_2d"),
                      "publish_odom": odom_gt, "publish_tf": odom_gt}],
     )
 
@@ -107,6 +111,7 @@ def generate_launch_description():
         config_file_arg,
         headless_arg,
         lidar_arg,
+        lidar2d_arg,
         lidar3d_arg,
         realistic_arg,
         record_arg,

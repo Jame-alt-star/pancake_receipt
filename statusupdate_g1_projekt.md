@@ -320,3 +320,18 @@ Szene `scene_demo_lager_29dof.xml` (Halle mit Regalen und Kistenstapeln, Büro m
 **Regression:** pytest 26, `integration_ros` 29/29, Mission (Testdouble) 14/14, `--welt` 14/14, `--slam --realistisch --beinodometrie` 22/22.
 
 **Grenzen:** SLAM bleibt 2D (`slam_toolbox`); die Punktwolke dient nur der Hinderniserkennung. Keine Kamera. Das Lidar sieht den eigenen Körper nicht (nur Welt-Geoms der Gruppe 2).
+
+
+## Ein Lidar statt zwei (14.10.2026) – v1.4
+
+**Vorher (v1.3):** 2D-Scan und 3D-Punktwolke wurden getrennt simuliert und parallel genutzt – technisch ein Gerät, aber zwei unabhängige Datenquellen. Ein echtes 3D-Lidar liefert nur die Punktwolke.
+
+**Jetzt (Standard `lidar_modus:=3d` in `mission.launch`):** Die Simulation publiziert nur noch `/points` (24 Ringe, 5 Hz). Der neue Knoten `roboter_navigation/punktwolke_zu_scan` leitet daraus ab:
+- `/scan` (für `slam_toolbox` und `collision_monitor`): je Winkel der nächste Punkt im Höhenband 0,12–1,9 m, mit IMU waagerecht ausgerichtet (Boden fällt raus, niedrige Hindernisse bleiben drin).
+- `/punkte_hindernis` (für die Nav2-Costmaps): Punkte im Höhenband, auf 5 cm ausgedünnt.
+Nav2 nutzt jetzt die **VoxelLayer** (3D-Raytracing). Die 2D-`ObstacleLayer` löschte niedrige Hindernisse, über die Strahlen zur Wand hinweggehen.
+Die alte Einzelebene bleibt als `lidar_modus:=2d` (`nav2_params_2d.yaml`) für Vergleiche.
+
+**Fehler auf dem Weg:** Im reinen 3D-Modus fehlte zunächst die statische TF `base_link→lidar_link` (sie hing am Block für den 2D-Scan) – Nav2 verwarf alle Punktwolken („observation buffer has not been updated“), der Roboter blieb stehen. Behoben. Außerdem liefen Ableitungsknoten aus abgebrochenen Läufen weiter (`tests/stop_all.sh` ergänzt).
+
+**Ergebnisse:** niedrige Palette mit VoxelLayer 0,31 / 0,35 / 0,31 m Abstand (mit ObstacleLayer 0,18 m; nur 2D: 0,15 m = Kontakt). Regression: pytest 31, Layer-1 12, Pipeline 29/29, Mission 14/14 (Testdouble, `--nav2`, `--welt`, `--patrouille`), Gegenprobe `--nur-2d` 13/13, `--slam --realistisch --beinodometrie` 22/22.

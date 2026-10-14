@@ -16,7 +16,7 @@ slam_toolbox:
     use_map_saver: false
     mode: mapping
     debug_logging: false
-    throttle_scans: 2            # 10 Hz Lidar -> 5 Hz SLAM (CPU)
+    throttle_scans: 1            # /scan kommt mit 5 Hz aus der Punktwolke (bzw. 10 Hz im 2D-Modus)
     transform_publish_period: 0.05
     map_update_interval: 3.0
     resolution: 0.1

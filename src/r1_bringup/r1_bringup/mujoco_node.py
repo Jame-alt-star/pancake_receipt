@@ -227,6 +227,10 @@ class MujocoBridgeNode(Node):
         # NEU (14.10.2026): optionales 3D-Lidar als PointCloud2 (/points, Frame lidar_link): 24 Ringe
         # (-40..+10 Grad) x 360 Azimutwerte, 5 Hz. Ground-Truth-Raycast wie der 2D-Scan.
         self.declare_parameter("lidar_3d", False)
+        # lidar_2d=False: KEIN eigener 2D-Scan (wie ein echtes 3D-Lidar); /scan wird dann von
+        # roboter_navigation/punktwolke_zu_scan aus der Punktwolke abgeleitet.
+        self.declare_parameter("lidar_2d", True)
+        self.lidar2d_on = bool(self.get_parameter("lidar_2d").value)
         self.declare_parameter("lidar_3d_rings", 24)
         self.declare_parameter("lidar_3d_elev_min_deg", -40.0)
         self.declare_parameter("lidar_3d_elev_max_deg", 10.0)
@@ -243,9 +247,13 @@ class MujocoBridgeNode(Node):
             self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
         a = np.linspace(-np.pi, np.pi, self.lidar_n, endpoint=False)
         self.lidar_dirs_local = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
-        if self.lidar_on:
+        if self.lidar_on and bool(self.get_parameter("lidar_2d").value):
             self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
-            if True:   # Lidar-Montage immer publizieren (auch wenn odom->base_link vom Schaetzer kommt)
+        if self.lidar_on:
+            # Lidar-Montage (base_link -> lidar_link) IMMER publizieren - im reinen 3D-Modus ebenso
+            # (fehlte dort zunaechst: Nav2 konnte die Punktwolke nicht einordnen) und auch, wenn
+            # odom->base_link vom Schaetzer kommt.
+            if True:
                 st = TransformStamped()
                 st.header.stamp = self.get_clock().now().to_msg()
                 st.header.frame_id = self.base_frame
@@ -507,7 +515,8 @@ class MujocoBridgeNode(Node):
             self._lidar_count += 1
             if self._lidar_count >= self.lidar_period:
                 self._lidar_count = 0
-                self._publish_scan(now, quat)
+                if self.lidar2d_on:
+                    self._publish_scan(now, quat)
                 if self.lidar3d_on:
                     self._cloud_count += 1
                     if self._cloud_count >= 2:                  # 5 Hz

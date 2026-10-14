@@ -106,8 +106,8 @@ class Probe(Node):
 
 
 NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdouble
-DREI_D = "--drei-d" in sys.argv       # 3D-Lidar (/points) + niedrige Palette in der Welt (impliziert --welt)
-NUR_2D = "--nur-2d" in sys.argv        # Gegenprobe: dieselbe Welt nur mit 2D-Lidar (Kontakt erwartet)
+DREI_D = "--drei-d" in sys.argv       # Welt mit niedriger Palette (3D-Lidar ist Standard) (impliziert --welt)
+NUR_2D = "--nur-2d" in sys.argv        # Gegenprobe: dieselbe Welt mit alter Einzel-Scanebene (Kontakt erwartet)
 SLAM = "--slam" in sys.argv       # slam_toolbox (impliziert --welt); prueft /map und map->odom
 PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
 WELT = "--welt" in sys.argv or PATROUILLE or SLAM or DREI_D or NUR_2D   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
@@ -128,9 +128,8 @@ def launch(logfile):
         nav += ["realistic_sensors:=true"]
     if "--beinodometrie" in sys.argv:
         nav += ["odom_quelle:=beinodometrie"]
-    if DREI_D:
-        prefix = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_navigation"], text=True).strip()
-        nav += ["lidar_3d:=true", f"nav2_params:={prefix}/share/roboter_navigation/config/nav2_params_3d.yaml"]
+    if NUR_2D:
+        nav += ["lidar_modus:=2d"]
     if WELT:
         share = subprocess.check_output(["ros2", "pkg", "prefix", "roboter_task_planning"], text=True).strip()
         szene = "scene_testwelt3d_29dof.xml" if (DREI_D or NUR_2D) else "scene_testwelt_29dof.xml"

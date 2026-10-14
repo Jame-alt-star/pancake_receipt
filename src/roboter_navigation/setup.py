@@ -21,5 +21,7 @@ setup(
     maintainer_email='pascal@todo.todo',
     description='Layer 2: generische Nav2-Konfiguration (Platzhalter)',
     license='TODO: License declaration',
-    entry_points={'console_scripts': []},
+    entry_points={'console_scripts': [
+        'punktwolke_zu_scan = roboter_navigation.punktwolke_zu_scan:main',
+    ]},
 )

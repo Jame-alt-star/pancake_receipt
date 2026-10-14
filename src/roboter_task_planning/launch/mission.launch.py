@@ -31,8 +31,9 @@ def generate_launch_description():
                               description="ground_truth oder beinodometrie"),
         DeclareLaunchArgument("realistic_sensors", default_value="false",
                               description="Sensorrauschen, Latenz, Lidar-Ausfaelle in der Simulation"),
-        DeclareLaunchArgument("lidar_3d", default_value="false",
-                              description="3D-Lidar als PointCloud2 (/points) zusaetzlich zum 2D-Scan"),
+        DeclareLaunchArgument("lidar_modus", default_value="3d",
+                              description="3d: ein 3D-Lidar (/points), /scan daraus abgeleitet (Standard); "
+                                          "2d: nur eine Scanebene (/scan, alter Stand, zum Vergleich)"),
         DeclareLaunchArgument("nav2_params", default_value="",
                               description="eigene Nav2-Parameterdatei (leer = Standard aus roboter_navigation)"),
         DeclareLaunchArgument("lidar", default_value="true",
@@ -47,13 +48,16 @@ def generate_launch_description():
                               description="Nav2 (roboter_navigation, Layer 2) mitstarten"),
         DeclareLaunchArgument("auto_start", default_value="false"),
     ]
+    ist3d = PythonExpression(["'", LaunchConfiguration("lidar_modus"), "' == '3d'"])
+    nav_cfg = os.path.join(get_package_share_directory("roboter_navigation"), "config")
     layer3 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(steuer, "launch", "steuereinheit.launch.py")),
         launch_arguments={"config_file": LaunchConfiguration("config_file"),
                           "headless": LaunchConfiguration("headless"),
                           "scene_file": LaunchConfiguration("scene_file"),
                           "lidar": LaunchConfiguration("lidar"),
-                          "lidar_3d": LaunchConfiguration("lidar_3d"),
+                          "lidar_3d": ist3d,
+                          "lidar_2d": PythonExpression(["'", LaunchConfiguration("lidar_modus"), "' == '2d'"]),
                           "realistic_sensors": LaunchConfiguration("realistic_sensors"),
                           "odom_quelle": LaunchConfiguration("odom_quelle"),
                           "record_path": LaunchConfiguration("record_path"),
@@ -65,11 +69,17 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory("roboter_navigation"), "launch", "navigation.launch.py")),
         launch_arguments={"slam": LaunchConfiguration("slam"),
+                          # Standard je nach Lidar-Modus: nav2_params.yaml (3D) bzw. nav2_params_2d.yaml
                           "params_file": PythonExpression([
                               "'", LaunchConfiguration("nav2_params"), "' if '", LaunchConfiguration("nav2_params"),
-                              "' else '", os.path.join(get_package_share_directory("roboter_navigation"),
-                                                       "config", "nav2_params.yaml"), "'"])}.items(),
+                              "' else ('", os.path.join(nav_cfg, "nav2_params.yaml"), "' if '",
+                              LaunchConfiguration("lidar_modus"), "' == '3d' else '",
+                              os.path.join(nav_cfg, "nav2_params_2d.yaml"), "')"])}.items(),
         condition=IfCondition(LaunchConfiguration("nav2")))
+    scan_ableitung = Node(package="roboter_navigation", executable="punktwolke_zu_scan", output="screen",
+                          condition=IfCondition(PythonExpression(["'", LaunchConfiguration("lidar_modus"),
+                                                                  "' == '3d' and '", LaunchConfiguration("lidar"),
+                                                                  "' == 'true'"])))
     mission = Node(package="roboter_task_planning", executable="mission_node", output="screen",
                    parameters=[{
                        "mission_file": LaunchConfiguration("mission_file"),
@@ -77,4 +87,4 @@ def generate_launch_description():
                            ["'gehaktion' if '", LaunchConfiguration("nav_testdouble"), "' == 'true' else 'nav2'"]),
                        "auto_start": LaunchConfiguration("auto_start"),
                    }])
-    return LaunchDescription(args + [layer3, balance, double, navigation, mission])
+    return LaunchDescription(args + [layer3, balance, double, scan_ableitung, navigation, mission])

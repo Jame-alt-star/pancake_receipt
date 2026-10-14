@@ -39,8 +39,9 @@ Missionsdateien: `missions/beispiel.yaml`, `testwelt.yaml`, `patrouille.yaml` (Z
   `slam:=true` korrigiert SLAM die Drift über `map→odom`. Das ist die Konfiguration, die der echten
   Hardware am nächsten kommt.
 
-- `lidar_3d:=true`: zusätzlich 3D-Lidar als `PointCloud2` (`/points`); mit `nav2_params:=.../nav2_params_3d.yaml`
-  sieht Nav2 auch niedrige Hindernisse unter der 2D-Scanebene (Test: `integration_mission.py --drei-d`).
+- **Ein 3D-Lidar** (Standard, `lidar_modus:=3d`): Simulation publiziert nur `/points`; `punktwolke_zu_scan` leitet
+  `/scan` (SLAM, Collision-Monitor) und `/punkte_hindernis` (Nav2-VoxelLayer) ab. Sieht auch niedrige Hindernisse
+  (Test: `integration_mission.py --drei-d`). `lidar_modus:=2d` = alte Einzel-Scanebene zum Vergleich (`--nur-2d`).
 - Demo-Video "Kontrollrundgang im Lager": `demo/README.md`.
 
 ## Voraussetzungen
@@ -69,7 +70,7 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
 - **Greifen:** gemessener Betriebspunkt (Arme per IK, Policy „blind“ für Arme, Taille −0,15 rad,
   0,30 m Reichweite, ≤ 1 kg je Hand); `Manipulieren`-Zustand und Hand-Modell sind **nicht** umgesetzt.
 - **Position:** standardmäßig Ground-Truth aus der Simulation; mit `odom_quelle:=beinodometrie` geschätzt
-  (< 1 % der Strecke). Lidar ist ein Raycast-Modell (2D, 360°, 10 Hz), optional mit Rauschen/Ausfällen.
+  (< 1 % der Strecke). Lidar ist ein Raycast-Modell (3D, 24 Ringe, 5 Hz), optional mit Rauschen/Ausfällen.
 - **Nicht umgesetzt:** Zustände AkkuSchwach/Laden (keine echten Batteriedaten), gelernte Greif-Policy,
   Wahrnehmung per Kamera, echte Hardware.
 
