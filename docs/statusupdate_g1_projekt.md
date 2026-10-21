@@ -477,6 +477,35 @@ Testserie (`tests/alle_tests.sh --mit-slam`).
   - **`auto_start` nur mit Simulation** (B9): ohne `/clock`-Sender lehnt der Missionsknoten ihn nach 30 s ab.
   - **SLAM plant auf seiner Karte** (C11, statische Schicht mit Aktualisierungen) und **AMCL-Startpose** einstellbar
     (C12, `startpose:=x,y,gier`).
+- **Karte aufnehmen wie in echt (v2.9):** neuer Test `integration_mission.py --aufnehmen` (realistische Sensoren,
+  Beinodometrie): Phase 1 fährt die Testwelt mit SLAM ab und speichert die Karte (`map_saver_cli`, 0,1 m je Zelle); die
+  gespeicherte Datei enthält alle Wände und das Hindernis, die Tür ist frei. Phase 2 startet neu, nur mit dieser Karte
+  (`karte:=<pfad>`, map_server + AMCL, kein SLAM): Mission erfolgreich, Ziel auf 0,09 m, Abstand zu Hindernissen ≥ 0,70 m
+  (erster Lauf 34/34). Einmal brach der erste Fahrauftrag mit „Failed to transform end pose to global frame“ ab
+  (Zeitstempel der TF, vermutlich der Uhrsprung der WSL); die Neuplanung der Mission fing ihn ab. Die aus der Szene
+  gerechneten Karten bleiben für `karte:=true`.
+- **Testvideo (v2.9):** `tests/alle_tests.sh --video DIR` zeichnet jeden Systemtest auf (Pose der Simulation, Schritte,
+  Prüfergebnisse, Missionsstatus; `tests/system/testaufnahme.py`); `demo/video_tests.py` rendert daraus ein Video mit
+  einem Kapitel je Test (Titelkarte mit Ergebnis, Zeitraffer, NOT-AUS/Stopp/Ausfall in Echtzeit, Karte mit Lidar).
+  Dabei gefunden: Mit Viewer-Fenster endete der Simulationsthread beim Beenden nicht immer innerhalb von 2 s; er und
+  `destroy_node` schrieben dann gleichzeitig `pose.npz`, und launch beendete den Prozess hart – beide Aufzeichnungen der
+  Pipeline-Tests waren unlesbar („Bad CRC-32“). Die Posenaufnahme schreibt jetzt unter einer Sperre in eine temporäre
+  Datei und benennt sie um (alle 5 s statt 15 s, unkomprimiert); Regressionstest mit vier gleichzeitigen Schreibern.
+- **Störung beim Hochfahren:** Einmal stand die Simulation ~1 s direkt nach ihren ersten Messungen, noch bevor die Physik
+  lief (alle Knoten starteten gleichzeitig, mit Viewer). Die Steuerung meldete „Sensordaten seit 1,03 s ausgeblieben“,
+  die Störung blieb bestehen, und der Roboter lief nie an (Pipeline realistisch 26/37). Seitdem gilt Ausbleiben erst als
+  Ausfall, wenn vorher ein Datenstrom lief (50 vollständige Messungen: Simulation 0,5 s, G1 bei 500 Hz 0,1 s);
+  Regressionstest.
+- **Nav2 hing beim Hochfahren (einmal):** In der Serie v2.9 blieb im Test „feste Karte“ die Aktivierung des
+  `docking_server` hängen („Activating docking_server“, danach keine Rückmeldung); der Lifecycle-Manager wartete endlos,
+  Nav2 galt als nicht aktiv, die Mission fuhr nicht los (13/20). In über 20 Nav2-Starts an diesem Tag das erste Mal;
+  Ursache unbekannt (Verdacht: verlorene Dienstantwort während eines WSL-Hängers). Wiederholung 21/21. Den
+  `docking_server` nutzt das System nicht; abschalten ließe er sich nur mit einer eigenen Kopie von
+  `navigation_launch.py` – Hinweis für die Nav2-Variante des Kollegen.
+- **Tests v2.9** (`tests/alle_tests.sh --mit-slam --video`, 21./22.10.2026): pytest 88, Pipeline 37/37, Pipeline
+  realistisch + Beinodometrie 37/37, Watchdog 8/8, Missionen Testdouble/Testwelt/Patrouille/3D-Palette je 17/17, SLAM
+  realistisch 25/25, Karte aufnehmen + damit arbeiten 34/34; feste Karte erst 13/20 (Nav2-Start hing, siehe oben),
+  Wiederholung 21/21. Video aller Tests: `demo/ausgabe/testserie_v2.9.mp4` (nicht im Repo, Spiegelordner).
 - **Tests v2.7** (`tests/alle_tests.sh --mit-slam`, 21.10.2026): pytest 86, Pipeline 37/37, Pipeline realistisch +
   Beinodometrie (mit Viewer) 37/37, Watchdog 8/8, Missionen Testdouble/Testwelt/Patrouille/3D-Palette je 17/17, feste
   Karte (AMCL) 21/21, SLAM realistisch 25/25. Dazu 6/6 realistische Pipeline-Läufe mit Viewer nach der Speicherkorrektur.

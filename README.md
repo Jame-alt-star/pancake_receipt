@@ -48,7 +48,7 @@ ros2 topic echo /mission/status                           # Fortschritt
 ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /not_aus std_msgs/msg/Bool "{data: true}"
 ```
 `system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/extern/testdouble), `nav2_params`,
-`slam`, `karte` (feste Karte der Welt + AMCL), `startpose` (für AMCL), `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`,
+`slam`, `karte` (`true` = feste Karte der Welt, oder Pfad einer selbst aufgenommenen Karte; + AMCL), `startpose` (für AMCL), `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`,
 `record_path`, `cmd_vel_timeout_s`, `auto_start` (nur Simulation), `rviz` (mit Roboterkörper).
 Weitere Bedienung: `ros2 service call /mission/starte roboter_interfaces/srv/MissionStarten "{mission: patrouille}"`,
 Zustand `ros2 topic echo /steuerung/zustand`, Störung quittieren `ros2 service call /steuerung/quittieren std_srvs/srv/Trigger`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
@@ -66,7 +66,8 @@ Missionen (`roboter_task_planning/missions/`): `beispiel`, `testwelt`, `patrouil
 - **Ein 3D-Lidar** (Standard mit Navigation, `lidar_modus:=3d`): Simulation publiziert nur `/points`; `punktwolke_zu_scan` leitet
   `/scan` (SLAM, Collision-Monitor) und `/punkte_hindernis` (Nav2-VoxelLayer) ab. Sieht auch niedrige Hindernisse
   (Test: `tests/system/integration_mission.py --drei-d`). `lidar_modus:=2d` = alte Einzel-Scanebene zum Vergleich (`--nur-2d`).
-- Demo-Video "Kontrollrundgang im Lager": `demo/README.md`.
+- Demo-Video "Kontrollrundgang im Lager": `demo/README.md`. Video aller Systemtests: `bash tests/alle_tests.sh --mit-slam
+  --video DIR`, dann `MUJOCO_GL=glfw python3 demo/video_tests.py DIR testserie.mp4`.
 
 ## Voraussetzungen
 ROS 2 Jazzy, `ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`, `ros-jazzy-slam-toolbox`;
@@ -77,12 +78,12 @@ Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter
 ## Tests (alle bestanden, Stand siehe `docs/statusupdate_g1_projekt.md`)
 | Aufruf | Umfang |
 |---|---|
-| `bash tests/alle_tests.sh` | **komplette Serie** in fester Reihenfolge (Build, pytest, alle Systemtests, ~25 min; `--schnell`, `--mit-slam`) |
+| `bash tests/alle_tests.sh` | **komplette Serie** in fester Reihenfolge (Build, pytest, alle Systemtests, ~25 min; `--schnell`, `--mit-slam`, `--video DIR`) |
 | `python3 -m pytest -q` | alle schnellen Tests: Unit-Tests der Pakete, Regelkreis ohne ROS, Greif-Regression (~1 min) |
 | `python3 tests/system/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
 | `python3 tests/system/integration_watchdog.py` | `cmd_vel`-Watchdog |
 | `... --realistisch --beinodometrie` | dieselben Integrationstests mit realistischer Sensorik und geschätzter Position |
-| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte |
+| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --slam \| --karte \| --aufnehmen]` | Mission mit Testdouble, Nav2, Testwelt (Hindernis, Tür), Patrouille, SLAM-Karte, feste Karte; `--aufnehmen` wie in echt: erst mit SLAM abfahren und speichern, dann nur mit dieser Karte arbeiten |
 
 Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist eine Kopie).
 

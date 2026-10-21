@@ -34,7 +34,8 @@ ARGUMENTE = [
     ("nav2_params", "", "eigene Nav2-Parameterdatei (leer = Standard aus roboter_navigation passend zum Lidar)"),
     ("slam", "false", "slam_toolbox liefert /map und map->odom (nur mit navigation:=nav2)"),
     ("karte", "false", "true: Navigation auf der festen Karte der Welt (map_server + AMCL, Planung auf der ganzen "
-                       "Karte); nur mit navigation:=nav2, nicht zusammen mit slam"),
+                       "Karte); <pfad>.yaml: eine selbst aufgenommene Karte (SLAM + map_saver_cli); "
+                       "nur mit navigation:=nav2, nicht zusammen mit slam"),
     ("startpose", "0,0,0", "Startpose x,y,gier im map-Frame fuer AMCL (karte:=true); in der Simulation der Ursprung"),
     ("lidar_modus", "", "aus | 3d (ein 3D-Lidar, /scan abgeleitet) | 2d (eine Scanebene, Vergleich); "
                         "leer = 3d, sobald eine Navigation laeuft (nav2, extern, testdouble), sonst aus"),
@@ -101,6 +102,12 @@ def _aufbauen(context):
             karte = karte_pfad(welt)
             if not karte:
                 raise ValueError(f"karte:=true, aber die Welt {welt!r} hat keine Karte (karte.yaml)")
+        elif a["karte"].lower() not in ("", "false"):
+            # Wie in echt: Karte vorher mit SLAM aufgenommen und gespeichert (tests/system/integration_mission.py
+            # --aufnehmen), statt aus der Szene gerechnet.
+            karte = os.path.abspath(a["karte"])
+            if not os.path.isfile(karte):
+                raise ValueError(f"karte:={a['karte']!r} - Datei nicht gefunden")
         aktionen.append(_include("roboter_navigation", "navigation.launch.py",
                                  {"slam": a["slam"], "params_file": a["nav2_params"], "overlays": overlays,
                                   "karte": karte, "startpose": a["startpose"]}))

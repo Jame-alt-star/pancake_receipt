@@ -43,6 +43,7 @@ class TopicBridge(IRobotHardwareBridge):
         # bekam dadurch systematisch eine 10 ms aeltere IMU als die Gelenkwinkel.
         self.bei_sensordaten = None
         self._neu_gelenke = self._neu_imu = False
+        self._messungen = 0                            # vollstaendige Messungen seit dem Start
 
         self.cmd_pub = self.node.create_publisher(Float32MultiArray, "/joint_commands", 10)
         self.node.create_subscription(JointState, "/joint_states", self._joint_callback, 10)
@@ -89,8 +90,12 @@ class TopicBridge(IRobotHardwareBridge):
     def _melde_takt(self):
         if self._neu_gelenke and self._neu_imu:
             self._neu_gelenke = self._neu_imu = False
+            self._messungen += 1
             if self.bei_sensordaten is not None:
                 self.bei_sensordaten()
+
+    def anzahl_messungen(self) -> int:
+        return self._messungen
 
     def sensor_detail(self) -> str:
         """Alter je Quelle, fuer die Diagnose einer Stoerung."""

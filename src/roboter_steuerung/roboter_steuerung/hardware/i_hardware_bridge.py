@@ -56,3 +56,8 @@ class IRobotHardwareBridge(ABC):
     def sensor_detail(self) -> str:
         """Optional: Alter je Sensorquelle als Text, fuer die Diagnose einer Stoerung."""
         return ""
+
+    def anzahl_messungen(self) -> int:
+        """Optional: Zahl der bisher vollstaendigen Messungen (Gelenke UND IMU). Die Sensorueberwachung wird erst nach
+        einem laufenden Datenstrom scharf; ohne Zaehler gilt sie sofort."""
+        return 1 << 30

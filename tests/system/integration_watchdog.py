@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Integrationstest cmd_vel-Watchdog (Layer 3): ein einzelnes /cmd_vel darf den Roboter nicht
-dauerhaft laufen lassen; danach Sensorausfall -> Stoerung. Aufruf: python3 tests/system/integration_watchdog.py"""
+dauerhaft laufen lassen; danach Sensorausfall -> Stoerung.
+Aufruf: python3 tests/system/integration_watchdog.py [--aufnahme DIR]   (DIR: Testvideo, testaufnahme.py)"""
 import os, signal, subprocess, sys, tempfile, time
 import numpy as np, rclpy
 from geometry_msgs.msg import Point, Twist
@@ -8,17 +9,21 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
 
+from testaufnahme import Aufnahme
+
 R = []
+AUF = Aufnahme(Aufnahme.ordner_aus(sys.argv), "Watchdog und Sensorausfall", welt=None, mission=None,
+               navigation="aus", realistisch=False, beinodometrie=False)
 
 
 def check(n, ok, d=""):
-    R.append((n, bool(ok), d)); print(f"  [{'PASS' if ok else 'FAIL'}] {n}  {d}", flush=True)
+    R.append((n, bool(ok), d)); AUF.check(n, ok, d); print(f"  [{'PASS' if ok else 'FAIL'}] {n}  {d}", flush=True)
 
 
 def main():
     log = os.path.join(tempfile.mkdtemp(prefix="iwd_"), "launch.log")
     proc = subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py",
-                             "headless:=true", "cmd_vel_timeout_s:=1.0"],
+                             "headless:=true", "cmd_vel_timeout_s:=1.0"] + AUF.launch_args(),
                             stdout=open(log, "w"), stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init(); n = Node("wd_probe"); pub = n.create_publisher(Twist, "/cmd_vel", 10); s = {}
     fpub = n.create_publisher(Bool, "/freigabe", 10)
@@ -32,6 +37,7 @@ def main():
         while "p" not in s: spin(0.2)
         spin(25)
         m = Twist(); pub.publish(m)
+        AUF.schritt("== W1 Freigabe, dann EIN /cmd_vel 0.4 m/s und nichts mehr")
         fpub.publish(Bool(data=True)); spin(4)                    # Freigabe ueber /freigabe
         p0 = s["p"]; m.linear.x = 0.4; pub.publish(m)             # EIN Kommando, danach nichts mehr
         spin(2.5); pa = s["p"]
@@ -47,6 +53,7 @@ def main():
         check("keine Instabilitaet", "simulation is unstable" not in txt)
 
         # Review 2: Sensorausfall -> Steuerung meldet Stoerung und sendet nichts mehr
+        AUF.schritt("== W2 Sensorausfall: Simulation beendet -> Steuerung meldet Stoerung")
         zustand = []
         lq = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
         n.create_subscription(String, "/steuerung/zustand", lambda m: zustand.append(m.data), lq)
@@ -68,6 +75,7 @@ def main():
         except Exception:
             try: os.killpg(proc.pid, signal.SIGKILL)
             except Exception: pass
+        AUF.speichern(sum(1 for r in R if r[1]), len(R))
     f = [r for r in R if not r[1]]
     print(f"== {len(R)-len(f)}/{len(R)} bestanden")
     sys.exit(1 if f else 0)

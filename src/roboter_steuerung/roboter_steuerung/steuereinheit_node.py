@@ -363,14 +363,21 @@ class SteuereinheitNode(Node):
     # System ~1 s, 21.10.2026). Danach wirken die Sensordaten alt, obwohl frische Nachrichten schon in der
     # Warteschlange liegen: rclpy ruft die Timer vor den Abos auf. Dann einmal aussetzen statt Stoerung melden.
     EIGENE_PAUSE_S = 0.5
+    # Ein Ausfall setzt einen laufenden Datenstrom voraus: scharf erst nach so vielen vollstaendigen Messungen
+    # (Simulation 0,5 s, G1 mit 500 Hz 0,1 s). Beim Hochfahren aller Knoten stand die Simulation einmal ~1 s direkt
+    # nach ihren ersten Messungen, noch vor dem Start der Physik - die Steuerung meldete Stoerung und der Roboter lief
+    # nie an (21.10.2026).
+    SCHARF_AB_MESSUNGEN = 50
 
     def _sensorausfall(self) -> bool:
-        """True (Stoerung gemeldet), wenn die Sensordaten aelter als sensor_timeout_s sind, waehrend die Steuerung lief."""
+        """True (Stoerung gemeldet), wenn die Sensordaten aelter als sensor_timeout_s sind, waehrend die Steuerung lief
+        und der Datenstrom schon lief."""
         jetzt = time.monotonic()
         selbst_pausiert = jetzt - self._letzte_sensorpruefung > self.EIGENE_PAUSE_S
         self._letzte_sensorpruefung = jetzt
         alter = self.bridge.sensor_alter_s()
-        if alter <= self.sensor_timeout_s or selbst_pausiert:
+        anlauf = self.bridge.anzahl_messungen() < self.SCHARF_AB_MESSUNGEN
+        if alter <= self.sensor_timeout_s or selbst_pausiert or anlauf:
             return False
         self._stoerung(f"Sensordaten seit {alter:.2f} s ausgeblieben ({self.bridge.sensor_detail()})")
         self._melde_zustand()

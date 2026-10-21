@@ -1,4 +1,4 @@
-# Projektstand aktuell — G1-Humanoid (Stand 21.10.2026, v2.7)
+# Projektstand aktuell — G1-Humanoid (Stand 22.10.2026, v2.9)
 
 **Wozu diese Datei:** der aktuelle Stand auf einer Seite, für Übergaben und für jeden, der neu einsteigt. Sie wird bei jedem
 größeren Schritt aktualisiert und enthält nur den Stand und die offenen Punkte; alles Weitere steht genau einmal an
@@ -16,9 +16,10 @@ Nav2) → navigieren (Nav2 mit 3D-Lidar; ohne Karte, mit SLAM oder auf fester Ka
 optional, Beinodometrie optional). Ein Befehl startet alles: `ros2 launch roboter_system system.launch.py ...`.
 
 ## Tests (21.10.2026, alle grün)
-`bash tests/alle_tests.sh --mit-slam`: pytest 86, Pipeline 37/37 (auch realistisch + Beinodometrie, mit Viewer),
+`bash tests/alle_tests.sh --mit-slam`: pytest 88, Pipeline 37/37 (auch realistisch + Beinodometrie, mit Viewer),
 Watchdog 8/8, Missionen 17/17 (Testdouble, Testwelt, Patrouille, 3D-Palette), feste Karte mit AMCL 21/21, SLAM
-realistisch 25/25. Schnelle Tests zusätzlich
+realistisch 25/25, Karte aufnehmen und damit arbeiten (wie in echt) 34/34. Einmal hing dabei der Nav2-Start
+(`docking_server`), Wiederholung grün (Verlauf). Video aller Tests: `--video DIR` + `demo/video_tests.py`. Schnelle Tests zusätzlich
 bei jedem Push auf GitHub (`.github/workflows/tests.yml`).
 
 ## Offen

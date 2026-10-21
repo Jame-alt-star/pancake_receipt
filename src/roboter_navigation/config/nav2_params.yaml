@@ -9,9 +9,10 @@
 #     Gehen folgt die Policy gut (~75 %). Drehen auf der Stelle daher mit wz ~1.0 (-> ~0.5 rad/s).
 #   - unter ~0.3 m/s laeuft der Roboter nicht an (Totzone)
 #   - Beschleunigung in Layer 3 auf 1.0 m/s^2 gerampt
-# Sensorik: simuliertes 2D-Lidar (/scan, Frame lidar_link) aus mujoco_node -> ObstacleLayer in
-# beiden Costmaps und collision_monitor. Lokalisierung: Ground-Truth (/odom, TF odom->base_link);
-# map->odom statische Identitaet (siehe launch/navigation.launch.py), Costmaps rollen im odom-Frame.
+# Sensorik: /punkte_hindernis -> ObstacleLayer in beiden Costmaps (auch mit Karte: Hindernisse, die nicht auf der Karte
+# stehen); /scan (Frame base_link, aus der 3D-Wolke abgeleitet) -> collision_monitor, slam_toolbox und AMCL.
+# Lokalisierung: /odom + TF odom->base_link (Ground-Truth oder Beinodometrie); map->odom je nach Modus statisch
+# (ohne Karte), von slam_toolbox (slam:=true) oder von AMCL (karte:=...), siehe launch/navigation.launch.py.
 
 bt_navigator:
   ros__parameters:

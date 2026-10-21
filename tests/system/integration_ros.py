@@ -2,7 +2,8 @@
 """Integrationstest der echten ROS2-Pipeline (mujoco_node + steuereinheit_node).
 
 Voraussetzung: ROS2 und Workspace gesourct, WSLg/Display fuer das MuJoCo-Fenster.
-Aufruf:   python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie] [--keep-log DIR]
+Aufruf:   python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie] [--headless] [--keep-log DIR]
+          [--aufnahme DIR]   (Pose, Schritte und Ergebnisse fuer das Testvideo, testaufnahme.py)
 
 Startet die Pipeline selbst (ros2 launch), fuehrt die Szenarien nacheinander in
 EINEM persistenten ROS-Prozess aus (viele kurzlebige ros2-CLI-Aufrufe stoeren die
@@ -21,12 +22,15 @@ from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Bool
 
 from roboter_beschreibung.geometrie import yaw_aus_quat
+from testaufnahme import Aufnahme
 
 RESULTS = []
+AUF = Aufnahme(None, "")        # in main gesetzt
 
 
 def check(name, ok, detail=""):
     RESULTS.append((name, bool(ok), detail))
+    AUF.check(name, ok, detail)
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}  {detail}", flush=True)
 
 
@@ -123,7 +127,11 @@ def main():
     ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
     ap.add_argument("--beinodometrie", action="store_true", help="odom_quelle:=beinodometrie (Schaetzer statt Ground-Truth)")
     ap.add_argument("--headless", action="store_true", help="Simulation ohne Viewer-Fenster")
+    ap.add_argument("--aufnahme", default=None, help="Ordner fuer das Testvideo")
     a = ap.parse_args()
+    global AUF
+    AUF = Aufnahme(a.aufnahme, "Pipeline realistisch + Beinodometrie" if a.realistisch else "Pipeline (Layer 3 + 4)",
+                   welt=None, mission=None, navigation="aus", realistisch=a.realistisch, beinodometrie=a.beinodometrie)
     has_clip = True        # 29-DOF-Policy mit Kommandobegrenzung (12-DOF entfernt)
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
     # cmd=0 dauerhaft auf der Stelle (dokumentiertes Verhalten) - dort nur "kein Sturz, kaum Drift".
@@ -135,7 +143,7 @@ def main():
     proc = subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py"]
                             + (["realistic_sensors:=true"] if a.realistisch else [])
                             + (["odom_quelle:=beinodometrie"] if a.beinodometrie else [])
-                            + (["headless:=true"] if a.headless else []), stdout=open(logfile, "w"),
+                            + (["headless:=true"] if a.headless else []) + AUF.launch_args(), stdout=open(logfile, "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init()
     pr = Probe()
@@ -146,14 +154,14 @@ def main():
         if not ok:
             raise SystemExit(1)
 
-        print("== S1 Start: Stehen in Bereitschaft ohne Kommando (Startrennen)")
+        AUF.schritt("== S1 Start: Stehen in Bereitschaft ohne Kommando (Startrennen)")
         pr.spin(10); pb = pr.p; yb = pr.yaw(); pr.spin(30)
         check("S1 steht nach Hochfahren (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         drift = float(np.hypot(pr.p[0] - pb[0], pr.p[1] - pb[1]))
         check("S1 Drift in Bereitschaft < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm, dyaw={pr.yaw()-yb:.1f}")
         check("S1 Regler verbunden/Physik gestartet", "Regler verbunden" in read_log(logfile))
 
-        print("== S1b Odometrie fuer Nav2 (/odom, TF odom->base_link)")
+        AUF.schritt("== S1b Odometrie fuer Nav2 (/odom, TF odom->base_link)")
         check("S1b /odom kommt an", pr.odom is not None)
         check("S1b TF odom->base_link", pr.tf_ok)
         if pr.odom is not None:
@@ -161,19 +169,19 @@ def main():
             check("S1b /odom-Pose passt zu /base_position (<5 cm)", dpos < 0.05, f"d={dpos*100:.1f} cm")
             check("S1b Frames odom/base_link", pr.odom.header.frame_id == "odom" and pr.odom.child_frame_id == "base_link")
 
-        print("== S2 Freigabe + Stehen")
+        AUF.schritt("== S2 Freigabe + Stehen")
         pr.twist(0.4); pr.spin(4)
         check("S2a /cmd_vel ohne Freigabe bewegt den Roboter nicht", pr.p[2] > 0.7 and "Bewegung freigegeben" not in read_log(logfile))
         pr.twist(0, 0, 0); pr.freigabe(True); pr.spin(8)
         check("S2 steht nach Freigabe", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         check("S2 Zustand Balancieren", "Bereitschaft -> Balancieren" in read_log(logfile))
 
-        print("== S2b Positionshaltung: 30 s Stehen ohne Wegdriften")
+        AUF.schritt("== S2b Positionshaltung: 30 s Stehen ohne Wegdriften")
         pp = pr.p; pr.spin(30)
         drift = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))
         check("S2b Drift im Stand < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm")
 
-        print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
+        AUF.schritt("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
         pr.uhr_abo(True); pr.spin(1)
         p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.monotonic()
         pr.spin(6); pr.odom_vx.clear(); pr.spin(6)          # Geschwindigkeit ueber die zweite Haelfte auswerten
@@ -197,13 +205,14 @@ def main():
               f"median={np.median(vx):.2f} min={vx.min():.2f} n={len(vx)}" if len(vx) else "keine /odom-Nachricht")
 
         if has_clip:
-            print("== S4 zu grosses cmd (vx=2.0, wz=1.0) -> Begrenzung")
+            AUF.schritt("== S4 zu grosses cmd (vx=2.0, wz=1.0) -> Begrenzung")
             pr.twist(2.0, 0.0, 1.0); pr.spin(8)
             check("S4 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
             check("S4 Warnung ausserhalb Trainingsbereich", "ausserhalb des Trainingsbereichs" in read_log(logfile))
 
-        print("== S5 NOT-AUS waehrend Gehen")
+        AUF.schritt("== S5 NOT-AUS waehrend Gehen")
         pr.twist(0.4); pr.spin(6)
+        AUF.ereignis("moment", text="NOT-AUS ausgeloest")
         pr.not_aus.publish(Bool(data=True)); pr.spin(6)
         pr.gelenk_abo(True); px = pr.p[0]; pr.spin(5); pr.gelenk_abo(False)
         check("S5 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
@@ -212,25 +221,26 @@ def main():
             check("S5 Beine still (|dq| < 0.05 rad/s)", pr.dq is not None and pr.dq < 0.05, f"dq={pr.dq:.4f}")
         check("S5 NOT-AUS im Log", "NOT-AUS ausgeloest" in read_log(logfile))
 
-        print("== S5b /cmd_vel und Freigabe-Versuch WAEHREND NotAus (Review B1)")
+        AUF.schritt("== S5b /cmd_vel und Freigabe-Versuch WAEHREND NotAus (Review B1)")
         pr.freigabe(True)                          # muss abgelehnt werden
         px = pr.p[0]; pr.spin_mit_cmd(3, 0.4)      # automatische Quelle sendet weiter
         check("S5b Freigabe waehrend NOT-AUS abgelehnt", "abgelehnt: NOT-AUS ist aktiv" in read_log(logfile))
         check("S5b steht trotz /cmd_vel", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
 
-        print("== S6 Entwarnung ohne Freigabe, /cmd_vel laeuft weiter -> bleibt stehen")
+        AUF.schritt("== S6 Entwarnung ohne Freigabe, /cmd_vel laeuft weiter -> bleibt stehen")
         pr.not_aus.publish(Bool(data=False)); px = pr.p[0]; pr.spin_mit_cmd(6, 0.4)
         check("S6 laeuft trotz /cmd_vel nicht von selbst an", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
         check("S6 wartet auf Freigabe", "NOT-AUS aufgehoben" in read_log(logfile))
 
-        print("== S7 neue Freigabe -> Gehen, dann Stopp")
+        AUF.schritt("== S7 neue Freigabe -> Gehen, dann Stopp")
         pp = pr.p; pr.freigabe(True); pr.spin_mit_cmd(8, 0.4)
         dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))   # Richtung egal (S4 hat gedreht)
         check("S7 geht wieder (>1.5 m)", dist > 1.5, f"dist={dist:.2f}")
+        AUF.ereignis("moment", text="Stopp")
         pr.twist(0, 0, 0); pr.spin(8); px = pr.p[0]; pr.spin(4)
         check("S7 steht nach Stopp", pr.p[2] > 0.7 and abs(pr.p[0] - px) < tol, f"z={pr.p[2]:.3f}")
 
-        print("== S7b Handsteuerung (/cmd_vel/hand) hat Vorrang vor /cmd_vel, danach gilt wieder /cmd_vel (= 0)")
+        AUF.schritt("== S7b Handsteuerung (/cmd_vel/hand) hat Vorrang vor /cmd_vel, danach gilt wieder /cmd_vel (= 0)")
         pp = pr.p; pr.spin_mit_cmd(5, 0.4, pub=pr.hand)
         dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))
         check("S7b geht mit Handbefehl, obwohl /cmd_vel 0 ist (>0.8 m)", dist > 0.8, f"dist={dist:.2f}")
@@ -249,10 +259,11 @@ def main():
         check("S8 keine Python-Tracebacks", "Traceback" not in log)
         check("S8 Sprunglimit griff nie (Normalbetrieb)", "Zielsprung begrenzt" not in log)
 
-        print("== S9 Steuerung faellt aus -> Simulation daempft (Review 2)")
+        AUF.schritt("== S9 Steuerung faellt aus -> Simulation daempft (Review 2)")
         pids = subprocess.run(["pgrep", "-f", "lib/roboter_steuerung/steuereinheit_node"], capture_output=True,
                               text=True).stdout.split()
         check("S9 Steuerknoten gefunden", len(pids) == 1, f"pids={pids}")
+        AUF.ereignis("moment", text="Steuerung beendet")
         for pid in pids:
             # SIGINT statt SIGKILL: fuer die Simulation zaehlt nur, dass keine Kommandos mehr kommen. Ein per SIGKILL
             # beendeter Knoten hinterlaesst gesperrte Fast-DDS-Speichersegmente (/dev/shm), die nachfolgende Laeufe
@@ -267,6 +278,7 @@ def main():
         except Exception:
             try: os.killpg(proc.pid, signal.SIGKILL)
             except Exception: pass
+        AUF.speichern(sum(1 for r in RESULTS if r[1]), len(RESULTS))
 
     fails = [r for r in RESULTS if not r[1]]
     print(f"\n== {len(RESULTS)-len(fails)}/{len(RESULTS)} bestanden")

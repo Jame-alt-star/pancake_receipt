@@ -212,3 +212,7 @@ Versionen: `git tag` zeigt alle Zwischenstände (`v1.0` erste Pipeline … `v2.7
   Zielwinkel (greift im Normalbetrieb nie).
 - **SLAM plant auf seiner Karte** (statische Kartenschicht mit Aktualisierungen); mit fester Karte ist die AMCL-Startpose
   einstellbar: `startpose:=x,y,gier`.
+- **Karte wie in echt:** `karte:=<pfad>.yaml` nimmt eine selbst aufgenommene Karte (SLAM abfahren, `map_saver_cli`);
+  getestet mit `integration_mission.py --aufnehmen`.
+- **Hinweis Nav2:** Einmal hing beim Hochfahren die Aktivierung des `docking_server` (Lifecycle-Manager wartete endlos).
+  Wenn ihr kein Andocken braucht, lasst ihn in eurer Konfiguration weg.

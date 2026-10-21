@@ -26,12 +26,13 @@ class _Log:
 class _Bridge:
     """Attrappe der Hardware-Bridge: feste Messwerte, Alter einstellbar, gesendete Ziele werden gesammelt."""
     def __init__(self, n=3):
-        self.quat, self.alter, self.gesendet = AUFRECHT.copy(), 0.01, []
+        self.quat, self.alter, self.gesendet, self.messungen = AUFRECHT.copy(), 0.01, [], 1000
         self.pos = np.full(n, 0.1, dtype=np.float32)
     def read_imu(self): return self.quat.copy(), np.zeros(3, dtype=np.float32)
     def read_joint_states(self): return self.pos.copy(), np.zeros_like(self.pos)
     def sensor_alter_s(self): return self.alter
     def sensor_detail(self): return f"Alter {self.alter}"
+    def anzahl_messungen(self): return self.messungen
     def send_joint_commands(self, z): self.gesendet.append(np.asarray(z))
 
 
@@ -239,6 +240,18 @@ def test_eigene_pause_ist_kein_sensorausfall():
     assert isinstance(n.state, StoerungState)
 
 
+def test_kein_ausfall_vor_laufendem_datenstrom():
+    """Regression: die Simulation stand ~1 s direkt nach ihren ersten Messungen (Physik noch aus) -> Stoerung beim
+    Start. Erst nach SCHARF_AB_MESSUNGEN vollstaendigen Messungen gilt Ausbleiben als Ausfall."""
+    n = make()
+    n.bridge.alter, n.bridge.messungen = 1.0, 3
+    n._ueberwache_sensoren()
+    assert isinstance(n.state, BereitschaftState) and not n._log.fehler
+    n.bridge.messungen = n.SCHARF_AB_MESSUNGEN
+    n._ueberwache_sensoren()
+    assert isinstance(n.state, StoerungState)
+
+
 def test_start_mit_nur_einer_sensorquelle_ist_keine_stoerung():
     """Regression: kamen die Gelenkdaten vor der ersten IMU-Nachricht, meldete die Steuerung 'seit inf s' Stoerung."""
     from roboter_steuerung.states.start_state import StartState
@@ -260,6 +273,7 @@ def test_bridge_meldet_takt_erst_wenn_gelenke_und_imu_neu_sind():
     b.last_joint_pos = b.last_joint_vel = None
     b._t_gelenke = b._t_imu = None
     b._neu_gelenke = b._neu_imu = False
+    b._messungen = 0
     takte = []
     b.bei_sensordaten = lambda: takte.append(1)
     gelenk = N(position=[0.1], velocity=[0.0])
@@ -267,4 +281,4 @@ def test_bridge_meldet_takt_erst_wenn_gelenke_und_imu_neu_sind():
     b._joint_callback(gelenk); assert not takte                 # nur Gelenke: noch kein Takt
     b._imu_callback(imu); assert len(takte) == 1                 # jetzt beide neu
     b._imu_callback(imu); b._imu_callback(imu); assert len(takte) == 1   # nur IMU: kein weiterer Takt
-    b._joint_callback(gelenk); assert len(takte) == 2
+    b._joint_callback(gelenk); assert len(takte) == 2 and b.anzahl_messungen() == 2

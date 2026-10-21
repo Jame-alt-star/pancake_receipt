@@ -99,9 +99,15 @@ bzw. aus dem TF-Baum. Am echten G1 sitzt der MID-360 im Kopf: Elternglied `torso
 | ohne Karte (Standard) | statisch (Startpose = Kartenursprung) | nur im 24-m-Fenster der aktuellen Lidardaten | Simulation, schnelle Tests |
 | `slam:=true` | slam_toolbox (Kartierung) | auf der entstehenden SLAM-Karte (static_layer mit Aktualisierungen) | Karte aufnehmen |
 | `karte:=true` | AMCL auf `welten/<welt>/karte.yaml`, Startpose über `startpose:=x,y,gier` | auf der ganzen Karte (static_layer) | feste Halle: Orte bleiben gültig |
+| `karte:=<pfad>.yaml` | AMCL auf einer selbst aufgenommenen Karte | wie `karte:=true` | wie in echt: vorher mit SLAM abgefahren |
+
+In allen Modi bleibt das Lidar nötig: AMCL lokalisiert über den Abgleich der Scans mit der Karte, und die Hinderniskarten
+von Nav2 tragen laufend ein, was nicht auf der Karte steht (Paletten, Menschen, Türen).
+Die Karten der Simulationswelten sind aus der Szene gerechnet (perfekt, ohne Messfehler). Den echten Ablauf prüft
+`integration_mission.py --aufnehmen`: Welt mit SLAM abfahren, mit `map_saver_cli` speichern, neu starten und die Mission
+nur mit dieser Karte fahren (21.10.2026: 34/34). Für die echte Halle genauso, die Karte dann als `karte.yaml/.pgm` der Welt.
 
 Layer 1 fragt die Wegkosten zwischen den Orten beim Nav2-Planer ab (`compute_path_to_pose`); ohne Planer gilt die Luftlinie.
-Für die echte Halle: Karte einmal mit SLAM aufnehmen und mit `map_saver_cli` als `karte.yaml/.pgm` der Welt speichern.
 
 ## Ablauf beim Start
 

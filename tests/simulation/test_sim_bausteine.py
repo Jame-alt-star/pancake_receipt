@@ -97,3 +97,18 @@ def test_rpy_konvention_wie_static_transform_publisher():
     qy = (math.cos(p / 2), 0, math.sin(p / 2), 0)
     qz = (math.cos(y / 2), 0, 0, math.sin(y / 2))
     assert np.allclose(rotmat_aus_rpy(r, p, y), quat_zu_rotmat(quat_mul(qz, quat_mul(qy, qx))))
+
+
+def test_posenaufnahme_gleichzeitiges_schreiben_bleibt_lesbar(tmp_path):
+    """Regression 21.10.2026: Simulationsthread und destroy_node schrieben gleichzeitig, die Datei war unlesbar."""
+    import threading
+    pfad = str(tmp_path / "pose.npz")
+    a = Posenaufnahme(pfad)
+    for i in range(2000):
+        a.schritt(i * 0.05, np.zeros(36))                  # 0,05 s > Takt 0,04 s: jedes Bild wird aufgenommen
+    schreiber = [threading.Thread(target=a.schreiben) for _ in range(4)]
+    for t in schreiber:
+        t.start()
+    for t in schreiber:
+        t.join()
+    assert len(np.load(pfad)["t"]) == 2000 and not list(tmp_path.glob("*.tmp.npz"))
