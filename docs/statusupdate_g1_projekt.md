@@ -466,7 +466,8 @@ Testserie (`tests/alle_tests.sh --mit-slam`).
   - **Uhr der WSL geht nach:** Hyper-V stellt die Systemzeit alle ~35 s um 2,2–4,6 s vor (`systemd-resolved`: „Clock
     change detected“, auch im Leerlauf). Simulation und Steuerung messen mit der monotonen Uhr und sind nicht betroffen;
     Nav2 meldet dabei „timestamps differ on 2.3 seconds“ und hält kurz an. Daher schwankt auch der „Echtzeitfaktor“ im
-    Gehtest (0,79–1,00), die Geschwindigkeit in Simulationszeit nicht (0,34–0,35 m/s).
+    Gehtest (0,79–1,00), die Geschwindigkeit in Simulationszeit nicht (0,34–0,35 m/s). Die Systemtests messen ihre
+    Wartezeiten seit v2.8 mit der monotonen Uhr (vorher verkürzte ein Sprung eine Testphase: S7b 0,99 statt ~1,6 m).
 - **Restpunkte Review 2 (danach):**
   - **Sprunglimit** der Zielwinkel (B4): gemessen höchstens 0,315 rad je 20-ms-Takt (synchroner Kreis, 8 Szenarien
     inkl. Vollgas, abruptem Stopp, 20–30 ms Latenz mit Rauschen) → `max_zielsprung_rad` 0,6; größere Sprünge werden

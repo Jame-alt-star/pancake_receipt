@@ -89,13 +89,13 @@ class Probe(Node):
             self.min_clear = min(self.min_clear, float(np.hypot(dx, dy)))
 
     def spin(self, s):
-        e = time.time() + s
-        while time.time() < e:
+        e = time.monotonic() + s          # monotone Uhr: die Systemzeit der WSL springt (siehe integration_ros.py)
+        while time.monotonic() < e:
             rclpy.spin_once(self, timeout_sec=0.02)
 
     def wait_end(self, timeout):
-        e = time.time() + timeout
-        while time.time() < e:
+        e = time.monotonic() + timeout
+        while time.monotonic() < e:
             self.spin(0.2)
             if self.status and self.status[-1].get("phase") == "ende":
                 return self.status[-1]
@@ -164,8 +164,8 @@ def main():
     proc = launch(log)
     try:
         print(f"== Pipeline + Layer 1 gestartet, Log {log}")
-        e = time.time() + 90
-        while time.time() < e and not (pr.p and pr.start.service_is_ready()):
+        e = time.monotonic() + 90
+        while time.monotonic() < e and not (pr.p and pr.start.service_is_ready()):
             pr.spin(0.2)
         check("S0 System bereit (Position + /mission/start)", pr.p is not None and pr.start.service_is_ready())
         pr.spin(60 if NAV2 else 25)     # Nav2-Lifecycle braucht laenger

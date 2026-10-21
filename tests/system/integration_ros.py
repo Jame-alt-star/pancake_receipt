@@ -80,8 +80,10 @@ class Probe(Node):
                 return
 
     def spin(self, secs):
-        end = time.time() + secs
-        while time.time() < end:
+        # Monotone Uhr: die Systemzeit der WSL springt alle ~35 s um 2-4 s vor (Hyper-V stellt sie nach, 21.10.2026);
+        # mit time.time() wurde eine Testphase dann um diese Zeit kuerzer (S7b: 0,99 statt ~1,6 m).
+        end = time.monotonic() + secs
+        while time.monotonic() < end:
             rclpy.spin_once(self, timeout_sec=0.02)
 
     def yaw(self):
@@ -92,8 +94,8 @@ class Probe(Node):
 
     def spin_mit_cmd(self, secs, vx, pub=None):
         """spin, dabei /cmd_vel (oder pub) mit 10 Hz senden (wie Nav2/Joystick)."""
-        end = time.time() + secs
-        while time.time() < end:
+        end = time.monotonic() + secs
+        while time.monotonic() < end:
             self.twist(vx, pub=pub)
             self.spin(0.1)
 
@@ -102,8 +104,8 @@ class Probe(Node):
         (pub or self.cmd).publish(m)
 
     def wait_data(self, timeout=60):
-        end = time.time() + timeout
-        while time.time() < end and (self.p is None or self.quat is None):
+        end = time.monotonic() + timeout
+        while time.monotonic() < end and (self.p is None or self.quat is None):
             self.spin(0.1)
         return self.p is not None
 
@@ -173,11 +175,11 @@ def main():
 
         print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
         pr.uhr_abo(True); pr.spin(1)
-        p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.time()
+        p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.monotonic()
         pr.spin(6); pr.odom_vx.clear(); pr.spin(6)          # Geschwindigkeit ueber die zweite Haelfte auswerten
         dx = float(np.hypot(pr.p[0] - p0[0], pr.p[1] - p0[1])); dyaw = pr.yaw() - y0
         dt_sim = (pr.sim_zeit - t_sim0) if (pr.sim_zeit is not None and t_sim0 is not None) else float("nan")
-        echtzeit = dt_sim / (time.time() - t_wand0)
+        echtzeit = dt_sim / (time.monotonic() - t_wand0)
         pr.uhr_abo(False)
         check("S3 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         # In SIMULATIONSZEIT gemessen (Review 2): laeuft die Simulation unter Last langsamer als Echtzeit, legt der

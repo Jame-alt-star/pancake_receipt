@@ -25,8 +25,8 @@ def main():
     n.create_subscription(Point, "/base_position", lambda m: s.__setitem__("p", (m.x, m.y, m.z)), 10)
 
     def spin(t):
-        e = time.time() + t
-        while time.time() < e:
+        e = time.monotonic() + t          # monotone Uhr: die Systemzeit der WSL springt (siehe integration_ros.py)
+        while time.monotonic() < e:
             rclpy.spin_once(n, timeout_sec=0.02)
     try:
         while "p" not in s: spin(0.2)
