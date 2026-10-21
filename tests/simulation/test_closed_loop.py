@@ -71,7 +71,7 @@ def test_robust_gegen_tick_abweichung(dec):
 def test_ohne_regler_faellt_um():
     """Dokumentiert das Startrennen: reine PD-Haltung ohne Policy kippt (siehe wait_for_controller)."""
     import mujoco, numpy as np
-    from sim_helpers import load_config, BRINGUP
+    from sim_helpers import load_config
     cfg = load_config()
     m = mujoco.MjModel.from_xml_path(cfg["xml_path"])
     d = mujoco.MjData(m)

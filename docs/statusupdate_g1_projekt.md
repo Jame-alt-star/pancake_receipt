@@ -370,8 +370,8 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 ## Review-Paket 4: Kommentare und Dokumentation (14.10.2026) – v1.8
 - Veraltete/widersprüchliche Kommentare korrigiert: `steuereinheit_node.py` (Positionshaltung „NICHT aufgerufen“, `/base_position`, „47 Beobachtungswerte“, `cmd_init`, Freigabe per `/cmd_vel`), `balancieren_state.py` (vx/vy-Eingabe), `not_aus_state.py` („trabt“ nur 12-DOF, Freigabe-Schritt umgesetzt), `bereitschaft_state.py`, `mujoco_node.py` (Topic-Liste, „bei jedem Physikschritt“, „47-Werte-Policy“, Profiling dauerhaft dokumentiert, `if True:` aufgelöst, Rauschwerte als Annahmen gekennzeichnet), `steuereinheit.launch.py` (2D-Lidar, 16→24 Ringe), `action_bridges.py` (Nav2 getestet, GehAktion nur Testdouble), `nav_testdouble_node.py` (WZ_MAX), `g1_policy_29dof.yaml`.
 - Spärlich kommentierte Stellen ergänzt: Problem-Generator (Abbildung, ganzzahlige Kosten, Kosten 100), Planer (warum A*/LM-Cut), `run_action` (Zeiten), Missionsknoten (Thread-Modell), Weltwissen, Balance-Dienst-Konstanten (Herkunft), Beinodometrie-/Punktwolken-Callbacks, Testdouble, Lidar-/Aufnahmefunktionen.
-- Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben in einen Archivordner verschoben (am 15.10.2026 gelöscht, nur noch unter Tag `v1.9-review-abgeschlossen`); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben (seit 15.10.2026: `PROJEKTSTAND_AKTUELL.md`).
-- Hinweis: `CODE_REVIEW_PROMPT.md` (Review-Auftrag) wurde beim Commit von Paket 1 versehentlich per `git add -A` mitversioniert; Inhalt unkritisch; lag zunächst im Root, dann bei den Review-Unterlagen; am 15.10.2026 gelöscht (Tag `v1.9-review-abgeschlossen`).
+- Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben in einen Archivordner verschoben (am 14.10.2026 gelöscht, nur noch unter Tag `v1.9-review-abgeschlossen`); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben (seit 14.10.2026: `PROJEKTSTAND_AKTUELL.md`).
+- Hinweis: `CODE_REVIEW_PROMPT.md` (Review-Auftrag) wurde beim Commit von Paket 1 versehentlich per `git add -A` mitversioniert; Inhalt unkritisch; lag zunächst im Root, dann bei den Review-Unterlagen; am 14.10.2026 gelöscht (Tag `v1.9-review-abgeschlossen`).
 - Tests: pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14.
 
 
@@ -388,13 +388,13 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 - **Tests:** pytest 33, Layer-1 18, Pipeline 32/32, Pipeline realistisch+Beinodometrie 2× 32/32 (Schätzfehler 20–22 cm), Watchdog 5/5, Missionen 14/14 (Testdouble, Testwelt, Patrouille, 3D-Palette 0,36 m), SLAM realistisch 2× 22/22.
 - **Damit ist das Code-Review vom 14.10. bis auf Kategorie 5 (SysML-Dateien nicht im Repo) abgearbeitet.**
 
-## Strukturumbau (15.10.2026) – v2.0 bis v2.4
+## Strukturumbau (14.10.2026) – v2.0 bis v2.4
 Anlass: zu viel Inhalt in zu wenigen Dateien, Schichtgrenzen verwischt (Welt/Orte in der Missionsdatei, Szenen im
 Unitree-Herstellerordner, eine Config für drei Schichten, Layer 3 importierte die Simulation, Launch-Dateien
 starteten fremde Schichten, Scan-Ableitung im Paket des Kollegen). Umbau in fünf Schritten, jeder mit eigener
 kompletter Testserie (`tests/alle_tests.sh`), Commit und Tag. Verhalten unverändert.
 - **v2.0 Aufräumen:** 12-DOF- und Gazebo-Altbestand, nie grüne ament-Lint-Vorlagen, alte Übergaben und
-  Review-Unterlagen zunächst in Archivordner verschoben (am 15.10.2026 danach ganz gelöscht, vollständig unter Tag
+  Review-Unterlagen zunächst in Archivordner verschoben (am 14.10.2026 danach ganz gelöscht, vollständig unter Tag
   `v1.9-review-abgeschlossen`), Verlauf nach `docs/`, Tests nach Art (Paket-Unit-Tests, `tests/simulation`,
   `tests/system`, `experimente`), `pytest.ini`, `tests/alle_tests.sh`.
 - **v2.1 Welten:** Paket `roboter_welten` (je Welt `szene.xml` ohne Roboter + `orte.yaml`); Missionen enthalten nur

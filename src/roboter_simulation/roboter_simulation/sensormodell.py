@@ -9,7 +9,7 @@ from collections import deque
 
 import numpy as np
 
-from roboter_simulation.geometrie import quat_mul
+from roboter_beschreibung.geometrie import quat_mul
 
 
 class Sensormodell:

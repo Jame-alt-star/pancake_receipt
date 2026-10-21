@@ -4,7 +4,7 @@ Der Roboter (g1_29dof.xml, Unitree-Modell mit Boden und Licht) bleibt unveraende
 Herstellerordner; die Umgebung kommt aus roboter_welten (szene.xml ohne Roboter). Beides wird ueber
 MjSpec verbunden, statt die Welt per <include> neben das Robotermodell zu legen: so liegen Welten
 nicht mehr zwischen den Unitree-Dateien, und dieselbe Welt passt zu jedem Robotermodell.
-Geprueft 15.10.2026: fuer testwelt, testwelt3d und demo_lager entsteht dasselbe Modell wie aus den
+Geprueft 14.10.2026: fuer testwelt, testwelt3d und demo_lager entsteht dasselbe Modell wie aus den
 frueheren scene_*.xml (gleiche Geoms mit Position, Groesse, Gruppe, Kontakt und Farbe, gleiche Massen).
 """
 from typing import Optional

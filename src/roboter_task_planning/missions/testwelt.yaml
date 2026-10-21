@@ -9,6 +9,5 @@ ziele:
 parameter:
   warte_s: 2.0
   balancier_toleranz_grad: 5.0
-  nav_toleranz_m: 0.3
   nav_geschwindigkeit: 0.4
   max_replans: 2

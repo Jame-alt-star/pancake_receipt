@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>roboter_sensorik</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>
     Sensorvorverarbeitung: aus der 3D-Punktwolke (/points) den 2D-Scan (/scan, fuer SLAM und Collision-Monitor)
     und die Hinderniswolke (/punkte_hindernis, fuer die Costmaps) ableiten. Liegt bewusst nicht im

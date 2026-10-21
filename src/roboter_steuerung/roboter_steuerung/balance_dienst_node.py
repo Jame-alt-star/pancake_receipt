@@ -22,17 +22,13 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
 
+from roboter_beschreibung.geometrie import neigung_grad
 from roboter_interfaces.action import BalancierAktion
 from roboter_interfaces.srv import GleichgewichtService
 
 STABIL_ZEIT_S = 1.0      # so lange muessen Neigung und Geschwindigkeit ununterbrochen im Rahmen sein
 MAX_GESCHW_M_S = 0.03    # "steht": im Stand gemessen < 0.01 m/s Drift, Gehen >= 0.3 m/s
 TIMEOUT_S = 20.0         # Bremsen aus voller Fahrt dauert ~2-3 s; 20 s mit grosser Reserve
-
-
-def neigung_grad(qw, qx, qy, qz) -> float:
-    """Winkel zwischen Koerper-z-Achse und Senkrechter [Grad]."""
-    return math.degrees(math.acos(max(-1.0, min(1.0, 1.0 - 2.0 * (qx * qx + qy * qy)))))
 
 
 class _Tap:
@@ -94,7 +90,7 @@ class BalanceDienstNode(Node):
     def _tilt(self):
         with self._lock:
             q = self._quat
-        return None if q is None else neigung_grad(*q)
+        return None if q is None else neigung_grad(q)
 
     def _speed(self):
         with self._lock:

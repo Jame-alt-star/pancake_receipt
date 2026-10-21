@@ -4,7 +4,6 @@ Ersetzt die Ground-Truth-Odometrie der Simulation: liest /joint_states und /imu 
 Hardware) und publiziert /odom (nav_msgs/Odometry, odom->base_link) sowie die TF odom->base_link.
 Start ueber steuerung.launch.py bzw. system.launch.py odom_quelle:=beinodometrie (mujoco_node publiziert dann kein /odom).
 """
-import math
 import os
 
 import numpy as np
@@ -16,6 +15,7 @@ from sensor_msgs.msg import Imu, JointState
 from tf2_ros import TransformBroadcaster
 
 from roboter_beschreibung import lade as lade_roboter
+from roboter_beschreibung.geometrie import rotate_inverse
 from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie
 
 
@@ -56,11 +56,7 @@ class BeinodometrieNode(Node):
         t = m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
         pos, vel, quat = self.est.update(t, np.array(m.position), self.quat)
         w, x, y, z = quat
-        # Weltgeschwindigkeit -> Koerperframe (ROS-Konvention fuer Odometry.twist)
-        r = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-                      [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-                      [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-        vb = r.T @ vel
+        vb = rotate_inverse(quat, vel)          # Weltgeschwindigkeit -> Koerperframe (ROS-Konvention fuer Odometry.twist)
         od = Odometry()
         od.header.stamp = m.header.stamp
         od.header.frame_id = self.odom_frame

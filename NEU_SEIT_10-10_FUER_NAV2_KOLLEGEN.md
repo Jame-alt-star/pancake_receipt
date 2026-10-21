@@ -1,6 +1,6 @@
 # Was ist neu seit dem Stand vom 10.10.2026?
 
-Übersicht für den Nav2-Kollegen · Stand 15.10.2026 (`v2.5`) · Branch `pascal/pipeline-v2.4`
+Übersicht für den Nav2-Kollegen · Stand 14.10.2026 (`v2.5`) · Branch `pascal/pipeline-v2.4`
 
 **Wozu diese Datei:** einmaliger Vergleich „dein Stand vom 10.10. → jetzt“, damit du nicht die ganze Historie lesen musst.
 Den laufend aktualisierten Stand findest du in `PROJEKTSTAND_AKTUELL.md`.
@@ -17,7 +17,7 @@ Details stehen in den verlinkten Dokumenten, du musst nichts davon vorher lesen.
 
 ## Auf einen Blick
 
-| | Dein Stand (10.10.) | Jetzt (15.10.) |
+| | Dein Stand (10.10.) | Jetzt (14.10.) |
 |---|---|---|
 | Roboter | G1 mit 12 Gelenken (nur Beine), TorchScript-Policy | G1 mit **29 Gelenken** (Beine, Taille, Arme), ONNX-Policy von Unitree |
 | Steuerung | fester Startbefehl aus der YAML, kein `/cmd_vel` | `/cmd_vel` von beliebiger Quelle, Zustandsautomat, NotAus, Freigabe, Watchdog |
@@ -97,6 +97,8 @@ Das ist der wichtigste Teil für dich. Deine Schicht ist sauber abgegrenzt, du m
 git fetch origin && git checkout -b nav2 origin/pascal/pipeline-v2.4
 # deine Parameter testen, ohne unseren Code zu ändern:
 ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 headless:=true nav2_params:=<deine.yaml>
+# oder dein Nav2 selbst starten und unser System ohne eigenes Nav2 dazu:
+ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=extern headless:=true
 ```
 Referenz zum Vergleichen: `src/roboter_navigation/config/nav2_params.yaml` (3D-Lidar) und `nav2_params_2d.yaml`.
 Wenn `bash tests/alle_tests.sh` mit deiner Konfiguration grün ist, Pull Request auf `pascal/pipeline-v2.4`.

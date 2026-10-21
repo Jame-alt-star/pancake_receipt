@@ -12,7 +12,7 @@ from roboter_steuerung.hardware.i_hardware_bridge import IRobotHardwareBridge
 
 class TopicBridge(IRobotHardwareBridge):
     """
-    Hardware-Bridge ueber ROS2-Topics (bis 15.10.2026 "MujocoBridge" im Simulationspaket).
+    Hardware-Bridge ueber ROS2-Topics (bis 14.10.2026 "MujocoBridge" im Simulationspaket).
 
     Kennt MuJoCo nicht: liest /joint_states und /imu, schreibt /joint_commands. Auf der anderen Seite
     steht heute mujoco_node (Layer 4); ein Hardware-Knoten mit denselben Topics koennte ihn ersetzen,

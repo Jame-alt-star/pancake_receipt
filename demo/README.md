@@ -15,7 +15,7 @@ MUJOCO_GL=glfw python3 demo/render_demo.py /tmp/demo_lauf demo/ausgabe/demo.mp4 
 MUJOCO_GL=glfw python3 demo/render_demo.py /tmp/demo_lauf /tmp/bild.png --probe 20  # Standbild bei 20 s (zum Prüfen)
 ```
 Andere Mission (die Welt kommt aus der Mission): `python3 demo/run_demo.py /tmp/lauf_3d --mission testwelt3d` –
-Testwelt mit niedriger Palette, die nur das 3D-Lidar sieht (Video vom 15.10.2026: `demo/ausgabe/demo_testwelt3d.mp4`).
+Testwelt mit niedriger Palette, die nur das 3D-Lidar sieht (Video vom 14.10.2026: `demo/ausgabe/demo_testwelt3d.mp4`).
 
 Darstellung: Treffer des **3D-Lidars** (derselbe Baustein wie in der Simulation, 24 Ringe), nach Höhe eingefärbt
 (grün niedrig, orange hoch); die Leitstand-Karte sammelt die Hindernispunkte im Höhenband 0,12–1,9 m wie

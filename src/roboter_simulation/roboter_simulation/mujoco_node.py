@@ -32,7 +32,7 @@ from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from roboter_beschreibung import lade as lade_roboter
 from roboter_interfaces.msg import Antriebsparameter
 from roboter_simulation.aufnahme import Posenaufnahme
-from roboter_simulation.geometrie import rotate_inverse
+from roboter_beschreibung.geometrie import rotate_inverse
 from roboter_simulation.lidar import R_MIN, Lidar
 from roboter_simulation.sensormodell import Sensormodell
 from roboter_simulation.szene import lade_welt

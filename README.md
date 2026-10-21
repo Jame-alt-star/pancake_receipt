@@ -45,7 +45,7 @@ ros2 topic echo /mission/status                           # Fortschritt
 # NotAus: /not_aus ist latched (TRANSIENT_LOCAL), der Sender muss dieselbe QoS haben, sonst wartet er ewig
 ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /not_aus std_msgs/msg/Bool "{data: true}"
 ```
-`system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/testdouble), `nav2_params`,
+`system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/extern/testdouble), `nav2_params`,
 `slam`, `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`, `record_path`, `cmd_vel_timeout_s`,
 `auto_start`, `rviz`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
 
@@ -99,7 +99,7 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
 Strukturumbau), `v2.0`–`v2.4` (Strukturumbau je Schritt). Zurück: `git checkout <tag>` (danach `colcon build`;
 beim Sprung über v2.2 die Ordner `build/` und `install/` vorher leeren, weil Pakete umbenannt wurden).
 **Alter Stand vollständig unter Tag `v1.9-review-abgeschlossen`:** 12-DOF-Pfad, Gazebo/R1-Launches, alte Übergaben
-und die Review-Unterlagen wurden am 15.10.2026 aus dem aktuellen Stand gelöscht und sind nur noch dort (und in der
+und die Review-Unterlagen wurden am 14.10.2026 aus dem aktuellen Stand gelöscht und sind nur noch dort (und in der
 git-Historie) enthalten.
 
 ## Weitere Dokumente

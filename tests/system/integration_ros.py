@@ -8,7 +8,7 @@ Startet die Pipeline selbst (ros2 launch), fuehrt die Szenarien nacheinander in
 EINEM persistenten ROS-Prozess aus (viele kurzlebige ros2-CLI-Aufrufe stoeren die
 Simulation) und beendet die Pipeline am Ende. Exit-Code 0 = alle bestanden.
 """
-import argparse, os, re, signal, subprocess, sys, tempfile, time
+import argparse, os, signal, subprocess, sys, tempfile, time
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -18,6 +18,8 @@ from sensor_msgs.msg import Imu, JointState
 from nav_msgs.msg import Odometry
 from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Bool
+
+from roboter_beschreibung.geometrie import yaw_aus_quat
 
 RESULTS = []
 
@@ -61,8 +63,7 @@ class Probe(Node):
             rclpy.spin_once(self, timeout_sec=0.02)
 
     def yaw(self):
-        w, x, y, z = self.quat
-        return float(np.degrees(np.arctan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))))
+        return float(np.degrees(yaw_aus_quat(self.quat)))
 
     def freigabe(self, frei=True):
         self.freigabe_pub.publish(Bool(data=bool(frei)))
@@ -154,7 +155,7 @@ def main():
         check("S3 Strecke >= 3 m", dx > 3.0, f"dx={dx:.2f}")
         check("S3 geradeaus (|dyaw|<8 Grad)", abs(dyaw) < 8, f"dyaw={dyaw:.1f}")
         check("S3 Zustand Gehen", "-> Gehen" in read_log(logfile))
-        # Median ueber 6 s statt eines Einzelwerts: am 15.10.2026 lag ein einzelner Wert der Beinodometrie bei
+        # Median ueber 6 s statt eines Einzelwerts: am 14.10.2026 lag ein einzelner Wert der Beinodometrie bei
         # 0.05 m/s; in 2400 Werten gleichmaessigen Gehens (Diagnose) war das Minimum 0.28. Das Minimum wird
         # mit ausgegeben, damit Ausreisser sichtbar bleiben.
         vx = np.array(pr.odom_vx)

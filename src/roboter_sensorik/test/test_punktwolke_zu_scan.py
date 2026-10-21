@@ -66,3 +66,24 @@ def test_ausduennen_und_hoehenband():
     mask, _ = hoehenband_maske(pts, quat_rpy(), H0, 0.12, 1.9, 0.2, 10.0)
     assert mask.tolist() == [False, True, True, True]          # Boden raus
     assert len(ausduennen(pts[mask], 0.05)) == 2                 # zwei Nachbarpunkte -> einer
+
+
+def test_wolke_mit_weiteren_feldern_wie_livox():
+    """Echte Treiber senden mehr Felder als x/y/z (Livox: + Intensitaet, Tag, Linie, Zeit; 26 Byte je Punkt).
+    Regression: frueher wurde jede Wolke mit point_step != 12 still verworfen."""
+    from types import SimpleNamespace as F
+    from roboter_sensorik.punktwolke_zu_scan import xyz_aus_wolke
+    dt = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("intensity", "<f4"), ("tag", "u1"), ("line", "u1"),
+                   ("timestamp", "<f8")])
+    roh = np.zeros(3, dtype=dt)
+    roh["x"], roh["y"], roh["z"], roh["intensity"] = [1.0, 2.0, np.nan], [0.5, -1.0, 0.0], [0.1, 0.2, 0.3], 7.0
+    fields = [F(name=n, offset=dt.fields[n][1], datatype=t) for n, t in
+              (("x", 7), ("y", 7), ("z", 7), ("intensity", 7), ("tag", 2), ("line", 2), ("timestamp", 8))]
+    pts = xyz_aus_wolke(roh.tobytes(), fields, dt.itemsize, 3)
+    assert dt.itemsize == 26 and pts.shape == (2, 3)                  # NaN-Punkt entfaellt
+    assert np.allclose(pts, [[1.0, 0.5, 0.1], [2.0, -1.0, 0.2]], atol=1e-6)
+    # klassische 12-Byte-Wolke weiterhin
+    xyz = np.array([[1, 2, 3], [4, 5, 6]], dtype="<f4")
+    f12 = [F(name=n, offset=4 * i, datatype=7) for i, n in enumerate("xyz")]
+    assert np.allclose(xyz_aus_wolke(xyz.tobytes(), f12, 12, 2), xyz)
+    assert xyz_aus_wolke(b"", f12, 12, 0).shape == (0, 3)

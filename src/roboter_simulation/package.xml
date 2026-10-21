@@ -2,13 +2,13 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>roboter_simulation</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>
     Layer 4 (HAL): MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik (IMU, Gelenke, 3D-Lidar,
     Odometrie). Robotermodell aus roboter_beschreibung, Umgebung aus roboter_welten, Antriebsparameter
     zur Laufzeit von der Steuerung (/antrieb/parameter).
   </description>
-  <maintainer email="pascalfranz02@gmail.com">Pascal</maintainer>
+  <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
   <license>Apache-2.0</license>
 
   <!-- Laufzeit-Abhaengigkeiten von mujoco_node.py und szene.py -->

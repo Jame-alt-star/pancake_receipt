@@ -20,7 +20,7 @@ import numpy as np
 import mujoco
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "simulation"))
-from sim_helpers import load_config, load_controller29, BRINGUP, yaw_deg  # noqa: E402
+from sim_helpers import load_config, load_controller29, yaw_deg  # noqa: E402
 
 LARM = list(range(15, 22))
 RARM = list(range(22, 29))

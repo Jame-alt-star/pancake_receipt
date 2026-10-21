@@ -1,6 +1,6 @@
 # Architektur G1-Projekt
 
-Stand 15.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `README.md`, Tests: `tests/README.md`.
+Stand 14.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `README.md`, Tests: `tests/README.md`.
 
 ## Schichten und Pakete
 

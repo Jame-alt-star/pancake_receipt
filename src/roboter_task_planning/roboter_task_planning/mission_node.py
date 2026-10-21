@@ -19,7 +19,6 @@ import time
 
 import rclpy
 import tf2_ros
-from rclpy.duration import Duration
 from rclpy.time import Time
 from nav_msgs.msg import Odometry
 from rclpy.callback_groups import ReentrantCallbackGroup

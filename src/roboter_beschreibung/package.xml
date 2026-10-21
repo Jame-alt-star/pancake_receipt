@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>roboter_beschreibung</name>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <description>
     Beschreibung des Unitree G1: MuJoCo-/URDF-Modelle von Unitree (modelle/g1_description, unveraendert) und
     die Robotergeometrie (config/roboter.yaml). Gemeinsame Quelle fuer Simulation, Zustandsschaetzung und Sensorik.

@@ -1,4 +1,4 @@
-# Projektstand aktuell — G1-Humanoid (Stand 15.10.2026, v2.5)
+# Projektstand aktuell — G1-Humanoid (Stand 14.10.2026, v2.5)
 
 **Wozu diese Datei:** der aktuelle Stand in Kurzform, für Übergaben und für jeden, der neu einsteigt. Sie wird bei jedem
 größeren Schritt aktualisiert. Was sich seit dem 10.10. geändert hat, steht in `NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`.
@@ -24,7 +24,7 @@ Git: `main`, Rücksprungpunkte siehe `git tag`.
 | Gesamt | `roboter_system` | `system.launch.py` (Schalter `mission`, `navigation`, `slam`, `lidar_modus`, `odom_quelle`, `realistic_sensors`, ...), RViz-Ansicht |
 | Zustände | – | AkkuSchwach/Laden fehlen bewusst (keine echten Batteriedaten; Platzhalter-Akku abgelehnt) |
 
-## Tests (alle grün, 15.10.2026)
+## Tests (alle grün, 14.10.2026)
 `bash tests/alle_tests.sh [--mit-slam]`: Build, pytest 64 (Unit-Tests der Pakete, Regelkreis, Konfiguration, Simulationsbausteine,
 Greif-Regression), Pipeline 32/32 (auch realistisch + Beinodometrie), Watchdog 5/5, Missionen 14/14 (Testdouble, Testwelt,
 Patrouille, 3D-Palette), SLAM realistisch. Aufrufe und Ablage: `tests/README.md`.
@@ -35,14 +35,14 @@ Patrouille, 3D-Palette), SLAM realistisch. Aufrufe und Ablage: `tests/README.md`
 - Paket 5 kleinere Punkte (B8, U3, U5–U7, L2, L7, Duplikate; L6/L8/U8 dokumentiert) → v1.9
 - Offen: Kategorie 5 (SysML-Dateien liegen nicht im Repo, daher keine Rückverfolgbarkeit Modell ↔ Code; vorgesehen: `modell/`).
 
-## Strukturumbau 15.10.2026 (v2.0–v2.4)
+## Strukturumbau 14.10.2026 (v2.0–v2.4)
 Aufräumen (Altbestand zunächst archiviert, inzwischen gelöscht – siehe Tag `v1.9-review-abgeschlossen`; Tests nach Art) → Welten (`roboter_welten`) → Launch je Schicht (`roboter_system`,
 `roboter_sensorik`, `r1_bringup` → `roboter_simulation`) → Config/Bridge entflechten (`roboter_beschreibung`, Policy und
 Bridge in Layer 3, `/antrieb/parameter`, Parameterdateien je Schicht) → große Knoten zerlegt. Verhalten unverändert (gleiche Tests, gleiche Messwerte).
 
 ## Für den Kollegen (Nav2)
 Referenz: `src/roboter_navigation/config/nav2_params.yaml`. Eigene Variante: `system.launch.py navigation:=nav2 nav2_params:=<datei>`
-oder Nav2 selbst starten und unser System mit `navigation:=aus` plus `ros2 launch roboter_task_planning mission.launch.py`.
+oder Nav2 selbst starten und unser System mit `navigation:=extern` (Lidar, Sensorik und Watchdog laufen wie mit eigenem Nav2).
 Eingänge `/scan` und `/punkte_hindernis` liefert `roboter_sensorik` unabhängig von seinem Paket. Besonderheiten der Policy:
 Drehen auf der Stelle erst ab |wz| ≈ 0,8; vx ≥ 0,3; RPP `max_angular_accel` hoch; `PoseProgressChecker`; Hinderniserkennung in 3D
 (VoxelLayer). Vor `/cmd_vel` muss `/freigabe` gesendet sein (Missionen erledigen das selbst). In Jazzy brauchen

@@ -8,6 +8,8 @@ import mujoco
 import numpy as np
 import yaml
 
+from roboter_beschreibung.geometrie import yaw_aus_quat
+
 WS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src") + "/"
 BRINGUP = WS + "roboter_simulation/"          # Simulationspaket (szene.py)
 STEUER = WS + "roboter_steuerung/"
@@ -38,7 +40,7 @@ def load_controller29(cfg):
 
 
 def yaw_deg(q):
-    return float(np.degrees(np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))))
+    return float(np.degrees(yaw_aus_quat(q)))
 
 
 @dataclass

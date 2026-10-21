@@ -16,8 +16,8 @@ Ziele in der Mission: `besucht`, `balanciert`, `gewartet` je Ort. Planung kosten
 ## Mission (`missions/*.yaml`)
 Eine Mission ist nur der **Auftrag**: `welt` (Name einer Welt aus `roboter_welten`), `start_ort`
 (optional, sonst nächster Ort zur Position), `ziele`, `parameter` (`warte_s`,
-`balancier_toleranz_grad`, `max_replans`; `nav_geschwindigkeit` und `nav_toleranz_m` wirken nur im
-GehAktion-Backend/Testdouble – mit Nav2 gelten dessen Parameter).
+`balancier_toleranz_grad`, `max_replans`; `nav_geschwindigkeit` wirkt nur im GehAktion-Backend/Testdouble –
+mit Nav2 gelten dessen Parameter; unbekannte Parameter werden abgelehnt).
 Die **Orte** (x/y in m, Frame `map`) und **Verbindungen** (ungerichtet; fehlt = vollvernetzt) stehen in
 `roboter_welten/welten/<welt>/orte.yaml`, weil sie zur Umgebung gehören: mehrere Missionen in derselben Halle
 nutzen dieselben Orte, und `system.launch.py` (Paket `roboter_system`) startet die Simulation mit derselben Welt.
@@ -53,8 +53,8 @@ ros2 service call /mission/abort std_srvs/srv/Trigger
 ```
 `roboter_task_planning/launch/mission.launch.py` startet nur den Missionsknoten (Layer 1).
 `navigation:=testdouble` → `nav_backend=gehaktion` (nur Test!), `navigation:=nav2` → `nav_backend=nav2`;
-Navigation des Kollegen: `nav2_params:=<datei>` oder Nav2 extern starten und `navigation:=aus` mit
-`ros2 launch roboter_task_planning mission.launch.py`. Beim Missionsstart gibt der Knoten die Bewegung über
+Navigation des Kollegen: `navigation:=nav2 nav2_params:=<datei>`, oder sein Nav2 selbst starten und unser System
+mit `navigation:=extern` (Lidar, Sensorik und Watchdog laufen dann wie mit eigenem Nav2). Beim Missionsstart gibt der Knoten die Bewegung über
 `/freigabe` frei.
 
 ## Voraussetzungen

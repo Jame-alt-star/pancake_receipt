@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>roboter_task_planning</name>
-  <version>0.0.0</version>
+  <version>0.2.0</version>
   <description>Layer 1 (Deliberative): Missionsplanung mit PDDL/Fast Downward und Dispatcher ueber ROS-2-Actions.</description>
   <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
   <license>Apache-2.0</license>
@@ -11,13 +11,16 @@
   <depend>roboter_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
-  <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tf2_ros</depend>
   <exec_depend>nav2_msgs</exec_depend>   <!-- nav_backend=nav2 (Standard) -->
   <depend>action_msgs</depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>roboter_beschreibung</exec_depend>   <!-- Quaternion-Hilfen (Testdouble) -->
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>roboter_welten</exec_depend>   <!-- Orte der Welt (Schluessel welt in der Mission) -->
   <!-- HINWEIS: Fast Downward (Planer) und nav2_msgs (nur fuer nav_backend=nav2) haben keinen
        rosdep-Schluessel bzw. sind optional; siehe README.md -->

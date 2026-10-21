@@ -17,16 +17,15 @@ import math
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Imu, LaserScan, PointCloud2
+from sensor_msgs.msg import Imu, LaserScan, PointCloud2, PointField
+
+from roboter_beschreibung.geometrie import quat_zu_rotmat
 
 
 def waagerecht(pts, quat):
     """Punkte (Sensorframe) mit der IMU-Orientierung waagerecht ausrichten: Roll/Nick entfernen,
     Gier bleibt (Blickrichtung wie der Sensor)."""
-    w, x, y, z = quat
-    R = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-                  [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-                  [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+    R = quat_zu_rotmat(quat)
     yaw = math.atan2(R[1, 0], R[0, 0])
     cy, sy = math.cos(yaw), math.sin(yaw)
     rz_t = np.array([[cy, sy, 0.0], [-sy, cy, 0.0], [0.0, 0.0, 1.0]])
@@ -51,6 +50,27 @@ def hoehenband_maske(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max
     """Maske der Punkte im Hoehenband (waagerecht ausgerichtet) + waagerechte Koordinaten."""
     level = waagerecht(pts, quat)
     return maske_aus_level(level, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max), level
+
+
+_NUMPY_TYP = {1: "i1", 2: "u1", 3: "i2", 4: "u2", 5: "i4", 6: "u4", 7: "f4", 8: "f8"}   # PointField.datatype
+
+
+def xyz_aus_wolke(data: bytes, fields, point_step: int, n: int, bigendian: bool = False) -> np.ndarray:
+    """x, y, z aus einer beliebigen PointCloud2 (N x 3, float64), unabhaengig von weiteren Feldern.
+
+    Echte Lidar-Treiber senden mehr als x/y/z (Livox MID-360 im G1: Intensitaet, Tag, Linie, Zeit; 18-32 Byte je
+    Punkt). Frueher wurde nur genau 12 Byte (x, y, z als float32) akzeptiert und alles andere still als leere Wolke
+    behandelt - auf echter Hardware haette es weder Scan noch Hindernisse gegeben. Punkte mit NaN/inf entfallen."""
+    feld = {f.name: f for f in fields}
+    if n == 0 or not all(k in feld for k in "xyz"):
+        return np.zeros((0, 3))
+    ordnung = ">" if bigendian else "<"
+    dtype = np.dtype({"names": list("xyz"),
+                      "formats": [ordnung + _NUMPY_TYP[feld[k].datatype] for k in "xyz"],
+                      "offsets": [feld[k].offset for k in "xyz"], "itemsize": point_step})
+    roh = np.frombuffer(bytes(data), dtype=dtype, count=n)
+    pts = np.stack([roh["x"], roh["y"], roh["z"]], axis=1).astype(np.float64)
+    return pts[np.isfinite(pts).all(axis=1)]
 
 
 def ausduennen(pts, voxel=0.05):
@@ -101,10 +121,7 @@ class PunktwolkeZuScan(Node):
         # Pro Punktwolke: (1) waagerechter Scan je Winkel (naechster Punkt im Hoehenband) fuer SLAM
         # und Collision-Monitor, (2) Hinderniswolke (Hoehenband, 5 cm ausgeduennt) fuer die Costmaps.
         # Ausrichtung ueber die zuletzt empfangene IMU-Orientierung.
-        if m.point_step != 12 or m.width == 0:
-            pts = np.zeros((0, 3))
-        else:
-            pts = np.frombuffer(bytes(m.data), dtype=np.float32).reshape(-1, 3).astype(np.float64)
+        pts = xyz_aus_wolke(m.data, m.fields, m.point_step, m.width * m.height, m.is_bigendian)
         level = waagerecht(pts, self.quat)                  # einmal je Wolke (vorher doppelt gerechnet)
         mask = maske_aus_level(level, self.h0, self.hmin, self.hmax, self.rmin, self.rmax)
         ranges = scan_aus_level(level, mask, self.n)
@@ -112,7 +129,8 @@ class PunktwolkeZuScan(Node):
         hc = PointCloud2()
         hc.header = m.header
         hc.height, hc.width = 1, int(len(hp))
-        hc.fields = m.fields
+        # nur x, y, z weitergeben (die Eingangswolke kann weitere Felder haben)
+        hc.fields = [PointField(name=k, offset=4 * i, datatype=PointField.FLOAT32, count=1) for i, k in enumerate("xyz")]
         hc.is_bigendian, hc.point_step, hc.row_step = False, 12, 12 * len(hp)
         hc.data = hp.tobytes()
         hc.is_dense = True

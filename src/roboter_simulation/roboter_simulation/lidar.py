@@ -8,7 +8,7 @@ Mit Rauschen (sigma) und Ausfaellen (p_ausfall), wenn ein Zufallsgenerator ueber
 import mujoco
 import numpy as np
 
-from roboter_simulation.geometrie import quat_zu_rotmat
+from roboter_beschreibung.geometrie import quat_zu_rotmat
 
 R_MIN = 0.15   # naeher liefert der Sensor nichts (eigener Koerper, Blindbereich)
 

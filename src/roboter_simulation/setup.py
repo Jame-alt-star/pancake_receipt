@@ -7,7 +7,7 @@ package_name = 'roboter_simulation'
 
 setup(
     name=package_name,
-    version='0.0.1',
+    version='0.2.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -18,13 +18,12 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Pascal',
+    maintainer='Pascal Franz',
     maintainer_email='pascalfranz02@gmail.com',
     description=(
         'Layer 4: MuJoCo-Simulation des Unitree G1 (29 DOF) mit Sensorik.'
     ),
     license='Apache-2.0',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'mujoco_node = roboter_simulation.mujoco_node:main',

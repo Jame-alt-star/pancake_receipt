@@ -274,3 +274,8 @@ def test_alle_missionsdateien_passen_zu_ihrer_welt():
         assert d.get("welt"), p
         Mission.from_dict(d, welt_lader=lader)
         assert os.path.exists(os.path.join(src, "roboter_welten", "welten", d["welt"], "szene.xml")), p
+
+
+def test_unbekannte_missionsparameter_abgelehnt():
+    with pytest.raises(ValueError):
+        Mission.from_dict(dict(MISSION, parameter={"warte_s": 1.0, "nav_toleranz_m": 0.3}))

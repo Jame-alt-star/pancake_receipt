@@ -196,14 +196,41 @@ class SteuereinheitNode(Node):
             self.positionshaltung.zuruecksetzen()
             self.pos_hold_corr[:] = 0.0
 
+    # ---------------------------------------------------------------- Zustands-API (fuer states/)
+    # Unterhalb dieser Groesse (je Achse) im angeforderten Befehl gilt "kein Bewegungswunsch".
+    BEWEGUNG_SCHWELLE = 0.05
+
+    def sensordaten_gueltig(self) -> bool:
+        """Vor den ersten Messwerten liefert die Bridge Nullen; eine echte Quaternion ist nie 0."""
+        quat, _ = self.bridge.read_imu()
+        joint_pos, _ = self.bridge.read_joint_states()
+        return not (np.all(joint_pos == 0.0) and np.all(quat == 0.0))
+
+    def bewegung_gewuenscht(self) -> bool:
+        """Steht ein Bewegungswunsch an? Geprueft gegen den Wunsch (cmd_target), nicht gegen den Befehl an die Policy."""
+        return bool(np.max(np.abs(self.cmd_target)) >= self.BEWEGUNG_SCHWELLE)
+
+    def befehl_gehen(self) -> np.ndarray:
+        """Aufbereiteter Fahrbefehl: Rampe + Kurshaltung, begrenzt."""
+        return self.cmd.copy()
+
+    def befehl_stehen(self, mit_positionshaltung: bool) -> np.ndarray:
+        """Stehen: abklingende Rampe (weiches Abbremsen) + optional Positionshaltung; Drehrate mit Kurshaltung."""
+        vx, vy = self.cmd_ramped[0], self.cmd_ramped[1]
+        if mit_positionshaltung:
+            vx, vy = vx + self.pos_hold_corr[0], vy + self.pos_hold_corr[1]
+        return np.array([vx, vy, self.cmd[2]], dtype=np.float32)
+
+    def sende_gelenkziele(self, ziele: np.ndarray) -> None:
+        self.bridge.send_joint_commands(ziele)
+
     # ---------------------------------------------------------------- Regeltakt
     def _control_loop(self):
         # Start-Gate: vor den ersten Sensordaten liefert die Bridge Nullen (eine echte Quaternion ist nie 0).
         # Ein NotAus in dieser Phase wird im Callback gemerkt und mit den ersten Daten wirksam (Review L6).
-        quat, _ = self.bridge.read_imu()
-        joint_pos, _ = self.bridge.read_joint_states()
-        if np.all(joint_pos == 0.0) and np.all(quat == 0.0):
+        if not self.sensordaten_gueltig():
             return
+        quat, _ = self.bridge.read_imu()
 
         self._pruefe_watchdog(time.monotonic())
         self._bereite_befehl_auf(quat)

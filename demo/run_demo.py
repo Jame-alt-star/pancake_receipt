@@ -10,7 +10,7 @@ Aufruf: python3 demo/run_demo.py <ausgabeordner> [--mission NAME] [--einfach]
   --einfach: ohne SLAM/realistische Sensorik
 """
 import json, os, signal, subprocess, sys, time
-import numpy as np, rclpy
+import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy

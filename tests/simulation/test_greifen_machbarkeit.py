@@ -4,8 +4,14 @@ Betriebspunkt (13.10.2026, synchroner Kreis): Policy sieht die Arme in Ruhepose 
 Stoerung), Taille 0.15 rad nach hinten (Gegengewicht), Haende 0.30 m vor dem Becken,
 Last bis 1 kg je Hand. Siehe docs/statusupdate_g1_projekt.md.
 """
+import os
+import sys
+
 import pytest
-from arm_feasibility import run
+
+# Das Experiment selbst (mit Optionen fuer weitere Versuche) bleibt in experimente/.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "experimente"))
+from arm_feasibility import run  # noqa: E402
 
 KW = dict(obs_mask=True, obs_blend=0.0, waist=(0.0, 0.0, -0.15), y_lat=0.15)
 

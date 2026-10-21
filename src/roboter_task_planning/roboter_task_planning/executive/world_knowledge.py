@@ -25,9 +25,9 @@ class Mission:
     parameter: Dict[str, float] = field(default_factory=dict)
     welt: Optional[str] = None
 
+    # nav_geschwindigkeit wirkt nur im GehAktion-Backend (Testdouble); mit Nav2 gelten dessen Parameter.
     PARAMETER_DEFAULTS = {
-        "warte_s": 3.0, "balancier_toleranz_grad": 5.0, "nav_toleranz_m": 0.3,
-        "nav_geschwindigkeit": 0.4, "max_replans": 2,
+        "warte_s": 3.0, "balancier_toleranz_grad": 5.0, "nav_geschwindigkeit": 0.4, "max_replans": 2,
     }
 
     def param(self, name):
@@ -81,7 +81,12 @@ class Mission:
         start = name(start) if start else None
         if start is not None and start not in orte:
             raise ValueError(f"start_ort {start!r} unbekannt")
-        return Mission(orte, verb, ziele, start, dict(d.get("parameter", {})), str(welt) if welt else None)
+        parameter = dict(d.get("parameter") or {})
+        unbekannt = set(parameter) - set(Mission.PARAMETER_DEFAULTS)
+        if unbekannt:
+            # Frueher still ignoriert: ein Tippfehler (oder das entfernte nav_toleranz_m) blieb ohne Wirkung.
+            raise ValueError(f"unbekannte Parameter {sorted(unbekannt)}, erlaubt: {sorted(Mission.PARAMETER_DEFAULTS)}")
+        return Mission(orte, verb, ziele, start, parameter, str(welt) if welt else None)
 
     @staticmethod
     def from_yaml(path: str) -> "Mission":

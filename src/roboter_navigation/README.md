@@ -10,6 +10,7 @@ ros2 launch roboter_navigation navigation.launch.py          # nur Layer 2
 # komplett mit Layer 1/3/4 und Sensorik:
 ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 headless:=true
 # Variante des Kollegen: ... navigation:=nav2 nav2_params:=<seine.yaml>
+#   oder sein Nav2 selbst starten und unser System mit navigation:=extern
 ```
 
 - Lokalisierung: `map→odom` statisch (Identität) oder mit `slam:=true` von `slam_toolbox`;

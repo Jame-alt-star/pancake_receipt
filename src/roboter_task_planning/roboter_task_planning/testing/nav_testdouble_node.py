@@ -15,6 +15,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
+from roboter_beschreibung.geometrie import yaw_aus_quat
 from roboter_interfaces.action import GehAktion
 
 # Drehrate zum Ausrichten. Hinweis (Review U8): seit 13.10. ist der Kommandobereich +-1.0; im Stand
@@ -41,7 +42,7 @@ class NavTestdouble(Node):
     def _odom(self, m):
         self.pos = (m.pose.pose.position.x, m.pose.pose.position.y)
         o = m.pose.pose.orientation
-        self.yaw = math.atan2(2 * (o.w * o.z + o.x * o.y), 1 - 2 * (o.y * o.y + o.z * o.z))
+        self.yaw = yaw_aus_quat((o.w, o.x, o.y, o.z))
 
     def _cmd(self, vx=0.0, wz=0.0):
         t = Twist()

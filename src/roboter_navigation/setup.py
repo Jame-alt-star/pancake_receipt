@@ -1,14 +1,14 @@
 import os
 from glob import glob
 
-from setuptools import find_packages, setup
+from setuptools import setup
 
 package_name = 'roboter_navigation'
 
 setup(
     name=package_name,
-    version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    version='0.2.0',
+    packages=[],          # nur Konfiguration und Launch, kein Python-Code
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),

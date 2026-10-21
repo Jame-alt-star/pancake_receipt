@@ -17,6 +17,8 @@ PROBE = float(sys.argv[sys.argv.index("--probe") + 1]) if "--probe" in sys.argv 
 W, H, FPS = 1280, 720, 25
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")   # relativ zum Repo
 sys.path.insert(0, os.path.join(SRC, "roboter_simulation"))
+sys.path.insert(0, os.path.join(SRC, "roboter_beschreibung"))
+from roboter_beschreibung.geometrie import quat_zu_rotmat, yaw_aus_quat  # noqa: E402
 from roboter_simulation.lidar import Lidar  # noqa: E402
 from roboter_simulation.szene import lade_modell  # noqa: E402
 
@@ -53,27 +55,19 @@ LIDAR = Lidar(m, float(ROBOTER["lidar_hoehe_ueber_becken"]), 360, 10.0, ringe=24
 BAND = (0.12, 1.9)            # Hoehenband der Hinderniswolke [m ueber Boden], wie roboter_sensorik
 
 
-def rot(q):
-    w, x, y, z = q
-    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-
-
 def lidar_welt(q):
     """Treffer der 3D-Punktwolke in Weltkoordinaten; Maske der Hindernispunkte (Hoehenband, ohne Boden)."""
     d.qpos[:] = q
     mujoco.mj_kinematics(m, d)
     pts = LIDAR.wolke(d, q[3:7])                       # im lidar_link-Frame
-    R = rot(q[3:7])
+    R = quat_zu_rotmat(q[3:7])
     welt = q[0:3] + R @ np.array([0.0, 0.0, LIDAR.hoehe]) + pts.astype(float) @ R.T
     hind = (welt[:, 2] >= BAND[0]) & (welt[:, 2] <= BAND[1])
     return welt, hind
 
 
 def yaw_of(q):
-    w, x, y, z = q[3:7]
-    return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+    return yaw_aus_quat(q[3:7])
 
 
 # ---- Zeitachse -----------------------------------------------------------------------

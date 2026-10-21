@@ -4,12 +4,14 @@ eigenen Paket); hier wird nur entschieden, WELCHE Schichten laufen und mit welch
     ros2 launch roboter_system system.launch.py                                   # Roboter allein (Layer 3+4)
     ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 headless:=true
     ros2 launch roboter_system system.launch.py mission:=beispiel navigation:=testdouble auto_start:=true
+    ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=extern     # Nav2 laeuft separat
 
 Schichten:
   Layer 4  Simulation     roboter_simulation/launch/simulation.launch.py   (immer)
   Layer 3  Steuerung      roboter_steuerung/launch/steuerung.launch.py     (immer)
   Sensorik                roboter_sensorik/launch/sensorik.launch.py       (bei lidar_modus 3d)
   Layer 2  Navigation     roboter_navigation/launch/navigation.launch.py   (navigation:=nav2)
+                          extern gestartetes Nav2, z. B. Variante des Kollegen (navigation:=extern)
                           Testdouble aus roboter_task_planning             (navigation:=testdouble, nur Tests)
   Layer 1  Mission        roboter_task_planning/launch/mission.launch.py   (mission:=<name oder Pfad>)
 """
@@ -26,17 +28,18 @@ from launch_ros.actions import Node
 ARGUMENTE = [
     ("mission", "", "Mission: Name aus roboter_task_planning/missions (z. B. testwelt) oder Pfad; leer = keine"),
     ("welt", "", "Umgebung aus roboter_welten; leer = Welt der Mission (ohne Mission: nur Ebene)"),
-    ("navigation", "aus", "aus | nav2 (roboter_navigation) | testdouble (nur Tests: geradeaus, ohne Karte)"),
+    ("navigation", "aus", "aus | nav2 (roboter_navigation) | extern (Nav2 laeuft separat, z. B. Variante des Kollegen; "
+                          "Lidar, Sensorik und Watchdog wie bei nav2) | testdouble (nur Tests: geradeaus, ohne Karte)"),
     ("nav2_params", "", "eigene Nav2-Parameterdatei (leer = Standard aus roboter_navigation passend zum Lidar)"),
     ("slam", "false", "slam_toolbox liefert /map und map->odom (nur mit navigation:=nav2)"),
     ("lidar_modus", "", "aus | 3d (ein 3D-Lidar, /scan abgeleitet) | 2d (eine Scanebene, Vergleich); "
-                        "leer = 3d mit Navigation, sonst aus"),
+                        "leer = 3d, sobald eine Navigation laeuft (nav2, extern, testdouble), sonst aus"),
     ("odom_quelle", "ground_truth", "ground_truth (Simulation) | beinodometrie (Schaetzer aus Gelenken + IMU)"),
     ("realistic_sensors", "false", "Sensorrauschen, Bias, Drift, Latenz, Lidar-Ausfaelle"),
     ("headless", "false", "Simulation ohne Viewer-Fenster (weniger CPU/Speicher)"),
     ("record_path", "", ".npz-Datei fuer die Posenaufzeichnung (Demo-Video)"),
-    ("cmd_vel_timeout_s", "", "cmd_vel-Watchdog [s]; leer = 1.0 mit Navigation (dauernder Strom), sonst 0 (aus, "
-                              "Handbetrieb mit einzelnen Befehlen)"),
+    ("cmd_vel_timeout_s", "", "cmd_vel-Watchdog [s]; leer = 1.0, sobald eine Navigation laeuft (auch extern; "
+                              "dauernder Befehlsstrom), sonst 0 (aus, Handbetrieb mit einzelnen Befehlen)"),
     ("auto_start", "false", "Mission sofort starten (sonst Dienst /mission/start)"),
     ("rviz", "false", "RViz mit der Ansicht rviz/ansicht_3d.rviz"),
 ]
@@ -57,9 +60,13 @@ def _mission_pfad(mission):
 def _aufbauen(context):
     a = {name: LaunchConfiguration(name).perform(context) for name, _, _ in ARGUMENTE}
     navigation = a["navigation"].lower()
-    if navigation not in ("aus", "nav2", "testdouble"):
-        raise ValueError(f"navigation:={navigation!r} - erlaubt: aus, nav2, testdouble")
+    if navigation not in ("aus", "nav2", "extern", "testdouble"):
+        raise ValueError(f"navigation:={navigation!r} - erlaubt: aus, nav2, extern, testdouble")
     mission = _mission_pfad(a["mission"])
+    if mission and navigation == "aus":
+        # Eine Mission faehrt Orte an und braucht deshalb eine Navigation; frueher startete sie trotzdem und
+        # scheiterte erst beim ersten Fahrschritt.
+        raise ValueError("mission:= braucht navigation:=nav2, extern oder testdouble")
     # Eine Quelle fuer die Umgebung: ohne Argument welt laeuft die Simulation in der Welt der Mission, damit
     # Simulation und Orte nicht auseinanderlaufen koennen.
     welt = a["welt"]

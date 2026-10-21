@@ -10,6 +10,8 @@ from typing import Optional, Tuple
 
 import numpy as np
 
+from roboter_beschreibung.geometrie import winkel_normieren, yaw_aus_quat
+
 # Unterhalb dieser angeforderten Drehrate gilt "keine Drehung gewuenscht" und die Kurshaltung greift. Bewusst
 # fast 0 (Review L2, vorher 0.05): Nav2 gibt in sanften Kurven kleine wz aus, die Kurshaltung hielt sonst den
 # alten Kurs gegen den Pfadfolger.
@@ -22,17 +24,6 @@ HEADING_HOLD_KP = 1.0
 HEADING_HOLD_MAX_YAW_RATE = 0.3
 POSITION_HOLD_KP = 1.0
 POSITION_HOLD_MAX_SPEED = 0.15
-
-
-def yaw_aus_quat(quat) -> float:
-    """Gierwinkel aus Quaternion [w, x, y, z]."""
-    w, x, y, z = quat
-    return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
-
-
-def winkel_normieren(winkel: float) -> float:
-    """Auf [-pi, pi]: ein Fehler von 359 Grad ist -1 Grad, nicht fast eine volle Drehung."""
-    return float((winkel + np.pi) % (2.0 * np.pi) - np.pi)
 
 
 class Kurshaltung:

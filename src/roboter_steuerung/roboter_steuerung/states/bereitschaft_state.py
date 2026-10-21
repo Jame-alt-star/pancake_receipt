@@ -1,94 +1,29 @@
-import numpy as np
-
 from roboter_steuerung.states.i_robot_state import IRobotState
 
 
 class BereitschaftState(IRobotState):
-    """
-    Zustand "Bereitschaft" (SysML: RoboterZustandsautomat, siehe
-    RoboterZustaende.sysml): Uebergang zwischen StartState und der
-    aktiven Bewegungsregelung (Gehen/Balancieren) - der Roboter wartet
-    hier auf eine bewusste Freigabe (node.bewegung_freigegeben, siehe
-    steuereinheit_node._setze_freigabe(), Kanal /freigabe), bevor er in Gehen/
-    Balancieren wechselt (siehe FIX 1 unten).
+    """Bereitschaft: Roboter steht und wartet auf die bewusste Freigabe (/freigabe), statt nach dem Hochfahren mit
+    einem anstehenden Befehl loszulaufen.
 
-    FIX 1 (12.10.2026, Nutzerwunsch - Realismus): eine fruehere Version
-    hat sofort automatisch anhand von node.cmd_target entschieden, OHNE
-    auf einen bewussten Befehl zu warten - das fuehrte dazu, dass der
-    Roboter direkt nach dem Hochfahren losgelaufen ist (node.cmd_target
-    startet mit cmd_init aus der YAML, haeufig != 0). Nicht realistisch:
-    ein Roboter sollte nach dem Hochfahren in Bereitschaft stehen
-    bleiben, bis ein Bediener/eine uebergeordnete Instanz explizit ein
-    Kommando sendet.
-
-    FIX 2 (12.10.2026, direkt im Anschluss, Testfund): die ERSTE Version
-    von FIX 1 hat waehrend des Wartens GAR KEINE Gelenk-Zielwerte
-    gesendet (send_joint_commands() nicht aufgerufen) - in der Annahme,
-    MuJoCo wuerde dadurch einfach die aktuelle (Ruhe-)Pose halten. Im
-    Test: der Roboter ist SOFORT nach dem Laden umgefallen. Ursache
-    gefunden in mujoco_node.py: ohne eine Nachricht auf /joint_commands
-    regelt mujoco_node.py weiterhin per PD auf target_dof_pos =
-    default_angles (dem YAML-Konfigurationswert) - das ist exakt
-    "Variante 2" aus balancieren_state.py (reine Gelenk-Positions-PD-
-    Regelung ohne die RL-Policy), bei der schon FRUEHER in diesem Projekt
-    festgestellt wurde, dass sie umkippt - die Pose selbst ist zwar
-    geometrisch stabil, aber eine reine PD-Haltung merkt nicht, wenn der
-    Roboter kippt (hat keinen Rueckkopplungskreis auf den Schwerpunkt).
-
-    DIESE VERSION (FIX 2): haelt waehrend des Wartens auf Freigabe die
-    RL-Policy aktiv, mit cmd hart auf [0,0,0] - exakt dieselbe,
-    nachweislich stabile Kombination wie BalancierenState/NotAusState
-    ("Variante 4"). Der Roboter steht/trabt also schon WAEHREND der
-    Bereitschaft stabil, nicht erst ab Gehen/Balancieren.
-    """
-
-    CMD_NULL_SCHWELLE = 0.05
+    Warum die Policy dabei aktiv bleibt (Fahrbefehl 0, Kurshaltung auf der Drehrate): ohne /joint_commands haelt
+    Layer 4 die Ruhepose nur per PD-Regelung, und reine Gelenk-PD merkt nicht, wenn der Schwerpunkt wandert - der
+    Roboter fiel sofort um (12.10.2026). Mit Freigabe: Befehl ~0 -> Balancieren, sonst -> Gehen."""
 
     def __init__(self):
-        # Nur fuer die einmalige Log-Meldung unten - verhindert, dass
-        # "warte auf Freigabe" bei 50 Hz jeden Takt neu ins Log
-        # geschrieben wird, solange keine Freigabe vorliegt.
         self._warte_gemeldet = False
 
     def execute(self, node) -> IRobotState:
         if not node.bewegung_freigegeben:
             if not self._warte_gemeldet:
-                node.get_logger().info(
-                    "Zustand: Bereitschaft - warte auf Freigabe (/freigabe)."
-                )
+                node.get_logger().info("Zustand: Bereitschaft - warte auf Freigabe (/freigabe).")
                 self._warte_gemeldet = True
-
-            # FIX 2 (siehe Docstring): Policy aktiv halten, cmd hart auf
-            # [0,0,0] - NICHT einfach nichts senden, das fuehrt sonst zu
-            quat, omega = node.bridge.read_imu()
-            joint_pos, joint_vel = node.bridge.read_joint_states()
-            # Kurshaltung auch beim Warten auf die Freigabe (13.10.2026). cmd[2] ist hier NUR die
-            # Kurshaltungs-Korrektur: die Rampe steht in Bereitschaft auf 0 (seit 14.10.2026,
-            # Review B5 - vorher konnte eine alte Drehrate des Nutzers durchgereicht werden).
-            # Gemessen: ohne sie driftet der Roboter in Bereitschaft (~0.3 m /
-            # 60 s, Fuesse heben sich, kleine Schritte), mit ihr stehen die
-            # Beine praktisch still (|dq| 0.0004 rad/s, Basis 0.6 cm / 50 s).
-            # vx/vy bleiben hart 0.
-            cmd_fuer_policy = np.array([0.0, 0.0, float(node.cmd[2])], dtype=np.float32)
-            target_positions = node.controller.compute_joint_targets(
-                joint_positions=joint_pos,
-                joint_velocities=joint_vel,
-                base_quat=quat,
-                base_ang_vel=omega,
-                cmd=cmd_fuer_policy,
-            )
-            node.bridge.send_joint_commands(target_positions)
+            self._policy_schritt(node, node.befehl_stehen(mit_positionshaltung=False))
             return self
-
         node.get_logger().info("Zustand: Bereitschaft - Freigabe erhalten.")
-
-        # Lazy Import, siehe Begruendung in gehen_state.py (Ringimport
-        # vermeiden).
-        from roboter_steuerung.states.gehen_state import GehenState
+        if node.bewegung_gewuenscht():
+            from roboter_steuerung.states.gehen_state import GehenState
+            node.get_logger().info("Zustandswechsel: Bereitschaft -> Gehen.")
+            return GehenState()
         from roboter_steuerung.states.balancieren_state import BalancierenState
-
-        if max(abs(float(node.cmd_target[0])), abs(float(node.cmd_target[1])), abs(float(node.cmd_target[2]))) < self.CMD_NULL_SCHWELLE:
-            node.get_logger().info("Zustandswechsel: Bereitschaft -> Balancieren.")
-            return BalancierenState()
-        node.get_logger().info("Zustandswechsel: Bereitschaft -> Gehen.")
-        return GehenState()
+        node.get_logger().info("Zustandswechsel: Bereitschaft -> Balancieren.")
+        return BalancierenState()

@@ -7,7 +7,7 @@ package_name = 'roboter_task_planning'
 
 setup(
     name=package_name,
-    version='0.0.0',
+    version='0.2.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -21,7 +21,7 @@ setup(
     zip_safe=True,
     maintainer='Pascal Franz',
     maintainer_email='pascalfranz02@gmail.com',
-    description='G1-Humanoid-Pipeline (siehe README.md)',
+    description='Layer 1: Missionsplanung (PDDL/Fast Downward) und Ausfuehrung ueber ROS-2-Actions',
     license='Apache-2.0',
     extras_require={
         'test': [
