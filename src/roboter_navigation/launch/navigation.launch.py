@@ -16,6 +16,7 @@ ARGUMENTE = [
     ("karte", "", "Kartendatei (Nav2-YAML) -> map_server + AMCL + statische Kartenschicht; leer = ohne Karte"),
     ("slam", "false", "true: slam_toolbox liefert /map und map->odom (nicht zusammen mit karte)"),
     ("slam_params_file", "", "slam_toolbox-Parameter (leer = config/slam_params.yaml)"),
+    ("startpose", "0,0,0", "Startpose x,y,gier [m, m, rad] im map-Frame fuer AMCL (nur mit karte); Simulation: Ursprung"),
     ("use_composition", "True", "Nav2-Knoten in einem gemeinsamen Container"),
 ]
 
@@ -28,18 +29,27 @@ def mischen(basis: dict, overlay: dict) -> dict:
     return erg
 
 
-def parameter_datei(basis_pfad: str, overlays, karte: str) -> str:
-    """Basis + Overlays (+ Kartenmodus) zu einer Datei zusammenfuehren; Pfad einer temporaeren Datei."""
+def parameter_datei(basis_pfad: str, overlays, karte: str, slam: bool = False, startpose=(0.0, 0.0, 0.0)) -> str:
+    """Basis + Overlays (+ Karten- bzw. SLAM-Modus) zu einer Datei zusammenfuehren; Pfad einer temporaeren Datei."""
     with open(basis_pfad) as f:
         p = yaml.safe_load(f)
     for o in overlays:
         with open(o) as f:
             p = mischen(p, yaml.safe_load(f))
-    if karte:
-        gc = p["global_costmap"]["global_costmap"]["ros__parameters"]
+    gc = p["global_costmap"]["global_costmap"]["ros__parameters"]
+    if karte or slam:
+        # Planung auf der Karte: feste Karte (map_server) oder die waehrend der Fahrt entstehende SLAM-Karte. Frueher
+        # nutzte der SLAM-Modus seine Karte nur zur Lokalisierung, geplant wurde im Fenster der aktuellen Lidardaten.
         if "static_layer" not in gc["plugins"]:
             gc["plugins"] = ["static_layer"] + list(gc["plugins"])
+        gc.setdefault("static_layer", {}).update({"plugin": "nav2_costmap_2d::StaticLayer",
+                                                  "map_subscribe_transient_local": True,
+                                                  "subscribe_to_updates": bool(slam)})
+    if karte:
         p.setdefault("map_server", {}).setdefault("ros__parameters", {})["yaml_filename"] = karte
+        x, y, gier = startpose
+        p.setdefault("amcl", {}).setdefault("ros__parameters", {})["initial_pose"] = \
+            {"x": float(x), "y": float(y), "z": 0.0, "yaw": float(gier)}
     f = tempfile.NamedTemporaryFile("w", prefix="nav2_", suffix=".yaml", delete=False)
     yaml.safe_dump(p, f, sort_keys=False)
     f.close()
@@ -55,7 +65,11 @@ def _aufbauen(context):
     overlays = [o for o in a["overlays"].split(",") if o]
     if karte:
         overlays.append(os.path.join(share, "config", "nav2_karte.yaml"))
-    params = parameter_datei(a["params_file"] or os.path.join(share, "config", "nav2_params.yaml"), overlays, karte)
+    startpose = [float(v) for v in a["startpose"].split(",")]
+    if len(startpose) != 3:
+        raise ValueError(f"startpose:={a['startpose']!r} - erwartet x,y,gier")
+    params = parameter_datei(a["params_file"] or os.path.join(share, "config", "nav2_params.yaml"), overlays, karte,
+                             slam, startpose)
     aktionen = []
     if karte:
         # Lokalisierung auf der festen Karte: map_server + AMCL (AMCL liefert map->odom)

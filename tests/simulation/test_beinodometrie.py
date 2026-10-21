@@ -12,7 +12,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src", "roboter_steuerung"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sim_helpers import load_config, load_controller29  # noqa: E402
-from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie  # noqa: E402
+from roboter_steuerung.zustandsschaetzung.beinodometrie import Beinodometrie, kinematikmodell  # noqa: E402
 
 
 def _run(cmd_fn, dur, seed=0):
@@ -66,3 +66,19 @@ def test_geschwindigkeit_gefiltert():
     v = np.array(v_fehler)
     assert np.median(v) < 0.1, f"Median-Fehler {np.median(v):.3f} m/s"
     assert np.percentile(v, 99) < 0.3, f"99%-Fehler {np.percentile(v, 99):.3f} m/s"
+
+
+def test_kinematikmodell_ohne_netze_gleiche_posen():
+    """Das schlanke Modell der Beinodometrie (ohne Netze, ~15 statt ~410 MB) liefert dieselben Koerperposen."""
+    xml = load_config()["xml_path"]
+    voll, schlank = mujoco.MjModel.from_xml_path(xml), kinematikmodell(xml)
+    assert schlank.nmesh == 0 and (schlank.nbody, schlank.nq) == (voll.nbody, voll.nq)
+    d1, d2 = mujoco.MjData(voll), mujoco.MjData(schlank)
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        q = rng.uniform(-1.0, 1.0, voll.nq)
+        q[3:7] /= np.linalg.norm(q[3:7])
+        d1.qpos[:] = d2.qpos[:] = q
+        mujoco.mj_kinematics(voll, d1)
+        mujoco.mj_kinematics(schlank, d2)
+        assert np.allclose(d1.xpos, d2.xpos, atol=1e-12) and np.allclose(d1.xquat, d2.xquat, atol=1e-12)

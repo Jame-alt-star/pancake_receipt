@@ -12,10 +12,23 @@ import numpy as np
 import mujoco
 
 
+def kinematikmodell(xml_path: str) -> mujoco.MjModel:
+    """Robotermodell ohne Netz-Geometrien: fuer die Vorwaertskinematik genuegen Glieder und Gelenke. Mit allen Netzen
+    belegte das Kompilieren ~410 MB Arbeitsspeicher, ohne ~15 MB; Koerperposen, Massen und Traegheiten bleiben gleich
+    (gemessen 21.10.2026, Test in tests/simulation/test_beinodometrie.py). Unter WSL2 mit 2,8 GB lagerte das System
+    sonst bei Simulation mit Viewer aus."""
+    spec = mujoco.MjSpec.from_file(xml_path)
+    for g in [g for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_MESH]:
+        spec.delete(g)
+    for netz in list(spec.meshes):
+        spec.delete(netz)
+    return spec.compile()
+
+
 class Beinodometrie:
     def __init__(self, xml_path: str, update_period_s: float = 0.009, hysterese_m: float = 0.003,
                  foot_bodies=("left_ankle_roll_link", "right_ankle_roll_link")):
-        self.m = mujoco.MjModel.from_xml_path(xml_path)
+        self.m = kinematikmodell(xml_path)
         self.d = mujoco.MjData(self.m)
         self.feet = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, n) for n in foot_bodies]
         # 0.009 statt 0.01 s (Review L7): /joint_states kommt nominal mit 100 Hz, aber mit Jitter;

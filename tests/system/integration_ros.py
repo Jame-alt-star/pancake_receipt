@@ -34,6 +34,7 @@ class Probe(Node):
     def __init__(self):
         super().__init__("integration_probe")
         self.cmd = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.hand = self.create_publisher(Twist, "/cmd_vel/hand", 10)
         q = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.RELIABLE,
                        durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.not_aus = self.create_publisher(Bool, "/not_aus", q)
@@ -42,14 +43,30 @@ class Probe(Node):
         self.odom = None; self.tf_ok = False
         self.odom_vx = []        # twist.linear.x aller /odom-Nachrichten (fuer Auswertungen ueber eine Phase)
         self.sim_zeit = None     # Simulationszeit aus /clock [s]
-        self.create_subscription(Clock, "/clock", lambda m: setattr(self, "sim_zeit", m.clock.sec + m.clock.nanosec * 1e-9), 10)
+        # /clock und /joint_states nur abonnieren, solange sie gebraucht werden (S3 bzw. S5): die Sonde soll das System
+        # moeglichst wenig belasten - mit Viewer-Fenster unter WSL ist die CPU-Reserve knapp (siehe /tf unten).
+        self._clock_abo = self._gelenk_abo = None
         self.create_subscription(Odometry, "/odom", self._odom, 10)
-        self.create_subscription(TFMessage, "/tf", self._tf, 10)
+        # /tf nur bis odom->base_link einmal gesehen ist: seit robot_state_publisher laufen dort 100x/s die Transformationen
+        # aller ~35 Glieder; die Sonde packte sie dauerhaft in Python aus - unnoetige Last neben der Simulation mit Viewer.
+        self._tf_abo = self.create_subscription(TFMessage, "/tf", self._tf, 10)
         self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
         self.create_subscription(Imu, "/imu", lambda m: setattr(self, "quat", (
             m.orientation.w, m.orientation.x, m.orientation.y, m.orientation.z)), 10)
-        self.create_subscription(JointState, "/joint_states",
-                                 lambda m: setattr(self, "dq", np.abs(np.array(m.velocity[:12])).mean()), 10)
+
+    def uhr_abo(self, an: bool):
+        if an and self._clock_abo is None:
+            self._clock_abo = self.create_subscription(
+                Clock, "/clock", lambda m: setattr(self, "sim_zeit", m.clock.sec + m.clock.nanosec * 1e-9), 10)
+        elif not an and self._clock_abo is not None:
+            self.destroy_subscription(self._clock_abo); self._clock_abo = None
+
+    def gelenk_abo(self, an: bool):
+        if an and self._gelenk_abo is None:
+            self._gelenk_abo = self.create_subscription(
+                JointState, "/joint_states", lambda m: setattr(self, "dq", np.abs(np.array(m.velocity[:12])).mean()), 10)
+        elif not an and self._gelenk_abo is not None:
+            self.destroy_subscription(self._gelenk_abo); self._gelenk_abo = None
 
     def _odom(self, m):
         self.odom = m
@@ -57,8 +74,10 @@ class Probe(Node):
 
     def _tf(self, m):
         for t in m.transforms:
-            if t.header.frame_id == "odom" and t.child_frame_id == "base_link":
+            if t.header.frame_id == "odom" and t.child_frame_id == "base_link" and not self.tf_ok:
                 self.tf_ok = True
+                self.destroy_subscription(self._tf_abo)
+                return
 
     def spin(self, secs):
         end = time.time() + secs
@@ -71,16 +90,16 @@ class Probe(Node):
     def freigabe(self, frei=True):
         self.freigabe_pub.publish(Bool(data=bool(frei)))
 
-    def spin_mit_cmd(self, secs, vx):
-        """spin, dabei /cmd_vel mit 10 Hz senden (wie Nav2/Joystick)."""
+    def spin_mit_cmd(self, secs, vx, pub=None):
+        """spin, dabei /cmd_vel (oder pub) mit 10 Hz senden (wie Nav2/Joystick)."""
         end = time.time() + secs
         while time.time() < end:
-            self.twist(vx)
+            self.twist(vx, pub=pub)
             self.spin(0.1)
 
-    def twist(self, vx=0.0, vy=0.0, wz=0.0):
+    def twist(self, vx=0.0, vy=0.0, wz=0.0, pub=None):
         m = Twist(); m.linear.x = float(vx); m.linear.y = float(vy); m.angular.z = float(wz)
-        self.cmd.publish(m)
+        (pub or self.cmd).publish(m)
 
     def wait_data(self, timeout=60):
         end = time.time() + timeout
@@ -101,6 +120,7 @@ def main():
     ap.add_argument("--keep-log", default=None)
     ap.add_argument("--realistisch", action="store_true", help="realistic_sensors:=true (Rauschen, Latenz)")
     ap.add_argument("--beinodometrie", action="store_true", help="odom_quelle:=beinodometrie (Schaetzer statt Ground-Truth)")
+    ap.add_argument("--headless", action="store_true", help="Simulation ohne Viewer-Fenster")
     a = ap.parse_args()
     has_clip = True        # 29-DOF-Policy mit Kommandobegrenzung (12-DOF entfernt)
     # Strenger Stillstand nur fuer die 29-DOF-Policy; die 12-DOF-Policy trippelt bei
@@ -112,7 +132,8 @@ def main():
     logfile = os.path.join(logdir, "launch.log")
     proc = subprocess.Popen(["ros2", "launch", "roboter_system", "system.launch.py"]
                             + (["realistic_sensors:=true"] if a.realistisch else [])
-                            + (["odom_quelle:=beinodometrie"] if a.beinodometrie else []), stdout=open(logfile, "w"),
+                            + (["odom_quelle:=beinodometrie"] if a.beinodometrie else [])
+                            + (["headless:=true"] if a.headless else []), stdout=open(logfile, "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     rclpy.init()
     pr = Probe()
@@ -151,11 +172,13 @@ def main():
         check("S2b Drift im Stand < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm")
 
         print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
-        pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.time()
+        pr.uhr_abo(True); pr.spin(1)
+        p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.time()
         pr.spin(6); pr.odom_vx.clear(); pr.spin(6)          # Geschwindigkeit ueber die zweite Haelfte auswerten
         dx = float(np.hypot(pr.p[0] - p0[0], pr.p[1] - p0[1])); dyaw = pr.yaw() - y0
         dt_sim = (pr.sim_zeit - t_sim0) if (pr.sim_zeit is not None and t_sim0 is not None) else float("nan")
         echtzeit = dt_sim / (time.time() - t_wand0)
+        pr.uhr_abo(False)
         check("S3 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         # In SIMULATIONSZEIT gemessen (Review 2): laeuft die Simulation unter Last langsamer als Echtzeit, legt der
         # Roboter in 12 s Wanduhr weniger Strecke zurueck, ohne langsamer zu gehen (beobachtet: 2.85 statt ~4.1 m).
@@ -180,7 +203,7 @@ def main():
         print("== S5 NOT-AUS waehrend Gehen")
         pr.twist(0.4); pr.spin(6)
         pr.not_aus.publish(Bool(data=True)); pr.spin(6)
-        px = pr.p[0]; pr.spin(5)
+        pr.gelenk_abo(True); px = pr.p[0]; pr.spin(5); pr.gelenk_abo(False)
         check("S5 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
         check(f"S5 steht (x-Aenderung < {tol*100:.0f} cm in 5 s)", abs(pr.p[0] - px) < tol, f"dx={pr.p[0]-px:.3f}")
         if strict:
@@ -205,6 +228,15 @@ def main():
         pr.twist(0, 0, 0); pr.spin(8); px = pr.p[0]; pr.spin(4)
         check("S7 steht nach Stopp", pr.p[2] > 0.7 and abs(pr.p[0] - px) < tol, f"z={pr.p[2]:.3f}")
 
+        print("== S7b Handsteuerung (/cmd_vel/hand) hat Vorrang vor /cmd_vel, danach gilt wieder /cmd_vel (= 0)")
+        pp = pr.p; pr.spin_mit_cmd(5, 0.4, pub=pr.hand)
+        dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))
+        check("S7b geht mit Handbefehl, obwohl /cmd_vel 0 ist (>0.8 m)", dist > 0.8, f"dist={dist:.2f}")
+        pr.spin(8); pp = pr.p; pr.spin(4)
+        dist = float(np.hypot(pr.p[0] - pp[0], pr.p[1] - pp[1]))
+        check("S7b steht wieder, sobald die Hand nicht mehr sendet", pr.p[2] > 0.7 and dist < tol,
+              f"z={pr.p[2]:.3f} d={dist:.3f}")
+
         if pr.odom is not None:
             o = pr.odom.pose.pose.position
             err = float(np.hypot(o.x - pr.p[0], o.y - pr.p[1]))
@@ -213,6 +245,7 @@ def main():
         log = read_log(logfile)
         check("S8 keine MuJoCo-Instabilitaetswarnung", "simulation is unstable" not in log)
         check("S8 keine Python-Tracebacks", "Traceback" not in log)
+        check("S8 Sprunglimit griff nie (Normalbetrieb)", "Zielsprung begrenzt" not in log)
 
         print("== S9 Steuerung faellt aus -> Simulation daempft (Review 2)")
         pids = subprocess.run(["pgrep", "-f", "lib/roboter_steuerung/steuereinheit_node"], capture_output=True,

@@ -41,8 +41,9 @@ Stand 21.10.2026 (v2.7, nach Review 2). Einstieg für Übergaben; Bedienung: `RE
 | `/odom` + TF `odom→base_link` | Topic/TF | L4 (Ground-Truth) **oder** `beinodometrie_node` | Schalter `odom_quelle` |
 | `/points` | Topic | L4 → Sensorik | 3D-Lidar, 5 Hz |
 | `/scan`, `/punkte_hindernis` | Topic | Sensorik → L2 | SLAM/Collision-Monitor bzw. Costmaps |
-| `/cmd_vel` | Topic | L2 (oder Hand/Testdouble) → L3 | Wunsch [vx, vy, wz], L3 begrenzt |
+| `/cmd_vel` | Topic | L2 (oder Testdouble, Hand ohne Navigation) → L3 | Wunsch [vx, vy, wz], L3 begrenzt |
 | `/cmd_vel/balance` | Topic | Balance-Dienst → L3 | Vorrang vor `/cmd_vel`, solange er sendet (0,5 s) |
+| `/cmd_vel/hand` | Topic | Bediener → L3 | höchster Vorrang (vor Balance und Nav2), solange er sendet (0,5 s) |
 | `/steuerung/zustand` | Topic (latched) | L3 → L1, Bediener | Start/Bereitschaft/Gehen/Balancieren/NotAus/Stoerung |
 | `/steuerung/quittieren` | Service (Trigger) | Bediener → L3 | Stoerung bewusst verlassen |
 | `/freigabe` | Topic | L1 oder Bediener → L3 | eigener Kanal, während NotAus abgelehnt |
@@ -65,6 +66,7 @@ Stand 21.10.2026 (v2.7, nach Review 2). Einstieg für Übergaben; Bedienung: `RE
 | Policy liefert NaN/inf | Layer 3 | Stoerung (der Wert wird nicht gesendet) |
 | Sturz (Neigung > `sturz_neigung_grad`, 45°) | Layer 3 | Stoerung |
 | Zielwinkel ausserhalb der Gelenkgrenzen | Layer 3 | auf die Grenzen des Robotermodells begrenzt |
+| Zielwinkel springt > `max_zielsprung_rad` (0,6 rad) in einem Takt | Layer 3 | Sprung begrenzt, Warnung (normal: ≤ 0,32 rad) |
 | Kommandos bleiben aus (> `kommando_timeout_s`, 1 s) | Layer 4 (Simulation; auf Hardware die Unitree-Firmware) | **Daempfungsmodus**: Steifigkeit 0, nur Daempfung |
 | Stoerung | Layer 1 | Mission bricht ab, Neustart erst nach `/steuerung/quittieren` |
 | `/cmd_vel` bleibt aus (> 1 s mit Navigation) | Layer 3 | Watchdog setzt den Wunsch auf 0 |
@@ -78,7 +80,7 @@ Zustand der Steuerung: `/steuerung/zustand` (latched). Stoerung verlassen nur be
   Fernbedienung bzw. einen verdrahteten Not-Halt, der unabhaengig von dieser Software wirkt.
 - Die Unitree-SDK-Bridge muss bei ausbleibenden Kommandos selbst daempfen (Firmware-Daempfungsmodus) und kp/kd aus
   `/antrieb/parameter` mit jedem Gelenkkommando senden.
-- `auto_start` ist nur fuer Simulation und Tests gedacht.
+- `auto_start` ist nur fuer Simulation und Tests gedacht; ohne Simulation (kein `/clock`) wird er abgelehnt.
 
 ## TF-Baum
 
@@ -95,8 +97,8 @@ bzw. aus dem TF-Baum. Am echten G1 sitzt der MID-360 im Kopf: Elternglied `torso
 | Modus | `map → odom` | globale Planung | wann |
 |---|---|---|---|
 | ohne Karte (Standard) | statisch (Startpose = Kartenursprung) | nur im 24-m-Fenster der aktuellen Lidardaten | Simulation, schnelle Tests |
-| `slam:=true` | slam_toolbox (Kartierung) | wie ohne Karte | Karte aufnehmen |
-| `karte:=true` | AMCL auf `welten/<welt>/karte.yaml` | auf der ganzen Karte (static_layer) | feste Halle: Orte bleiben gültig |
+| `slam:=true` | slam_toolbox (Kartierung) | auf der entstehenden SLAM-Karte (static_layer mit Aktualisierungen) | Karte aufnehmen |
+| `karte:=true` | AMCL auf `welten/<welt>/karte.yaml`, Startpose über `startpose:=x,y,gier` | auf der ganzen Karte (static_layer) | feste Halle: Orte bleiben gültig |
 
 Layer 1 fragt die Wegkosten zwischen den Orten beim Nav2-Planer ab (`compute_path_to_pose`); ohne Planer gilt die Luftlinie.
 Für die echte Halle: Karte einmal mit SLAM aufnehmen und mit `map_saver_cli` als `karte.yaml/.pgm` der Welt speichern.
@@ -117,8 +119,9 @@ Für die echte Halle: Karte einmal mit SLAM aufnehmen und mit `map_saver_cli` al
 | Zustand/Aktion „Balancieren“ balanciert nicht selbst | **Name bleibt** (SysML) | Bedeutung: anhalten und sicheres Stehen bestätigen; das Gleichgewicht hält immer die Policy. So steht es in den Docstrings (`balancieren_state.py`, `balance_dienst_node.py`) |
 | `GehAktion` ohne produktiven Nutzer | **bleibt als Test-Schnittstelle** | SysML-Port; nur das Testdouble (`navigation:=testdouble`) bedient sie. Produktiv navigiert Layer 1 über Nav2 (`navigate_to_pose`) |
 | Boden/Licht im Robotermodell statt in der Welt | **bleibt** | Stehen so in Unitrees Original (`unitree_rl_gym`); die Datei soll nah am Original bleiben (einzige Änderung `armature`). Welten ergänzen nur Hindernisse |
-| `auto_start` + Freigabe durch die Mission | **nur Simulation/Tests** | Warnung im Log; auf Hardware startet ein Bediener die Mission (Dienst), am Missionsende wird die Freigabe entzogen |
+| `auto_start` + Freigabe durch die Mission | **nur Simulation/Tests** | ohne Simulation (kein `/clock`-Sender) lehnt der Missionsknoten `auto_start` ab; auf Hardware startet ein Bediener die Mission (Dienst), am Missionsende wird die Freigabe entzogen |
 | NotAus in Software | **ersetzt keinen physischen Not-Halt** | Anforderung an die Hardware-Anbindung (Abschnitt Sicherheit) |
+| Steuerung (Layer 3) ohne MuJoCo | **Gelenkgrenzen aus der Modelldatei gelesen**; Beinodometrie lädt das Modell ohne Netze | Das volle Modell mit allen Netzen belegt ~410 MB je Prozess; unter WSL2 (2,8 GB) lagerte das System aus und der Roboter stürzte beim Anhalten (Verlauf, 21.10.2026). Auf Hardware braucht die Steuerung keine Physik-Engine |
 
 ## Modell und Rückverfolgbarkeit
 

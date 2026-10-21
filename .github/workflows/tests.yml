@@ -21,6 +21,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install mujoco==3.13.0 onnxruntime==1.31.0 numpy==1.26.4 PyYAML==6.0.1 pytest
       - name: pytest
-        env:
-          MUJOCO_GL: egl
+        # kein MUJOCO_GL setzen: die Tests rendern nicht; mit MUJOCO_GL=egl scheiterte schon der Import (kein EGL auf
+        # dem GitHub-Rechner)
         run: python -m pytest -q -rs

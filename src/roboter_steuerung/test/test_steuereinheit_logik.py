@@ -1,6 +1,8 @@
 """Logik des Steuerknotens ohne laufendes ROS2: NotAus, Freigabe, Watchdog, Befehlsaufbereitung, Sicherheits-
-pruefungen (Sensorausfall, Sturz, ungueltige Policy-Ausgabe, Gelenkgrenzen), Vorrang des Balance-Eingangs.
+pruefungen (Sensorausfall, Sturz, ungueltige Policy-Ausgabe, Gelenkgrenzen, Zielsprung), Vorrang-Eingaenge.
 Benoetigt eine gesourcte ROS2-/Workspace-Umgebung (rclpy, roboter_interfaces)."""
+import time
+
 import numpy as np
 import pytest
 
@@ -47,7 +49,7 @@ def make(cmd_target=(0.0, 0.0, 0.0)):
     n = object.__new__(nodemod.SteuereinheitNode)        # ohne Node.__init__ (kein rclpy-Kontext noetig)
     n.cmd_wunsch = np.array(cmd_target, dtype=np.float32)
     n.cmd_target = n.cmd_wunsch.copy()
-    n._balance_cmd, n._balance_bis = np.zeros(3, dtype=np.float32), 0.0
+    n._vorrang = {e: [np.zeros(3, dtype=np.float32), 0.0] for e in nodemod.VORRANG_EINGAENGE}
     n.cmd_ramped = np.zeros(3, dtype=np.float32)
     n.cmd = np.zeros(3, dtype=np.float32)
     n.control_dt = 0.02
@@ -59,6 +61,8 @@ def make(cmd_target=(0.0, 0.0, 0.0)):
     n.position_hold_aktiv, n.pos_hold_corr, n._odom_xyz = False, np.zeros(2, dtype=np.float32), None
     n.bewegung_freigegeben, n.not_aus_aktiv, n.freigabe_per_cmd_vel = False, False, False   # Bereitschaft rechnet jeden Takt
     n.sensor_timeout_s, n.sturz_neigung_grad = 0.3, 45.0
+    n._letzte_sensorpruefung = time.monotonic()
+    n.max_zielsprung_rad, n._letzte_ziele, n._sprung_gemeldet = float("inf"), None, -float("inf")
     n.grenze_unten = np.array([-1.0, -1.0, -1.0], dtype=np.float32)
     n.grenze_oben = np.array([1.0, 1.0, 1.0], dtype=np.float32)
     n.bridge, n.controller, n.pub_zustand = _Bridge(), _Policy(), _Pub()
@@ -102,9 +106,11 @@ def test_notaus_freigabe_und_cmd_vel_waehrend_notaus():
     assert n.bewegung_freigegeben is False and n.cmd_target.tolist() == [0.0, 0.0, 0.0]
     t = Twist(); t.linear.x = 0.4
     n._cmd_vel_callback(t)
-    n._balance_callback(t)
+    n._vorrang_callback("/cmd_vel/balance", t)
+    n._vorrang_callback("/cmd_vel/hand", t)
     n._freigabe_callback(Bool(data=True))
-    assert n.bewegung_freigegeben is False and n.cmd_wunsch.tolist() == [0.0, 0.0, 0.0] and n._balance_bis == 0.0
+    assert n.bewegung_freigegeben is False and n.cmd_wunsch.tolist() == [0.0, 0.0, 0.0]
+    assert all(bis == 0.0 for _, bis in n._vorrang.values())
     assert any("abgelehnt" in w for w in n._log.warnungen)
     n._not_aus_callback(Bool(data=False))
     n._cmd_vel_callback(t)                    # nach Entwarnung: Ziel ja ...
@@ -125,6 +131,18 @@ def test_policy_ausgabe_begrenzt_und_nan_fuehrt_zur_stoerung():
     assert len(n.bridge.gesendet) == 1                                            # NaN wird nicht gesendet
     assert isinstance(n.state, StoerungState) and "NaN" in n.state.grund
     assert n.bewegung_freigegeben is False
+
+
+def test_zielsprung_begrenzt_bezug_messung_dann_letzte_ziele():
+    n = make()
+    n.max_zielsprung_rad = 0.3
+    n.sende_gelenkziele(np.array([0.2, 0.9, -0.9]))              # Bezug: gemessene Winkel 0.1
+    assert n.bridge.gesendet[-1].tolist() == pytest.approx([0.2, 0.4, -0.2])
+    n.sende_gelenkziele(np.array([0.2, 0.9, -0.9]))              # Bezug: zuletzt gesendet
+    assert n.bridge.gesendet[-1].tolist() == pytest.approx([0.2, 0.7, -0.5])
+    assert len(n._log.warnungen) == 1                             # hoechstens alle 5 s gemeldet
+    n._stoerung("Test")                                            # nach einer Stoerung wieder ab der Messung
+    assert n._letzte_ziele is None
 
 
 def test_nan_waehrend_zustand_bleibt_stoerung():
@@ -170,17 +188,24 @@ def test_quittieren_nur_wenn_ursache_behoben():
     assert antwort().success is False                                             # keine Stoerung mehr
 
 
-def test_balance_eingang_hat_vorrang_vor_cmd_vel():
+def test_vorrang_hand_vor_balance_vor_cmd_vel():
     from geometry_msgs.msg import Twist
     n = make()
     t = Twist(); t.linear.x = 0.5
-    n._cmd_vel_callback(t)
+    n._cmd_vel_callback(t)                                                        # Nav2 will 0.5
     n._control_loop()
     assert n.cmd_target[0] == pytest.approx(0.5)
-    n._balance_callback(Twist())                                                  # Balance-Dienst: anhalten
+    n._vorrang_callback("/cmd_vel/balance", Twist())                              # Balance-Dienst: anhalten
     n._control_loop()
-    assert n.cmd_target.tolist() == [0.0, 0.0, 0.0]                               # Vorrang, obwohl /cmd_vel 0.5 will
-    n._balance_bis = 0.0                                                          # Vorrang abgelaufen
+    assert n.cmd_target.tolist() == [0.0, 0.0, 0.0]
+    h = Twist(); h.angular.z = 0.3
+    n._vorrang_callback("/cmd_vel/hand", h)                                       # Bediener: drehen
+    n._control_loop()
+    assert n.cmd_target.tolist() == pytest.approx([0.0, 0.0, 0.3])
+    n._vorrang["/cmd_vel/hand"][1] = 0.0                                          # Hand abgelaufen -> Balance
+    n._control_loop()
+    assert n.cmd_target.tolist() == [0.0, 0.0, 0.0]
+    n._vorrang["/cmd_vel/balance"][1] = 0.0                                       # alle abgelaufen -> /cmd_vel
     n._control_loop()
     assert n.cmd_target[0] == pytest.approx(0.5)
 
@@ -200,6 +225,18 @@ def test_ueberwachung_erkennt_ausbleibende_sensoren_ohne_regelschritt():
     n.bridge.alter = 1.0
     n._ueberwache_sensoren()
     assert isinstance(n.state, StoerungState) and n.pub_zustand.daten[-1].startswith("Stoerung")
+
+
+def test_eigene_pause_ist_kein_sensorausfall():
+    """Stand die Steuerung selbst (Pruefung > 0.5 s nicht gelaufen), wirken die Daten alt, obwohl frische Nachrichten
+    warten: einmal aussetzen. Laeuft die Steuerung weiter und die Daten bleiben alt, ist es ein Ausfall."""
+    n = make()
+    n.bridge.alter = 1.0
+    n._letzte_sensorpruefung = time.monotonic() - 1.1                            # Steuerung stand ~1 s
+    n._ueberwache_sensoren()
+    assert isinstance(n.state, BereitschaftState) and not n._log.fehler
+    n._ueberwache_sensoren()                                                      # direkt danach: weiter alt
+    assert isinstance(n.state, StoerungState)
 
 
 def test_start_mit_nur_einer_sensorquelle_ist_keine_stoerung():

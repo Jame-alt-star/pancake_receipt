@@ -307,3 +307,34 @@ def test_umweg_aendert_die_reihenfolge():
     plan_luft = FastDownwardPlanner().plan(read_domain(), generate_problem(WorldKnowledge(m, "s")))
     plan_weg = FastDownwardPlanner().plan(read_domain(), generate_problem(WorldKnowledge(m, "s", schaetzer)))
     assert str(plan_luft.schritte[0]) == "gehe_zu(s, a)" and str(plan_weg.schritte[0]) == "gehe_zu(s, b)"
+
+
+def test_auto_start_nur_mit_simulation():
+    """Review 2 B9: ohne /clock-Sender (echte Hardware) wird auto_start nach der Wartezeit abgelehnt."""
+    pytest.importorskip("rclpy")
+    import time
+    from roboter_task_planning import mission_node as mn
+
+    class _Log:
+        def __init__(self): self.fehler, self.info_ = [], []
+        def error(self, m): self.fehler.append(m)
+        def info(self, m): self.info_.append(m)
+
+    def knoten(clock_sender, gestartet_vor_s):
+        n = object.__new__(mn.MissionNode)                 # ohne Node.__init__ (kein rclpy-Kontext noetig)
+        n._log, n.starts = _Log(), []
+        n.get_logger = lambda: n._log
+        n.count_publishers = lambda topic: clock_sender if topic == "/clock" else 0
+        n._start_mission = lambda: (n.starts.append(1), (True, "gestartet"))[1]
+        n._auto_done, n._auto_t0 = False, time.monotonic() - gestartet_vor_s
+        return n
+
+    n = knoten(clock_sender=0, gestartet_vor_s=1.0)
+    n._auto_start_once()
+    assert not n.starts and not n._log.fehler and not n._auto_done          # wartet noch auf die Simulation
+    n = knoten(clock_sender=0, gestartet_vor_s=mn.MissionNode.AUTO_START_WARTE_S + 1)
+    n._auto_start_once(); n._auto_start_once()
+    assert not n.starts and len(n._log.fehler) == 1                          # abgelehnt, einmal gemeldet
+    n = knoten(clock_sender=1, gestartet_vor_s=1.0)
+    n._auto_start_once(); n._auto_start_once()
+    assert n.starts == [1]                                                   # Simulation da: genau einmal gestartet

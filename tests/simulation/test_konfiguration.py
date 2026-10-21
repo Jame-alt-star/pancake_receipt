@@ -5,8 +5,10 @@ import os
 import re
 
 import mujoco
+import numpy as np
 import yaml
 
+from roboter_beschreibung import gelenkgrenzen
 from sim_helpers import BESCHREIBUNG, SIMULATION_DT, STEUER, WS, load_config
 
 
@@ -68,3 +70,14 @@ def test_geometrie_einmal_definiert():
     with open(STEUER + "config/policy_29dof.yaml") as f:
         p = yaml.safe_load(f)
     assert "becken_hoehe_stand" not in p and "xml_path" not in p     # nur noch in roboter.yaml
+
+
+def test_gelenkgrenzen_ohne_mujoco_wie_kompiliertes_modell():
+    """Die Steuerung liest die Grenzen ohne MuJoCo aus der Modelldatei (Speicher); hier gegen das kompilierte Modell."""
+    xml = load_config()["xml_path"]
+    unten, oben = gelenkgrenzen(xml)
+    m = mujoco.MjModel.from_xml_path(xml)
+    j = m.actuator_trnid[:, 0]
+    assert len(unten) == len(oben) == m.nu
+    assert np.all(m.jnt_limited[j])
+    assert np.allclose(unten, m.jnt_range[j, 0]) and np.allclose(oben, m.jnt_range[j, 1])

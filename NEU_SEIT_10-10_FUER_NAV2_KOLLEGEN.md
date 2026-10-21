@@ -207,3 +207,8 @@ Versionen: `git tag` zeigt alle Zwischenstände (`v1.0` erste Pipeline … `v2.7
 - **Feste Karte:** `karte:=true` (map_server + AMCL + statische Kartenschicht) im Platzhalter; Wegkosten über `compute_path_to_pose`.
 - **TF-Baum:** vollständig über `robot_state_publisher`; `/scan` jetzt im Frame `base_link`.
 - **Mission per Name:** `ros2 service call /mission/starte roboter_interfaces/srv/MissionStarten "{mission: patrouille}"`.
+- **Vorrang auf dem Fahrbefehl:** dein Nav2 bleibt auf `/cmd_vel`. Davor gelten `/cmd_vel/hand` (Bediener) und
+  `/cmd_vel/balance` (Balance-Dienst), jeweils solange sie senden. Die Steuerung begrenzt zusätzlich Sprünge der
+  Zielwinkel (greift im Normalbetrieb nie).
+- **SLAM plant auf seiner Karte** (statische Kartenschicht mit Aktualisierungen); mit fester Karte ist die AMCL-Startpose
+  einstellbar: `startpose:=x,y,gier`.

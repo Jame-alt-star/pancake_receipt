@@ -59,7 +59,9 @@ mem_gb=$(awk '/MemTotal/ {printf "%.1f", $2/1048576}' /proc/meminfo)
 if awk "BEGIN {exit !($mem_gb >= 5.5)}"; then
     meldung "Arbeitsspeicher ($mem_gb GB)" OK
 else
-    printf '%-45s %s\n' "Arbeitsspeicher ($mem_gb GB)" "HINWEIS: knapp - Nav2 nur headless; WSL2: memory=6GB in .wslconfig"
+    # WSL2 bekommt ohne .wslconfig den halben Windows-Speicher; bei 2,8 GB lief die Pipeline mit Viewer erst nach dem
+    # Abspecken der Steuerung stabil (Verlauf 21.10.2026), Nav2 + SLAM + Viewer bleiben knapp.
+    printf '%-45s %s\n' "Arbeitsspeicher ($mem_gb GB)" "HINWEIS: knapp - Nav2/SLAM headless; WSL2: memory=... in %UserProfile%\\.wslconfig"
 fi
 
 echo

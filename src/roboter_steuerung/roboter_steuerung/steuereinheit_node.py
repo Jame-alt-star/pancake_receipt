@@ -18,15 +18,14 @@ execute()-Rueckgabewert. AkkuSchwach/Laden fehlen bewusst (keine echten Batterie
 Sicherheitspruefungen je Takt: Sensordaten aktuell (sensor_timeout_s), Roboter aufrecht (sturz_neigung_grad), Policy-
 Ausgabe endlich; Zielwinkel werden auf die Gelenkgrenzen des Robotermodells begrenzt.
 
-Topics: /cmd_vel (Twist, Wunsch), /cmd_vel/balance (Twist, Vorrang vor /cmd_vel, z. B. Balance-Dienst), /freigabe
-(Bool, eigener Kanal), /not_aus (Bool, latched), /odom (Positionshaltung); raus: /steuerung/zustand (String, latched).
+Topics: /cmd_vel (Twist, Wunsch, z. B. Nav2), Vorrang davor: /cmd_vel/hand (Bediener) vor /cmd_vel/balance
+(Balance-Dienst), /freigabe (Bool, eigener Kanal), /not_aus (Bool, latched), /odom (Positionshaltung); raus: /steuerung/zustand (String, latched).
 Dienst /steuerung/quittieren (Trigger): Stoerung bewusst verlassen.
 Parameter: config/steuerung.yaml; Policy: config/policy_29dof.yaml.
 """
 import os
 import time
 
-import mujoco
 import numpy as np
 import rclpy
 import yaml
@@ -38,7 +37,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReli
 from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 
-from roboter_beschreibung import lade as lade_roboter
+from roboter_beschreibung import gelenkgrenzen, lade as lade_roboter
 from roboter_beschreibung.geometrie import neigung_grad
 
 from roboter_steuerung.hardware.topic_bridge import TopicBridge
@@ -50,8 +49,11 @@ from roboter_steuerung.states.not_aus_state import NotAusState
 from roboter_steuerung.states.start_state import StartState
 from roboter_steuerung.states.stoerung_state import StoerungState
 
-# Vorrang-Eingang /cmd_vel/balance gilt so lange nach seiner letzten Nachricht (der Balance-Dienst sendet mit 10 Hz).
-BALANCE_VORRANG_S = 0.5
+# Vorrang-Eingaenge vor /cmd_vel (Nav2 bzw. Testdouble), hoechster zuerst. Jeder gilt so lange nach seiner letzten
+# Nachricht; die Sender senden laufend (Balance-Dienst 10 Hz, Handsteuerung z. B. teleop). Hand vor Balance: ein
+# Bediener uebersteuert immer die Automatik. Ueber allem steht der NotAus (eigener Kanal).
+VORRANG_EINGAENGE = ("/cmd_vel/hand", "/cmd_vel/balance")
+VORRANG_HALTEZEIT_S = 0.5
 
 
 def lade_policy(share: str, datei: str) -> dict:
@@ -63,17 +65,6 @@ def lade_policy(share: str, datei: str) -> dict:
     if not os.path.exists(config["policy_path"]):
         raise FileNotFoundError(f"Policy nicht gefunden: {config['policy_path']} - 'colcon build' ausgefuehrt?")
     return config
-
-
-def gelenkgrenzen(modell_xml: str):
-    """Untere/obere Grenze je Aktuator (Gelenkreihenfolge des Modells = Reihenfolge der Zielwinkel)."""
-    m = mujoco.MjModel.from_xml_path(modell_xml)
-    unten, oben = np.full(m.nu, -np.inf), np.full(m.nu, np.inf)
-    for i in range(m.nu):
-        j = m.actuator_trnid[i, 0]
-        if m.jnt_limited[j]:
-            unten[i], oben[i] = m.jnt_range[j]
-    return unten.astype(np.float32), oben.astype(np.float32)
 
 
 def erzeuge_controller(config: dict):
@@ -95,6 +86,7 @@ class SteuereinheitNode(Node):
         self.declare_parameter("position_hold", True)
         self.declare_parameter("sensor_timeout_s", 1.0)     # aelter -> Stoerung (Sensorausfall)
         self.declare_parameter("sturz_neigung_grad", 45.0)  # staerker geneigt -> Stoerung (Sturz)
+        self.declare_parameter("max_zielsprung_rad", 0.6)   # groesserer Sprung je Regeltakt wird begrenzt
         # Takt: "sensor" = alle regeltakt_s / sensor_periode_s vollstaendigen Messungen (Gelenke UND IMU) ein
         # Regelschritt. Damit laeuft die Policy im Takt der Simulations- bzw. Messzeit statt der Wanduhr: laeuft die
         # Simulation unter Last langsamer als Echtzeit, bekam die Policy vorher mehr Schritte je Simulationssekunde
@@ -103,7 +95,11 @@ class SteuereinheitNode(Node):
         self.declare_parameter("takt_quelle", "sensor")
         self.declare_parameter("sensor_periode_s", 0.01)    # Abstand der Gelenknachrichten (Simulation: 100 Hz)
         self.sensor_timeout_s = float(self.get_parameter("sensor_timeout_s").value)
+        self._letzte_sensorpruefung = time.monotonic()
         self.sturz_neigung_grad = float(self.get_parameter("sturz_neigung_grad").value)
+        self.max_zielsprung_rad = float(self.get_parameter("max_zielsprung_rad").value)
+        self._letzte_ziele = None            # zuletzt gesendete Zielwinkel (Bezug des Sprunglimits)
+        self._sprung_gemeldet = -float("inf")
 
         # Policy (Layer 3): Netz, Verstaerkungen, Ruhepose, Regeltakt, Kommandobereich. Die Bridge schickt
         # kp/kd/Ruhepose einmal latched an Layer 4 (/antrieb/parameter), wie an einen Motortreiber.
@@ -116,15 +112,15 @@ class SteuereinheitNode(Node):
                                   kd=self.config["kds"], startpose=self.config["default_angles"])
         self.controller = erzeuge_controller(self.config)
         # Gelenkgrenzen aus dem Robotermodell: in der Simulation begrenzt MuJoCo selbst, auf Hardware ginge ein
-        # Ausreisser der Policy sonst direkt an die Motoren.
+        # Ausreisser der Policy sonst direkt an die Motoren. Aus der Modelldatei gelesen, ohne MuJoCo (Speicher,
+        # siehe roboter_beschreibung.gelenkgrenzen).
         self.grenze_unten, self.grenze_oben = gelenkgrenzen(lade_roboter()["modell_xml"])
         self.control_dt = float(self.config["regeltakt_s"])
 
         # Fahrbefehl (siehe Modul-Docstring). Startwert immer 0 (Review L1). cmd_wunsch kommt von /cmd_vel; cmd_target
-        # ist der je Takt gueltige Wunsch (Vorrang /cmd_vel/balance).
+        # ist der je Takt gueltige Wunsch (Vorrang-Eingaenge, siehe VORRANG_EINGAENGE).
         self.cmd_wunsch = np.zeros(3, dtype=np.float32)
-        self._balance_cmd = np.zeros(3, dtype=np.float32)
-        self._balance_bis = 0.0
+        self._vorrang = {t: [np.zeros(3, dtype=np.float32), 0.0] for t in VORRANG_EINGAENGE}   # Befehl, gueltig bis
         self.cmd_target = np.zeros(3, dtype=np.float32)
         self.cmd_ramped = np.zeros(3, dtype=np.float32)
         self.cmd = np.zeros(3, dtype=np.float32)
@@ -146,8 +142,9 @@ class SteuereinheitNode(Node):
         self.bewegung_freigegeben = False
         self.freigabe_per_cmd_vel = bool(self.get_parameter("freigabe_per_cmd_vel").value)
         self.create_subscription(Twist, "/cmd_vel", self._cmd_vel_callback, 10)
-        # Vorrang-Eingang: frueher sendeten Balance-Dienst und Nav2 beide auf /cmd_vel und ueberschrieben sich.
-        self.create_subscription(Twist, "/cmd_vel/balance", self._balance_callback, 10)
+        # Vorrang-Eingaenge: frueher sendeten Hand, Balance-Dienst und Nav2 alle auf /cmd_vel und ueberschrieben sich.
+        for topic in VORRANG_EINGAENGE:
+            self.create_subscription(Twist, topic, lambda m, t=topic: self._vorrang_callback(t, m), 10)
         self.create_subscription(Bool, "/freigabe", self._freigabe_callback, 10)
 
         # /not_aus latched (TRANSIENT_LOCAL): ein spaet verbindender Knoten kennt sofort den letzten Zustand -
@@ -192,11 +189,19 @@ class SteuereinheitNode(Node):
         if self.freigabe_per_cmd_vel:
             self._setze_freigabe(True, quelle="/cmd_vel")
 
-    def _balance_callback(self, msg: Twist):
+    def _vorrang_callback(self, topic: str, msg: Twist):
         if self.not_aus_aktiv:
             return
-        self._balance_cmd = np.array([msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32)
-        self._balance_bis = time.monotonic() + BALANCE_VORRANG_S
+        self._vorrang[topic] = [np.array([msg.linear.x, msg.linear.y, msg.angular.z], dtype=np.float32),
+                                time.monotonic() + VORRANG_HALTEZEIT_S]
+
+    def _gueltiger_wunsch(self, jetzt: float) -> np.ndarray:
+        """Wunsch dieses Takts: der hoechste aktive Vorrang-Eingang, sonst /cmd_vel."""
+        for topic in VORRANG_EINGAENGE:
+            cmd, bis = self._vorrang[topic]
+            if jetzt < bis:
+                return cmd.copy()
+        return self.cmd_wunsch.copy()
 
     def _freigabe_callback(self, msg: Bool):
         self._setze_freigabe(bool(msg.data), quelle="/freigabe")
@@ -226,7 +231,8 @@ class SteuereinheitNode(Node):
             self.cmd_wunsch = np.zeros(3, dtype=np.float32)
             self.cmd_target = np.zeros(3, dtype=np.float32)
             self.cmd_ramped = np.zeros(3, dtype=np.float32)
-            self._balance_bis = 0.0
+            for eingang in self._vorrang.values():
+                eingang[1] = 0.0
 
     def _quittieren_callback(self, req, resp):
         """Stoerung bewusst verlassen - nur wenn die Ursache behoben ist."""
@@ -252,6 +258,7 @@ class SteuereinheitNode(Node):
         self.get_logger().error(f"STOERUNG: {grund} - keine Zielwinkel mehr; Layer 4 daempft. "
                                 f"Weiter nur ueber /steuerung/quittieren.")
         self.state = StoerungState(grund)
+        self._letzte_ziele = None
         self.bewegung_freigegeben = False
         self.cmd_wunsch = np.zeros(3, dtype=np.float32)
         self.cmd_target = np.zeros(3, dtype=np.float32)
@@ -322,12 +329,28 @@ class SteuereinheitNode(Node):
         return np.array([vx, vy, self.cmd[2]], dtype=np.float32)
 
     def sende_gelenkziele(self, ziele: np.ndarray) -> None:
-        """Pruefen und senden: nicht endliche Werte -> Stoerung (nichts senden); sonst auf Gelenkgrenzen begrenzt."""
+        """Pruefen und senden: nicht endliche Werte -> Stoerung (nichts senden); sonst auf die Gelenkgrenzen und den
+        Sprung je Takt begrenzt. Bezug des Sprungs: die zuletzt gesendeten Ziele, nach Start oder Stoerung die
+        gemessenen Winkel."""
         ziele = np.asarray(ziele, dtype=np.float32)
         if not np.all(np.isfinite(ziele)):
             self._stoerung("Policy-Ausgabe ungueltig (NaN/inf)")
             return
-        self.bridge.send_joint_commands(np.clip(ziele, self.grenze_unten, self.grenze_oben))
+        ziele = np.clip(ziele, self.grenze_unten, self.grenze_oben)
+        bezug = self._letzte_ziele if self._letzte_ziele is not None else self.bridge.read_joint_states()[0]
+        sprung = ziele - bezug
+        zu_gross = np.abs(sprung) > self.max_zielsprung_rad
+        if np.any(zu_gross):
+            ziele = np.clip(bezug + np.clip(sprung, -self.max_zielsprung_rad, self.max_zielsprung_rad),
+                            self.grenze_unten, self.grenze_oben).astype(np.float32)
+            jetzt = time.monotonic()
+            if jetzt - self._sprung_gemeldet > 5.0:
+                i = int(np.argmax(np.abs(sprung)))
+                self.get_logger().warn(f"Zielsprung begrenzt: Gelenk {i} wollte {sprung[i]:+.2f} rad in einem Takt "
+                                       f"(Grenze {self.max_zielsprung_rad:.2f}); Meldung hoechstens alle 5 s.")
+                self._sprung_gemeldet = jetzt
+        self._letzte_ziele = ziele
+        self.bridge.send_joint_commands(ziele)
 
     # ---------------------------------------------------------------- Regeltakt
     def _sensor_takt(self):
@@ -336,14 +359,28 @@ class SteuereinheitNode(Node):
             self._zaehler = 0
             self._control_loop()
 
+    # Lief die Pruefung selbst so lange nicht, war die Steuerung angehalten (unter WSL2 stand gelegentlich das ganze
+    # System ~1 s, 21.10.2026). Danach wirken die Sensordaten alt, obwohl frische Nachrichten schon in der
+    # Warteschlange liegen: rclpy ruft die Timer vor den Abos auf. Dann einmal aussetzen statt Stoerung melden.
+    EIGENE_PAUSE_S = 0.5
+
+    def _sensorausfall(self) -> bool:
+        """True (Stoerung gemeldet), wenn die Sensordaten aelter als sensor_timeout_s sind, waehrend die Steuerung lief."""
+        jetzt = time.monotonic()
+        selbst_pausiert = jetzt - self._letzte_sensorpruefung > self.EIGENE_PAUSE_S
+        self._letzte_sensorpruefung = jetzt
+        alter = self.bridge.sensor_alter_s()
+        if alter <= self.sensor_timeout_s or selbst_pausiert:
+            return False
+        self._stoerung(f"Sensordaten seit {alter:.2f} s ausgeblieben ({self.bridge.sensor_detail()})")
+        self._melde_zustand()
+        return True
+
     def _ueberwache_sensoren(self):
         """Sensorausfall auch erkennen, wenn keine Nachricht mehr kommt (im Sensortakt laeuft dann kein Regelschritt)."""
         if isinstance(self.state, (StartState, StoerungState)):
             return
-        alter = self.bridge.sensor_alter_s()
-        if alter > self.sensor_timeout_s:
-            self._stoerung(f"Sensordaten seit {alter:.2f} s ausgeblieben ({self.bridge.sensor_detail()})")
-            self._melde_zustand()
+        self._sensorausfall()
 
     def _control_loop(self):
         # Start-Gate: vor den ersten Sensordaten liefert die Bridge Nullen (eine echte Quaternion ist nie 0).
@@ -354,10 +391,7 @@ class SteuereinheitNode(Node):
         if not self.sensordaten_gueltig():
             return
         quat, _ = self.bridge.read_imu()
-        alter = self.bridge.sensor_alter_s()
-        if alter > self.sensor_timeout_s:
-            self._stoerung(f"Sensordaten seit {alter:.2f} s ausgeblieben ({self.bridge.sensor_detail()})")
-            self._melde_zustand()
+        if self._sensorausfall():
             return
         neigung = neigung_grad(quat)
         if neigung > self.sturz_neigung_grad:
@@ -367,7 +401,7 @@ class SteuereinheitNode(Node):
 
         jetzt = time.monotonic()
         self._pruefe_watchdog(jetzt)
-        self.cmd_target = self._balance_cmd.copy() if jetzt < self._balance_bis else self.cmd_wunsch.copy()
+        self.cmd_target = self._gueltiger_wunsch(jetzt)
         self._bereite_befehl_auf(quat)
         self._halte_position(quat)
 

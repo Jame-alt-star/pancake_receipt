@@ -16,8 +16,8 @@ Abbruch (Service oder NotAus) ueber ein threading.Event, das die Bridges regelma
 Beim Start gibt der Knoten die Bewegung frei (/freigabe): der Missionsstart ist die Bedieneraktion. Am Ende (Erfolg,
 Fehlschlag, Abbruch) entzieht er sie wieder - danach steht der Roboter in Bereitschaft, ein verirrtes /cmd_vel bewegt
 ihn nicht. Meldet die Steuerung eine Stoerung (/steuerung/zustand), bricht die Mission ab.
-auto_start ist fuer Simulation und Tests gedacht: auf echter Hardware wuerde der Roboter damit ohne Bedieneraktion
-losfahren.
+auto_start nur mit Simulation (erkannt am /clock-Sender): auf echter Hardware wuerde der Roboter damit ohne
+Bedieneraktion losfahren, dort wird er abgelehnt.
 """
 import json
 import threading
@@ -79,6 +79,7 @@ class MissionNode(Node):
             self.get_logger().warn("auto_start: Mission startet ohne Bedieneraktion - nur fuer Simulation und Tests.")
             self.create_timer(1.0, self._auto_start_once, callback_group=cb)
             self._auto_done = False
+            self._auto_t0 = time.monotonic()
 
     # ---- Eingaenge ----
     def _locate(self, timeout_s: float = 1.5):
@@ -132,11 +133,23 @@ class MissionNode(Node):
     def _publish(self, d: dict):
         self.pub_status.publish(String(data=json.dumps(d, ensure_ascii=False)))
 
+    # auto_start nur mit Simulation: sie sendet /clock, die echte Hardware nicht (Review 2, B9). So lange auf die
+    # Simulation warten, wie sie zum Start braucht (Startreihenfolge ist frei).
+    AUTO_START_WARTE_S = 30.0
+
     def _auto_start_once(self):
-        if not self._auto_done:
+        if self._auto_done:
+            return
+        if self.count_publishers("/clock") == 0:
+            if time.monotonic() - self._auto_t0 < self.AUTO_START_WARTE_S:
+                return
             self._auto_done = True
-            ok, msg = self._start_mission()
-            self.get_logger().info(f"auto_start: {msg}")
+            self.get_logger().error("auto_start abgelehnt: keine Simulation (/clock) gefunden. Ohne Simulation startet "
+                                    "ein Bediener die Mission (/mission/start).")
+            return
+        self._auto_done = True
+        ok, msg = self._start_mission()
+        self.get_logger().info(f"auto_start: {msg}")
 
     # ---- Steuerung ----
     @staticmethod

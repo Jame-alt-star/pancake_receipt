@@ -16,8 +16,9 @@ Nav2) → navigieren (Nav2 mit 3D-Lidar; ohne Karte, mit SLAM oder auf fester Ka
 optional, Beinodometrie optional). Ein Befehl startet alles: `ros2 launch roboter_system system.launch.py ...`.
 
 ## Tests (21.10.2026, alle grün)
-`bash tests/alle_tests.sh --mit-slam`: pytest 80, Pipeline 34/34 (auch realistisch + Beinodometrie), Watchdog 8/8,
-Missionen (Testdouble, Testwelt, Patrouille, 3D-Palette, feste Karte mit AMCL, SLAM realistisch). Schnelle Tests zusätzlich
+`bash tests/alle_tests.sh --mit-slam`: pytest 86, Pipeline 37/37 (auch realistisch + Beinodometrie, mit Viewer),
+Watchdog 8/8, Missionen 17/17 (Testdouble, Testwelt, Patrouille, 3D-Palette), feste Karte mit AMCL 21/21, SLAM
+realistisch 25/25. Schnelle Tests zusätzlich
 bei jedem Push auf GitHub (`.github/workflows/tests.yml`).
 
 ## Offen
@@ -30,6 +31,7 @@ bei jedem Push auf GitHub (`.github/workflows/tests.yml`).
 | SysML-Modell im Repo + Rückverfolgbarkeit | Modelldateien liegen nicht vor (vorgesehen: `modell/`) |
 | Lizenzfrage eigener Code / Weitergabe | Entscheidung des Arbeitgebers; Fremdlizenzen in `THIRD_PARTY.md` |
 | AkkuSchwach/Laden, Kamera, Greifen | bewusst zurückgestellt (keine echten Batteriedaten bzw. nicht beauftragt) |
+| Rechner: WSL2 mit 2,8 GB, Uhr geht nach | läuft seit dem Abspecken der Steuerung stabil; mehr Speicher bzw. Neustart der WSL entschärft beides (Verlauf 21.10.) |
 
 ## Wo steht was
 | Thema | Datei |

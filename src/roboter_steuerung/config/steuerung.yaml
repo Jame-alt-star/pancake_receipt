@@ -19,7 +19,11 @@ steuereinheit_node:
     # siehe Verlauf). 1 s liegt mit Abstand ueber normalen Luecken und erkennt einen echten Ausfall innerhalb 1 s.
     sensor_timeout_s: 1.0
     sturz_neigung_grad: 45.0
-    # Takt der Regelung: sensor = im Takt der Gelenknachrichten (Simulationszeit), timer = ROS-Timer (Wanduhr)
+    # Groesster Sprung eines Zielwinkels je Regeltakt (20 ms); groessere werden begrenzt und gemeldet. Gemessen
+    # (21.10.2026, synchroner Kreis, 8 Szenarien: Stehen, Vollgas, abrupter Stopp, Drehen, Wechsel, 20-30 ms Latenz mit
+    # Rauschen): hoechstens 0,315 rad (Knie/Fuss). 0,6 rad ~ doppelter Abstand - greift nur bei Ausreissern.
+    max_zielsprung_rad: 0.6
+    # Takt der Regelung: sensor = im Takt der Sensordaten (Gelenke und IMU, Simulationszeit), timer = ROS-Timer (Wanduhr)
     takt_quelle: "sensor"
     sensor_periode_s: 0.01      # Simulation: 100 Hz; echte Hardware: Rate des Unitree-LowState
 

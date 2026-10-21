@@ -40,8 +40,7 @@ class TopicBridge(IRobotHardwareBridge):
         self._t_gelenke = self._t_imu = None          # Empfangszeit (monotonic) der letzten Nachricht
         # Optional: wird aufgerufen, sobald seit dem letzten Aufruf BEIDE Quellen neu sind (Takt der Steuerung aus den
         # Sensordaten). Frueher nach jeder Gelenknachricht: die Simulation sendet erst Gelenke, dann IMU - die Policy
-        # bekam dadurch systematisch eine 10 ms aeltere IMU als die Gelenkwinkel. Im realistischen Modus (zusaetzlich
-        # 10 ms Latenz) fiel der Roboter danach beim Anhalten in 2 von 4 Pipeline-Laeufen (21.10.2026).
+        # bekam dadurch systematisch eine 10 ms aeltere IMU als die Gelenkwinkel.
         self.bei_sensordaten = None
         self._neu_gelenke = self._neu_imu = False
 

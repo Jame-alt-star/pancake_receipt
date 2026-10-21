@@ -35,6 +35,7 @@ ARGUMENTE = [
     ("slam", "false", "slam_toolbox liefert /map und map->odom (nur mit navigation:=nav2)"),
     ("karte", "false", "true: Navigation auf der festen Karte der Welt (map_server + AMCL, Planung auf der ganzen "
                        "Karte); nur mit navigation:=nav2, nicht zusammen mit slam"),
+    ("startpose", "0,0,0", "Startpose x,y,gier im map-Frame fuer AMCL (karte:=true); in der Simulation der Ursprung"),
     ("lidar_modus", "", "aus | 3d (ein 3D-Lidar, /scan abgeleitet) | 2d (eine Scanebene, Vergleich); "
                         "leer = 3d, sobald eine Navigation laeuft (nav2, extern, testdouble), sonst aus"),
     ("odom_quelle", "ground_truth", "ground_truth (Simulation) | beinodometrie (Schaetzer aus Gelenken + IMU)"),
@@ -102,7 +103,7 @@ def _aufbauen(context):
                 raise ValueError(f"karte:=true, aber die Welt {welt!r} hat keine Karte (karte.yaml)")
         aktionen.append(_include("roboter_navigation", "navigation.launch.py",
                                  {"slam": a["slam"], "params_file": a["nav2_params"], "overlays": overlays,
-                                  "karte": karte}))
+                                  "karte": karte, "startpose": a["startpose"]}))
     elif navigation == "testdouble":
         aktionen.append(Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen"))
     if mission:

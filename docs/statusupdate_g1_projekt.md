@@ -427,7 +427,7 @@ Testserie (`tests/alle_tests.sh --mit-slam`).
   - Zustand **Störung** bei Sensorausfall (> 1 s), Sturz (> 45°) oder NaN der Policy; Quittieren per Dienst; Gelenkgrenzen
     aus dem Modell; Simulation geht ohne Kommandos (> 1 s) in den Dämpfungsmodus; Vorrang-Eingang `/cmd_vel/balance`;
     Freigabe-Entzug am Missionsende; Mission bricht bei Störung ab.
-  - **Regeltakt aus den Sensordaten** (jede 2. Gelenknachricht = 20 ms Simulationszeit) statt Wanduhr; `/clock` aus der
+  - **Regeltakt aus den Sensordaten** (jede 2. vollständige Messung aus Gelenken und IMU = 20 ms Simulationszeit) statt Wanduhr; `/clock` aus der
     Simulation; Gehtest misst in Simulationszeit (Echtzeitfaktor 1,00; Strecke 4,39 m in 12 s statt vorher 4,0–4,24 m).
   - **TF-Baum** über `robot_state_publisher` (Gelenknamen in `/joint_states`), Lidar-Montage (Elternglied + Pose) aus
     `roboter.yaml` für Simulation, TF und Sensorik; RViz zeigt den Roboterkörper.
@@ -446,3 +446,36 @@ Testserie (`tests/alle_tests.sh --mit-slam`).
     `fastdds shm clean` auf.
   - Einmal 2,85 m statt ~4,1 m im Gehtest (realistisch): in Wanduhrzeit gemessen, Simulation lief langsamer als Echtzeit.
     Seitdem Messung in Simulationszeit.
+  - **Sturz beim Anhalten (S7) im realistischen Pipeline-Test mit Viewer**, nur mit dem neuen Stand: v2.6 8/8 stehend, neuer
+    Stand 1–3 von 4. Headless 34/34 stehend. Halbierung: v2.6 + neue Steuerung 3/6 gestürzt, v2.6 + neue
+    Simulation/Beschreibung 6/6 stehend. Alter Timer-Takt statt Sensortakt änderte nichts (3 von 4 gestürzt).
+    **Ursache Arbeitsspeicher:** Für die Gelenkgrenzen lud die Steuerung das komplette MuJoCo-Modell mit allen Netzen
+    (gemessen +410 MB, Prozess 384 MB statt ~110 MB). Die WSL hat 2,8 GB (halber Windows-Speicher von 5,9 GB), frei
+    waren ~0,4 GB und Swap war belegt. Im gestürzten Lauf lagerte das System genau beim Anhalten ein und aus (vmstat: 1,4
+    und 2,1 MB Swap-in in den Sekunden des Stopps). Die Steuerung stockte rund 1 s, im Log stand dazu „Sensordaten seit
+    1,00 s ausgeblieben“. **Behoben:** Grenzen ohne MuJoCo aus der Modelldatei (`roboter_beschreibung.gelenkgrenzen`,
+    Test gegen das kompilierte Modell); die Beinodometrie lädt das Modell ohne Netze (448 → 106 MB, Körperposen
+    identisch, Test). Danach 6/6 Läufe mit Viewer 34/34, frei ~0,9 GB, Swap-out in 20 min 0,4 MB. Die vorher vermuteten
+    Ursachen (IMU 10 ms älter als die Gelenke, `/tf`-Last der Testsonde) waren es nicht; beide Änderungen bleiben,
+    weil sie für sich sinnvoll sind.
+  - **Kurze Hänger der ganzen WSL:** In einer Serie brach die Testdouble-Mission mit „Sensordaten seit 1,06 s
+    ausgeblieben“ ab; selbst zwischen zwei aufeinanderfolgenden Zeilen der Steuerung lagen 60 ms (3 Nachstellungen:
+    17/17). Nach einer solchen Pause ruft rclpy die Timer vor den Abos auf – die Daten wirken alt, obwohl frische
+    Nachrichten warten. Seitdem setzt die Prüfung einmal aus, wenn sie selbst > 0,5 s nicht lief; ein echter Ausfall
+    wird weiter nach 1 s erkannt (Unit-Test).
+  - **Uhr der WSL geht nach:** Hyper-V stellt die Systemzeit alle ~35 s um 2,2–4,6 s vor (`systemd-resolved`: „Clock
+    change detected“, auch im Leerlauf). Simulation und Steuerung messen mit der monotonen Uhr und sind nicht betroffen;
+    Nav2 meldet dabei „timestamps differ on 2.3 seconds“ und hält kurz an. Daher schwankt auch der „Echtzeitfaktor“ im
+    Gehtest (0,79–1,00), die Geschwindigkeit in Simulationszeit nicht (0,34–0,35 m/s).
+- **Restpunkte Review 2 (danach):**
+  - **Sprunglimit** der Zielwinkel (B4): gemessen höchstens 0,315 rad je 20-ms-Takt (synchroner Kreis, 8 Szenarien
+    inkl. Vollgas, abruptem Stopp, 20–30 ms Latenz mit Rauschen) → `max_zielsprung_rad` 0,6; größere Sprünge werden
+    begrenzt und gemeldet. Systemtest prüft, dass es im Normalbetrieb nie greift.
+  - **Vorrang-Eingänge** (B10): `/cmd_vel/hand` (Bediener) vor `/cmd_vel/balance` vor `/cmd_vel` (Nav2/Testdouble),
+    jeder gilt 0,5 s nach seiner letzten Nachricht. Systemtest: Handbefehl bewegt den Roboter, obwohl `/cmd_vel` 0 ist.
+  - **`auto_start` nur mit Simulation** (B9): ohne `/clock`-Sender lehnt der Missionsknoten ihn nach 30 s ab.
+  - **SLAM plant auf seiner Karte** (C11, statische Schicht mit Aktualisierungen) und **AMCL-Startpose** einstellbar
+    (C12, `startpose:=x,y,gier`).
+- **Tests v2.7** (`tests/alle_tests.sh --mit-slam`, 21.10.2026): pytest 86, Pipeline 37/37, Pipeline realistisch +
+  Beinodometrie (mit Viewer) 37/37, Watchdog 8/8, Missionen Testdouble/Testwelt/Patrouille/3D-Palette je 17/17, feste
+  Karte (AMCL) 21/21, SLAM realistisch 25/25. Dazu 6/6 realistische Pipeline-Läufe mit Viewer nach der Speicherkorrektur.
