@@ -1,6 +1,6 @@
 # Was ist neu seit dem Stand vom 10.10.2026?
 
-Übersicht für den Nav2-Kollegen · Stand 14.10.2026 (`v2.5`) · Branch `pascal/pipeline-v2.4`
+Übersicht für den Nav2-Kollegen · Stand 21.10.2026 (`v2.7`) · Branch `pascal/pipeline-v2.4`
 
 **Wozu diese Datei:** einmaliger Vergleich „dein Stand vom 10.10. → jetzt“, damit du nicht die ganze Historie lesen musst.
 Den laufend aktualisierten Stand findest du in `PROJEKTSTAND_AKTUELL.md`.
@@ -76,20 +76,26 @@ Das ist der wichtigste Teil für dich. Deine Schicht ist sauber abgegrenzt, du m
 | Topic / Frame | Typ | Kommt von |
 |---|---|---|
 | `/odom`, TF `odom → base_link` | `nav_msgs/Odometry` | Simulation (Ground-Truth) oder Beinodometrie |
-| `/scan` | `sensor_msgs/LaserScan` | `roboter_sensorik` (aus dem 3D-Lidar abgeleitet) – für SLAM und Collision-Monitor |
-| `/punkte_hindernis` | `sensor_msgs/PointCloud2` | `roboter_sensorik` – Hinderniswolke für die Costmaps |
-| TF `base_link → lidar_link` | statisch | Simulation |
-| TF `map → odom` | | **deine Schicht**: statisch oder SLAM |
+| `/scan` | `sensor_msgs/LaserScan`, Frame `base_link` | `roboter_sensorik` (aus dem 3D-Lidar abgeleitet) – für SLAM, AMCL und Collision-Monitor |
+| `/punkte_hindernis` | `sensor_msgs/PointCloud2`, Frame `lidar_link` | `roboter_sensorik` – Hinderniswolke für die Costmaps |
+| TF-Baum des Roboters | `robot_state_publisher` | `base_link → pelvis → …`, `lidar_link` am Glied aus `roboter_beschreibung/config/roboter.yaml` |
+| Karte je Welt | `roboter_welten/welten/<welt>/karte.yaml` | aus der Szene gerechnet; mit `karte:=true` nutzt der Platzhalter sie (map_server + AMCL) |
+| TF `map → odom` | | **deine Schicht**: statisch, SLAM oder AMCL auf fester Karte |
 
 **Dein Ausgang:** `/cmd_vel` (`geometry_msgs/Twist`) an die Steuerung.
 
-**Aufgerufen wirst du** von der Missionsplanung über die Action `navigate_to_pose` (Nav2-Standard).
+**Aufgerufen wirst du** von der Missionsplanung über die Actions `navigate_to_pose` (fahren) und
+`compute_path_to_pose` (Weglänge zwischen zwei Orten für die Planung; Nav2-Standard des `planner_server`, fällt sie aus,
+nimmt Layer 1 die Luftlinie).
 
 **Besonderheiten des Roboters**, die deine Parameter berücksichtigen müssen:
 - Kommandobereich: vx −0,5…1,0 m/s, vy ±0,3, wz ±1,0 rad/s. Oberhalb vx 0,7 sinkt die erlaubte Drehrate auf 0,5.
 - Unter ~0,3 m/s läuft der Roboter nicht los.
 - Drehen auf der Stelle braucht |wz| ≳ 0,8. Kleine Drehbefehle setzt er im Stand kaum um.
 - Vor dem ersten `/cmd_vel` muss `/freigabe` gesendet sein. Die Missionsplanung macht das selbst.
+- Der Balance-Dienst sendet seinen Haltebefehl auf `/cmd_vel/balance` (Vorrang in der Steuerung) - dein `/cmd_vel`
+  wird dabei kurz überstimmt, nicht gestört.
+- Bleibt `/cmd_vel` länger als 1 s aus, setzt die Steuerung den Wunsch auf 0 (Watchdog).
 - In ROS 2 Jazzy brauchen `collision_monitor` und `docking_server` eine Konfiguration, auch wenn man sie nicht nutzt.
 
 **So bindest du deine Variante ein**
@@ -100,7 +106,8 @@ ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 h
 # oder dein Nav2 selbst starten und unser System ohne eigenes Nav2 dazu:
 ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=extern headless:=true
 ```
-Referenz zum Vergleichen: `src/roboter_navigation/config/nav2_params.yaml` (3D-Lidar) und `nav2_params_2d.yaml`.
+Referenz zum Vergleichen: `src/roboter_navigation/config/nav2_params.yaml` (3D-Lidar) und die Overlays
+`nav2_params_2d.yaml` (eine Scanebene) und `nav2_karte.yaml` (feste Karte + AMCL).
 Wenn `bash tests/alle_tests.sh` mit deiner Konfiguration grün ist, Pull Request auf `pascal/pipeline-v2.4`.
 
 ---
@@ -168,7 +175,8 @@ Voraussetzungen: ROS 2 Jazzy mit `navigation2`, `nav2-bringup`, `slam-toolbox`; 
 ## Was noch nicht geht
 
 - **Echte Hardware:** Es fehlt die Anbindung an das Unitree-SDK. Die Schnittstelle dafür ist vorbereitet.
-- **Reale Orte:** Orte sind fest als Koordinaten hinterlegt. Gespeicherte Karte, Lokalisierung und Teach-in fehlen.
+- **Reale Halle:** Karten gibt es bisher nur für die Simulationswelten (aus der Szene gerechnet); für die echte Halle muss
+  eine Karte per SLAM aufgenommen und die Orte eingemessen werden (Teach-in fehlt).
 - **Greifen:** gemessen, dass es im Stehen grundsätzlich geht (0,30 m Reichweite, ≤ 1 kg je Hand), aber nicht umgesetzt.
 - **Akku/Laden:** bewusst weggelassen, solange es keine echten Batteriedaten gibt.
 - **Kamera / Objekterkennung:** keine.
@@ -186,4 +194,16 @@ Voraussetzungen: ROS 2 Jazzy mit `navigation2`, `nav2-bringup`, `slam-toolbox`; 
 | `tests/README.md` | welche Tests es gibt und wie man sie startet |
 | `docs/statusupdate_g1_projekt.md` | ausführlicher Verlauf mit allen Messwerten |
 
-Versionen: `git tag` zeigt alle Zwischenstände (`v1.0` erste Pipeline … `v2.4` aktueller Stand).
+Versionen: `git tag` zeigt alle Zwischenstände (`v1.0` erste Pipeline … `v2.7` aktueller Stand).
+
+---
+
+## Nachtrag 21.10.2026 (Review 2)
+
+- **Sicherheit in der Steuerung:** neuer Zustand *Störung* bei Sensorausfall, Sturz oder ungültiger Policy-Ausgabe; die
+  Simulation dämpft, wenn keine Kommandos mehr kommen. Zustand auf `/steuerung/zustand`, quittieren über `/steuerung/quittieren`.
+- **Navigation `extern`:** dein Nav2 separat starten, unser System mit `navigation:=extern` - Lidar, Sensorik, Watchdog laufen wie
+  mit unserem Nav2.
+- **Feste Karte:** `karte:=true` (map_server + AMCL + statische Kartenschicht) im Platzhalter; Wegkosten über `compute_path_to_pose`.
+- **TF-Baum:** vollständig über `robot_state_publisher`; `/scan` jetzt im Frame `base_link`.
+- **Mission per Name:** `ros2 service call /mission/starte roboter_interfaces/srv/MissionStarten "{mission: patrouille}"`.

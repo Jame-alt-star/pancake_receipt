@@ -8,7 +8,7 @@
     (config/roboter.yaml), Quaternion-Hilfen und der TF-Baum des Roboters (launch/beschreibung.launch.py).
   </description>
   <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
-  <license>Apache-2.0</license>   <!-- eigener Code; Modelle in modelle/g1_description: Lizenz von Unitree, siehe THIRD_PARTY.md -->
+  <license>Apache-2.0</license>   <!-- eigener Code; Modelle: BSD-3-Clause von Unitree (modelle/g1_description/LICENSE_unitree_rl_gym), siehe THIRD_PARTY.md -->
 
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>

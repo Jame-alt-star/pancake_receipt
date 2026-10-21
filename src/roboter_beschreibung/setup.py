@@ -15,7 +15,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        (os.path.join('share', package_name, G1), glob(G1 + '/*.*')),
+        (os.path.join('share', package_name, G1), glob(G1 + '/*.*') + [G1 + '/LICENSE_unitree_rl_gym']),
         (os.path.join('share', package_name, G1, 'meshes'), glob(G1 + '/meshes/*.*')),
         (os.path.join('share', package_name, G1, 'images'), glob(G1 + '/images/*.*')),
         (os.path.join('share', package_name, G1, 'labels'), glob(G1 + '/labels/*.*')),

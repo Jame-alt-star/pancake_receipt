@@ -56,7 +56,7 @@ def main():
         pids = subprocess.run(["pgrep", "-f", "lib/roboter_simulation/mujoco_node"], capture_output=True,
                               text=True).stdout.split()
         for pid in pids:
-            os.kill(int(pid), signal.SIGKILL)               # Sensorquelle faellt hart aus
+            os.kill(int(pid), signal.SIGINT)                # Sensorquelle faellt aus (SIGINT, siehe integration_ros S9)
         spin(2.0)
         txt = open(log, errors="replace").read()
         check("Sensorausfall -> STOERUNG im Log", "STOERUNG: Sensordaten" in txt)

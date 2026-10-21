@@ -7,4 +7,8 @@ pats="tests/system/integration_|demo/run_demo|ros2 launch|mujoco_node|steuereinh
 for p in $(pgrep -f "$pats"); do [ "$p" != "$$" ] && [ "$p" != "$PPID" ] && kill -INT "$p" 2>/dev/null; done
 sleep 3
 for p in $(pgrep -f "$pats"); do [ "$p" != "$$" ] && [ "$p" != "$PPID" ] && kill -9 "$p" 2>/dev/null; done
+# Verwaiste Fast-DDS-Speichersegmente beendeter Prozesse entfernen (vor allem nach kill -9): sie bremsten die
+# Kommunikation nachfolgender Laeufe aus. Laufende Prozesse sind davon nicht betroffen.
+command -v fastdds >/dev/null 2>&1 || source /opt/ros/jazzy/setup.bash 2>/dev/null
+command -v fastdds >/dev/null 2>&1 && fastdds shm clean >/dev/null 2>&1
 exit 0

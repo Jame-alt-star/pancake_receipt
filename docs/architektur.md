@@ -1,6 +1,6 @@
 # Architektur G1-Projekt
 
-Stand 14.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `README.md`, Tests: `tests/README.md`.
+Stand 21.10.2026 (v2.7, nach Review 2). Einstieg für Übergaben; Bedienung: `README.md`, Tests: `tests/README.md`.
 
 ## Schichten und Pakete
 
@@ -107,6 +107,18 @@ Für die echte Halle: Karte einmal mit SLAM aufnehmen und mit `map_saver_cli` al
 2. `mujoco_node` übernimmt kp/kd/Ruhepose, stellt den Roboter hin und sendet Sensordaten; die Physik pausiert.
 3. Mit dem ersten `/joint_commands` läuft die Physik in Echtzeit; der Roboter steht in **Bereitschaft**.
 4. Erst `/freigabe` (Bediener oder Missionsstart) erlaubt Bewegung.
+
+## Bewusste Entscheidungen (Review 21.10.2026)
+
+| Frage | Entscheidung | Begründung |
+|---|---|---|
+| PDDL/Fast Downward für „Orte besuchen, stehen, warten“ zu schwer? | **bleibt** | Planung bleibt erweiterbar (Manipulation, Ressourcen, Zeitfenster) ohne neuen Planer; Plan ist lesbar und optimal. Aufwand der externen Installation: `scripts/einrichten.sh`; CI überspringt die Planer-Tests ohne Fast Downward |
+| Ortsgraph (`verbindungen`) doppelt zu Nav2? | **bleibt, mit klarer Rolle** | Der Graph legt erlaubte Wege und Pflicht-Durchgänge fest (z. B. „nur durch die Tür“); wie gefahren wird, plant Nav2. Kosten kommen vom Nav2-Planer, nicht mehr aus der Luftlinie. Ohne `verbindungen` ist jeder Ort mit jedem verbunden |
+| Zustand/Aktion „Balancieren“ balanciert nicht selbst | **Name bleibt** (SysML) | Bedeutung: anhalten und sicheres Stehen bestätigen; das Gleichgewicht hält immer die Policy. So steht es in den Docstrings (`balancieren_state.py`, `balance_dienst_node.py`) |
+| `GehAktion` ohne produktiven Nutzer | **bleibt als Test-Schnittstelle** | SysML-Port; nur das Testdouble (`navigation:=testdouble`) bedient sie. Produktiv navigiert Layer 1 über Nav2 (`navigate_to_pose`) |
+| Boden/Licht im Robotermodell statt in der Welt | **bleibt** | Stehen so in Unitrees Original (`unitree_rl_gym`); die Datei soll nah am Original bleiben (einzige Änderung `armature`). Welten ergänzen nur Hindernisse |
+| `auto_start` + Freigabe durch die Mission | **nur Simulation/Tests** | Warnung im Log; auf Hardware startet ein Bediener die Mission (Dienst), am Missionsende wird die Freigabe entzogen |
+| NotAus in Software | **ersetzt keinen physischen Not-Halt** | Anforderung an die Hardware-Anbindung (Abschnitt Sicherheit) |
 
 ## Modell und Rückverfolgbarkeit
 

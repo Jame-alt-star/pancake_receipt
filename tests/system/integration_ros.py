@@ -219,7 +219,10 @@ def main():
                               text=True).stdout.split()
         check("S9 Steuerknoten gefunden", len(pids) == 1, f"pids={pids}")
         for pid in pids:
-            os.kill(int(pid), signal.SIGKILL)               # harter Ausfall, kein sauberes Beenden
+            # SIGINT statt SIGKILL: fuer die Simulation zaehlt nur, dass keine Kommandos mehr kommen. Ein per SIGKILL
+            # beendeter Knoten hinterlaesst gesperrte Fast-DDS-Speichersegmente (/dev/shm), die nachfolgende Laeufe
+            # ausbremsten (Parameter kamen erst nach ~14 s an, IMU-Nachrichten blieben aus).
+            os.kill(int(pid), signal.SIGINT)
         pr.spin(3)
         check("S9 Simulation meldet Daempfungsmodus", "Daempfungsmodus" in read_log(logfile))
     finally:

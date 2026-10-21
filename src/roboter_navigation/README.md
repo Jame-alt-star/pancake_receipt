@@ -22,6 +22,11 @@ ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 h
 - Ausgang: `velocity_smoother` → `collision_monitor` → `/cmd_vel` → Layer 3.
 - Layer 3 hat einen `/cmd_vel`-Watchdog (mit Navigation 1 s); `/cmd_vel` gibt die Bewegung
   nicht frei (Freigabe über `/freigabe`, bei Missionen durch den Missionsknoten).
+- Hinweise für eine eigene Nav2-Konfiguration: RPP `max_angular_accel` hoch (bezieht sich auf die gemessene
+  Drehrate, die die Policy träge umsetzt); `PoseProgressChecker` (zählt auch Drehen als Fortschritt); Hindernisse in 3D
+  (VoxelLayer auf `/punkte_hindernis` - die 2D-ObstacleLayer löscht niedrige Hindernisse wieder); in Jazzy brauchen
+  `collision_monitor` und `docking_server` eine Konfiguration, auch wenn man sie nicht nutzt; `navigation_launch.py`
+  mit `use_composition=True` startet den Container nicht selbst (macht `navigation.launch.py`).
 
 ## Lidar (Stand v1.4)
 - `nav2_params.yaml`: Standard mit einem 3D-Lidar. Costmaps = `VoxelLayer` auf `/punkte_hindernis`;

@@ -18,7 +18,7 @@ setup(
         # nicht, obwohl sie im Quellcode (launch/) existieren.
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
-        (os.path.join('share', package_name, 'modelle'), glob('modelle/*.onnx')),
+        (os.path.join('share', package_name, 'modelle'), glob('modelle/*.onnx') + ['modelle/LICENSE_unitree_rl_lab']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
