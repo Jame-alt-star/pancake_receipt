@@ -14,8 +14,9 @@ steuereinheit_node:
     position_hold: true
     # Sicherheit: aelter als sensor_timeout_s -> Stoerung (Sensorausfall); staerker geneigt als sturz_neigung_grad
     # -> Stoerung (Sturz). Gemessen (21.10.2026, realistisch + Beinodometrie, WSL2): Sensordaten alle 10 ms, Luecken
-    # max. 34-43 ms; in einem von ~6 Testlaeufen einmal 0,35 s - mit 0,3 s war das ein Fehlalarm (Daempfungsmodus,
-    # Roboter faellt). 1 s liegt mit Abstand darueber und erkennt einen echten Ausfall trotzdem innerhalb 1 s.
+    # max. 34-43 ms. In Testserien blieben einzelne Nachrichten 0,35-1 s aus - sehr wahrscheinlich wegen verwaister
+    # Fast-DDS-Speichersegmente nach per SIGKILL beendeten Prozessen (seit tests/system/stop_all.sh sie aufraeumt,
+    # siehe Verlauf). 1 s liegt mit Abstand ueber normalen Luecken und erkennt einen echten Ausfall innerhalb 1 s.
     sensor_timeout_s: 1.0
     sturz_neigung_grad: 45.0
     # Takt der Regelung: sensor = im Takt der Gelenknachrichten (Simulationszeit), timer = ROS-Timer (Wanduhr)

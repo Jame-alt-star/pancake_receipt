@@ -213,3 +213,21 @@ def test_start_mit_nur_einer_sensorquelle_ist_keine_stoerung():
     n.bridge.alter = 0.01                               # beide da
     n._control_loop()
     assert isinstance(n.state, BereitschaftState)
+
+
+def test_bridge_meldet_takt_erst_wenn_gelenke_und_imu_neu_sind():
+    """Regression: der Takt kam nach jeder Gelenknachricht - die Policy rechnete dann mit einer 10 ms aelteren IMU."""
+    from types import SimpleNamespace as N
+    from roboter_steuerung.hardware.topic_bridge import TopicBridge
+    b = object.__new__(TopicBridge)
+    b.last_joint_pos = b.last_joint_vel = None
+    b._t_gelenke = b._t_imu = None
+    b._neu_gelenke = b._neu_imu = False
+    takte = []
+    b.bei_sensordaten = lambda: takte.append(1)
+    gelenk = N(position=[0.1], velocity=[0.0])
+    imu = N(orientation=N(w=1.0, x=0.0, y=0.0, z=0.0), angular_velocity=N(x=0.0, y=0.0, z=0.0))
+    b._joint_callback(gelenk); assert not takte                 # nur Gelenke: noch kein Takt
+    b._imu_callback(imu); assert len(takte) == 1                 # jetzt beide neu
+    b._imu_callback(imu); b._imu_callback(imu); assert len(takte) == 1   # nur IMU: kein weiterer Takt
+    b._joint_callback(gelenk); assert len(takte) == 2

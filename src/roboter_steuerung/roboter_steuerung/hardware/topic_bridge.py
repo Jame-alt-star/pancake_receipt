@@ -38,8 +38,12 @@ class TopicBridge(IRobotHardwareBridge):
         self.last_joint_pos = np.zeros(num_joints, dtype=np.float32)
         self.last_joint_vel = np.zeros(num_joints, dtype=np.float32)
         self._t_gelenke = self._t_imu = None          # Empfangszeit (monotonic) der letzten Nachricht
-        # Optional: wird nach jeder Gelenknachricht aufgerufen (Takt der Steuerung aus den Sensordaten).
-        self.bei_gelenken = None
+        # Optional: wird aufgerufen, sobald seit dem letzten Aufruf BEIDE Quellen neu sind (Takt der Steuerung aus den
+        # Sensordaten). Frueher nach jeder Gelenknachricht: die Simulation sendet erst Gelenke, dann IMU - die Policy
+        # bekam dadurch systematisch eine 10 ms aeltere IMU als die Gelenkwinkel. Im realistischen Modus (zusaetzlich
+        # 10 ms Latenz) fiel der Roboter danach beim Anhalten in 2 von 4 Pipeline-Laeufen (21.10.2026).
+        self.bei_sensordaten = None
+        self._neu_gelenke = self._neu_imu = False
 
         self.cmd_pub = self.node.create_publisher(Float32MultiArray, "/joint_commands", 10)
         self.node.create_subscription(JointState, "/joint_states", self._joint_callback, 10)
@@ -64,8 +68,8 @@ class TopicBridge(IRobotHardwareBridge):
             self.last_joint_pos = np.array(msg.position, dtype=np.float32)
             self.last_joint_vel = np.array(msg.velocity, dtype=np.float32)
             self._t_gelenke = time.monotonic()
-            if self.bei_gelenken is not None:
-                self.bei_gelenken()
+            self._neu_gelenke = True
+            self._melde_takt()
 
     def _imu_callback(self, msg: Imu):
         # Wird automatisch bei jeder neuen /imu-Nachricht aufgerufen.
@@ -80,6 +84,14 @@ class TopicBridge(IRobotHardwareBridge):
             dtype=np.float32
         )
         self._t_imu = time.monotonic()
+        self._neu_imu = True
+        self._melde_takt()
+
+    def _melde_takt(self):
+        if self._neu_gelenke and self._neu_imu:
+            self._neu_gelenke = self._neu_imu = False
+            if self.bei_sensordaten is not None:
+                self.bei_sensordaten()
 
     def sensor_detail(self) -> str:
         """Alter je Quelle, fuer die Diagnose einer Stoerung."""

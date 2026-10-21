@@ -95,9 +95,10 @@ class SteuereinheitNode(Node):
         self.declare_parameter("position_hold", True)
         self.declare_parameter("sensor_timeout_s", 1.0)     # aelter -> Stoerung (Sensorausfall)
         self.declare_parameter("sturz_neigung_grad", 45.0)  # staerker geneigt -> Stoerung (Sturz)
-        # Takt: "sensor" = alle regeltakt_s / sensor_periode_s Gelenknachrichten ein Regelschritt. Damit laeuft die
-        # Policy im Takt der Simulations- bzw. Messzeit statt der Wanduhr: laeuft die Simulation unter Last
-        # langsamer als Echtzeit, bekam die Policy vorher mehr Schritte je Simulationssekunde als im Training.
+        # Takt: "sensor" = alle regeltakt_s / sensor_periode_s vollstaendigen Messungen (Gelenke UND IMU) ein
+        # Regelschritt. Damit laeuft die Policy im Takt der Simulations- bzw. Messzeit statt der Wanduhr: laeuft die
+        # Simulation unter Last langsamer als Echtzeit, bekam die Policy vorher mehr Schritte je Simulationssekunde
+        # als im Training.
         # "timer" = alter Betrieb mit ROS-Timer (Wanduhr).
         self.declare_parameter("takt_quelle", "sensor")
         self.declare_parameter("sensor_periode_s", 0.01)    # Abstand der Gelenknachrichten (Simulation: 100 Hz)
@@ -167,10 +168,10 @@ class SteuereinheitNode(Node):
             periode = float(self.get_parameter("sensor_periode_s").value)
             self._teiler = max(1, int(round(self.control_dt / periode)))
             self._zaehler = 0
-            self.bridge.bei_gelenken = self._sensor_takt
+            self.bridge.bei_sensordaten = self._sensor_takt
             # Ueberwachung unabhaengig vom Sensortakt: bleiben die Nachrichten ganz aus, laeuft sonst kein Regelschritt
             self.create_timer(0.1, self._ueberwache_sensoren)
-            takt = f"jede {self._teiler}. Gelenknachricht"
+            takt = f"jede {self._teiler}. Messung (Gelenke + IMU)"
         elif self.takt_quelle == "timer":
             self.timer = self.create_timer(self.control_dt, self._control_loop)
             takt = "ROS-Timer"

@@ -414,3 +414,35 @@ kompletter Testserie (`tests/alle_tests.sh`), Commit und Tag. Verhalten unverän
   (danach: Median 0,35–0,36, Minimum 0,23–0,28).
 - **Tests v2.4:** pytest 64, Pipeline 32/32, Pipeline realistisch + Beinodometrie 32/32, Watchdog 5/5, Missionen 14/14
   (Testdouble, Testwelt, Patrouille, 3D-Palette 0,43 m), SLAM realistisch 22/22.
+
+## Review 2 (21.10.2026) – v2.6 und v2.7
+Gesamt-Review „wie ein Chef, der das Projekt zum ersten Mal sieht“: 35 Punkte. Umsetzung in Paketen, jedes mit kompletter
+Testserie (`tests/alle_tests.sh --mit-slam`).
+- **v2.6 Fehler und Aufräumen:** Punktwolken beliebigen Formats (vorher nur 12 Byte je Punkt – der Livox MID-360 des G1
+  wäre still verworfen worden); `navigation:=extern` (der dokumentierte Weg für fremdes Nav2 schaltete vorher Lidar und
+  Watchdog ab); Datum 14.10. statt 15.10.; Zustände mit gemeinsamem Policy-Schritt und Zustands-API; Quaternion-Hilfen
+  einmal (`roboter_beschreibung/geometrie.py`, vorher 7 Kopien); unbekannte Missionsparameter werden abgelehnt;
+  pytest prüft einheitlich den Quellbaum; Metadaten 0.2.0.
+- **v2.7 Sicherheit, Takt, TF, Karte, Infrastruktur:**
+  - Zustand **Störung** bei Sensorausfall (> 1 s), Sturz (> 45°) oder NaN der Policy; Quittieren per Dienst; Gelenkgrenzen
+    aus dem Modell; Simulation geht ohne Kommandos (> 1 s) in den Dämpfungsmodus; Vorrang-Eingang `/cmd_vel/balance`;
+    Freigabe-Entzug am Missionsende; Mission bricht bei Störung ab.
+  - **Regeltakt aus den Sensordaten** (jede 2. Gelenknachricht = 20 ms Simulationszeit) statt Wanduhr; `/clock` aus der
+    Simulation; Gehtest misst in Simulationszeit (Echtzeitfaktor 1,00; Strecke 4,39 m in 12 s statt vorher 4,0–4,24 m).
+  - **TF-Baum** über `robot_state_publisher` (Gelenknamen in `/joint_states`), Lidar-Montage (Elternglied + Pose) aus
+    `roboter.yaml` für Simulation, TF und Sensorik; RViz zeigt den Roboterkörper.
+  - **Feste Karte je Welt** (aus der Szene gerechnet) mit map_server + AMCL (`karte:=true`); Wegkosten für den Planer
+    über den Nav2-Planer (Testwelt: 997 statt 945 über die Luftlinie); Nav2-2D-Variante als Overlay statt Kopie;
+    `/mission/starte` mit Missionsname; Kovarianz in `/odom`.
+  - **Infrastruktur:** GitHub-CI für die schnellen Tests (ohne ROS: 68 bestanden, ROS-Knotentests übersprungen),
+    `scripts/einrichten.sh [--pruefen]`, `THIRD_PARTY.md` mit den per API geprüften Lizenzen und den Unitree-Lizenztexten
+    (BSD-3-Clause für die Modelle aus `unitree_rl_gym`, Apache-2.0 für die Policy aus `unitree_rl_lab`).
+- **Fehlersuche während der Umsetzung (wichtig):**
+  - Start-Wettlauf: „gültige Sensordaten“ hieß Gelenke *oder* IMU, die Altersprüfung braucht beide → sofortige Störung
+    „seit inf s“. Behoben (beide müssen einmal angekommen sein), Regressionstest.
+  - In Testserien kamen nach per SIGKILL beendeten Knoten (neue Ausfalltests) Nachrichten 13–15 s verspätet bzw. die IMU
+    über 1 s gar nicht an → Störung beim Start, Physik startete nie. Ursache sehr wahrscheinlich verwaiste Fast-DDS-
+    Speichersegmente in `/dev/shm` (bis 120 Dateien). Behoben: Ausfalltests mit SIGINT, `stop_all.sh` räumt mit
+    `fastdds shm clean` auf.
+  - Einmal 2,85 m statt ~4,1 m im Gehtest (realistisch): in Wanduhrzeit gemessen, Simulation lief langsamer als Echtzeit.
+    Seitdem Messung in Simulationszeit.
