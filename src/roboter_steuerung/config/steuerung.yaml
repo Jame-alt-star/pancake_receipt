@@ -12,6 +12,15 @@ steuereinheit_node:
     freigabe_per_cmd_vel: false
     # Positionshaltung im Zustand Balancieren (gemessen: ~1 cm in 60 s statt 32 cm Drift).
     position_hold: true
+    # Sicherheit: aelter als sensor_timeout_s -> Stoerung (Sensorausfall); staerker geneigt als sturz_neigung_grad
+    # -> Stoerung (Sturz). Gemessen (21.10.2026, realistisch + Beinodometrie, WSL2): Sensordaten alle 10 ms, Luecken
+    # max. 34-43 ms; in einem von ~6 Testlaeufen einmal 0,35 s - mit 0,3 s war das ein Fehlalarm (Daempfungsmodus,
+    # Roboter faellt). 1 s liegt mit Abstand darueber und erkennt einen echten Ausfall trotzdem innerhalb 1 s.
+    sensor_timeout_s: 1.0
+    sturz_neigung_grad: 45.0
+    # Takt der Regelung: sensor = im Takt der Gelenknachrichten (Simulationszeit), timer = ROS-Timer (Wanduhr)
+    takt_quelle: "sensor"
+    sensor_periode_s: 0.01      # Simulation: 100 Hz; echte Hardware: Rate des Unitree-LowState
 
 balance_dienst_node:
   ros__parameters:
@@ -22,3 +31,6 @@ beinodometrie_node:
     start_position: [0.0, 0.0, -1.0]   # z < 0: becken_hoehe_stand aus roboter_beschreibung
     odom_frame: "odom"
     base_frame: "base_link"
+    sigma_position_m: 0.05            # Standardabweichungen fuer die Kovarianz in /odom
+    sigma_gier_rad: 0.02
+    sigma_geschwindigkeit_m_s: 0.05

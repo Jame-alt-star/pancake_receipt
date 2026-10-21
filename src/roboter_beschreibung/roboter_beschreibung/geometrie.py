@@ -46,3 +46,12 @@ def neigung_grad(q) -> float:
 def winkel_normieren(winkel: float) -> float:
     """Auf [-pi, pi]: ein Fehler von 359 Grad ist -1 Grad, nicht fast eine volle Drehung."""
     return float((winkel + math.pi) % (2.0 * math.pi) - math.pi)
+
+
+def rotmat_aus_rpy(roll: float, pitch: float, yaw: float):
+    """Rotationsmatrix aus Roll/Nick/Gier (ROS-Konvention wie static_transform_publisher: R = Rz * Ry * Rx)."""
+    cr, sr, cp, sp, cy, sy = (math.cos(roll), math.sin(roll), math.cos(pitch), math.sin(pitch),
+                              math.cos(yaw), math.sin(yaw))
+    return np.array([[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+                     [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+                     [-sp, cp * sr, cp * cr]])

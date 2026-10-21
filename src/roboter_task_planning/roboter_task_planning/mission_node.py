@@ -3,22 +3,31 @@ Plan ueber die Bridges aus. NotAus (/not_aus) bricht die laufende Mission ab.
 
 Schnittstellen:
   Service  /mission/start   (std_srvs/Trigger)  startet die Mission aus Parameter mission_file
+  Service  /mission/starte  (roboter_interfaces/MissionStarten)  startet eine Mission nach Name oder Pfad
   Service  /mission/abort   (std_srvs/Trigger)
   Topic    /mission/status  (std_msgs/String, JSON; TRANSIENT_LOCAL)
-Parameter: mission_file, nav_backend ('nav2'|'gehaktion'), auto_start (bool)
+Parameter: mission_file, nav_backend ('nav2'|'gehaktion'), auto_start (bool), wegkosten_nav2 (bool: Wegkosten fuer
+den Planer ueber den Nav2-Planer statt Luftlinie)
 
 Thread-Modell: der Knoten laeuft in einem MultiThreadedExecutor (alle Callbacks reentrant). Eine
 Mission laeuft in einem eigenen Thread (MissionExecutor.run blockiert, Bridges pollen ihre Action-
 Futures); Executor-Threads bedienen parallel Status, Services, /not_aus und die Action-Clients.
 Abbruch (Service oder NotAus) ueber ein threading.Event, das die Bridges regelmaessig pruefen.
-Beim Start gibt der Knoten die Bewegung frei (/freigabe): der Missionsstart ist die Bedieneraktion.
+Beim Start gibt der Knoten die Bewegung frei (/freigabe): der Missionsstart ist die Bedieneraktion. Am Ende (Erfolg,
+Fehlschlag, Abbruch) entzieht er sie wieder - danach steht der Roboter in Bereitschaft, ein verirrtes /cmd_vel bewegt
+ihn nicht. Meldet die Steuerung eine Stoerung (/steuerung/zustand), bricht die Mission ab.
+auto_start ist fuer Simulation und Tests gedacht: auf echter Hardware wuerde der Roboter damit ohne Bedieneraktion
+losfahren.
 """
 import json
 import threading
 import time
 
+import os
+
 import rclpy
 import tf2_ros
+from ament_index_python.packages import get_package_share_directory
 from rclpy.time import Time
 from nav_msgs.msg import Odometry
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -28,6 +37,7 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy, QoS
 from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 
+from roboter_interfaces.srv import MissionStarten
 from roboter_task_planning.deliberative.pddl_planner import FastDownwardPlanner
 from roboter_task_planning.executive.action_bridges import BalanceBridge, NavigationBridge
 from roboter_task_planning.executive.action_dispatcher import MissionExecutor
@@ -41,6 +51,7 @@ class MissionNode(Node):
         self.declare_parameter("mission_file", "")
         self.declare_parameter("nav_backend", "nav2")
         self.declare_parameter("auto_start", False)
+        self.declare_parameter("wegkosten_nav2", True)
         cb = ReentrantCallbackGroup()
         latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
@@ -52,8 +63,11 @@ class MissionNode(Node):
         self.pub_freigabe = self.create_publisher(Bool, "/freigabe", 10)
         self._cb = cb
         self.create_subscription(Bool, "/not_aus", self._not_aus, latched, callback_group=cb)
+        self._stoerung = None
+        self.create_subscription(String, "/steuerung/zustand", self._zustand, latched, callback_group=cb)
         self.create_service(Trigger, "/mission/start", self._start, callback_group=cb)
         self.create_service(Trigger, "/mission/abort", self._abort_srv, callback_group=cb)
+        self.create_service(MissionStarten, "/mission/starte", self._starte, callback_group=cb)
         self._not_aus_aktiv = False
         self._abort = threading.Event()
         self._thread = None
@@ -62,6 +76,7 @@ class MissionNode(Node):
         self._publish({"phase": "bereit"})
         self.get_logger().info(f"Missions-Knoten bereit (nav_backend={backend}).")
         if self.get_parameter("auto_start").value:
+            self.get_logger().warn("auto_start: Mission startet ohne Bedieneraktion - nur fuer Simulation und Tests.")
             self.create_timer(1.0, self._auto_start_once, callback_group=cb)
             self._auto_done = False
 
@@ -108,6 +123,12 @@ class MissionNode(Node):
             self.get_logger().warn("NOT-AUS: Mission wird abgebrochen.")
             self._abort.set()
 
+    def _zustand(self, m: String):
+        self._stoerung = m.data if m.data.startswith("Stoerung") else None
+        if self._stoerung and self._thread and self._thread.is_alive():
+            self.get_logger().warn(f"Steuerung meldet {self._stoerung} - Mission wird abgebrochen.")
+            self._abort.set()
+
     def _publish(self, d: dict):
         self.pub_status.publish(String(data=json.dumps(d, ensure_ascii=False)))
 
@@ -118,20 +139,32 @@ class MissionNode(Node):
             self.get_logger().info(f"auto_start: {msg}")
 
     # ---- Steuerung ----
-    def _start_mission(self):
+    @staticmethod
+    def mission_pfad(mission: str) -> str:
+        """Name aus missions/ (mit oder ohne .yaml) oder Pfad."""
+        if os.path.sep in mission:
+            return mission
+        name = mission if mission.endswith(".yaml") else mission + ".yaml"
+        return os.path.join(get_package_share_directory("roboter_task_planning"), "missions", name)
+
+    def _start_mission(self, path: str = ""):
         if self._thread and self._thread.is_alive():
             return False, "Mission laeuft bereits"
         if self._not_aus_aktiv:
             return False, "NOT-AUS aktiv - Mission nicht gestartet"
-        path = self.get_parameter("mission_file").value
+        if self._stoerung:
+            return False, f"Steuerung in {self._stoerung} - erst /steuerung/quittieren"
+        path = path or self.get_parameter("mission_file").value
         try:
             mission = Mission.from_yaml(path)
         except Exception as e:      # Datei fehlt, YAML/Validierung
             return False, f"Mission nicht ladbar: {e}"
         self._abort.clear()
         self.pub_freigabe.publish(Bool(data=True))
+        nav = self.bridges[0]
+        schaetzer = nav.weglaenge if self.get_parameter("wegkosten_nav2").value else None
         ex = MissionExecutor(FastDownwardPlanner(), self.bridges, locator=self._locate,
-                             log=lambda m: self.get_logger().info(m), status_cb=self._publish)
+                             log=lambda m: self.get_logger().info(m), status_cb=self._publish, wegschaetzer=schaetzer)
         self._thread = threading.Thread(target=self._run_mission, args=(ex, mission), daemon=True)
         self._thread.start()
         return True, f"Mission gestartet ({path})"
@@ -144,9 +177,16 @@ class MissionNode(Node):
         except Exception as e:
             self.get_logger().error(f"Mission abgestuerzt: {type(e).__name__}: {e}")
             self._publish({"phase": "ende", "status": "fehlgeschlagen", "meldung": f"interner Fehler: {e}"})
+        finally:
+            self.pub_freigabe.publish(Bool(data=False))
+            self.get_logger().info("Mission beendet - Bewegungsfreigabe entzogen.")
 
     def _start(self, req, resp):
         resp.success, resp.message = self._start_mission()
+        return resp
+
+    def _starte(self, req, resp):
+        resp.erfolg, resp.meldung = self._start_mission(self.mission_pfad(req.mission) if req.mission else "")
         return resp
 
     def _abort_srv(self, req, resp):

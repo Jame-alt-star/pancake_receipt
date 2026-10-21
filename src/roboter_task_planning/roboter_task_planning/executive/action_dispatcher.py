@@ -24,7 +24,8 @@ class MissionExecutor:
                  locator: Optional[Callable[[], Optional[tuple]]] = None,
                  log: Callable[[str], None] = print,
                  status_cb: Optional[Callable[[dict], None]] = None,
-                 domain: Optional[str] = None):
+                 domain: Optional[str] = None,
+                 wegschaetzer: Optional[Callable[[tuple, tuple], Optional[float]]] = None):
         self.planner = planner
         self.by_action: Dict[str, IActionBridge] = {}
         for b in bridges:
@@ -34,6 +35,7 @@ class MissionExecutor:
         self.log = log
         self.status_cb = status_cb or (lambda s: None)
         self.domain = domain
+        self.wegschaetzer = wegschaetzer
 
     def _status(self, **kw):
         self.status_cb(kw)
@@ -59,7 +61,7 @@ class MissionExecutor:
                 return self._finish(res, FEHLGESCHLAGEN,
                                     "Startort unbekannt: weder start_ort in der Mission noch eine Position")
             start = WorldKnowledge.naechster_ort(mission.orte, pos)
-        world = WorldKnowledge(mission, start)
+        world = WorldKnowledge(mission, start, self.wegschaetzer)
         domain = self.domain or read_domain()
         max_replans = int(mission.param("max_replans"))
         self.log(f"Mission startet bei '{start}', Ziele: {mission.ziele}")

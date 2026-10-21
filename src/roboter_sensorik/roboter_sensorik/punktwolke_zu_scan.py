@@ -1,13 +1,16 @@
 """Leitet aus der 3D-Punktwolke einen 2D-Scan ab (wie pointcloud_to_laserscan).
 
-Eingang:  /points (sensor_msgs/PointCloud2, Frame lidar_link) und /imu (Orientierung)
-Ausgang:  /scan   (sensor_msgs/LaserScan, Frame lidar_link)
-          /punkte_hindernis (sensor_msgs/PointCloud2, Frame lidar_link): nur Punkte im Hoehenband,
+Eingang:  /points (sensor_msgs/PointCloud2, beliebiger Sensorframe, beliebige Felder), /imu (Orientierung der Basis),
+          TF base_link <- Sensorframe (Lidar-Montage aus roboter_beschreibung, ggf. ueber die Taillengelenke)
+Ausgang:  /scan   (sensor_msgs/LaserScan, Frame base_link)
+          /punkte_hindernis (sensor_msgs/PointCloud2, Sensorframe): nur Punkte im Hoehenband,
           auf 5 cm ausgeduennt - fuer die Nav2-Costmaps. Die Rohwolke (~100 KB) ging im Best-Effort-
           Transport unter Last teilweise verloren; die gefilterte Wolke ist ~10x kleiner.
 
-Die Punkte werden mit der IMU-Orientierung waagerecht ausgerichtet (Roll/Nick entfernt, Gier bleibt),
-dann wird je Winkelsegment der naechste Punkt innerhalb eines Hoehenbandes ueber dem Boden genommen.
+Die Punkte werden per TF in base_link uebertragen (frueher: feste Hoehe ueber dem Becken, Sensor achsparallel - am
+echten G1 sitzt das Lidar geneigt im Kopf und bewegt sich mit der Taille), mit der IMU-Orientierung waagerecht
+ausgerichtet (Roll/Nick entfernt, Gier bleibt) und je Winkelsegment der naechste Punkt innerhalb eines
+Hoehenbandes ueber dem Boden genommen. Annahme: ebener Boden auf Hoehe 0, Becken in Standhoehe.
 So enthaelt der Scan alle Hindernisse zwischen min_hoehe und max_hoehe - auch niedrige, die eine
 einzelne Scanebene nicht sehen wuerde - aber nicht den Boden. Genutzt von slam_toolbox und dem
 collision_monitor; Nav2-Costmaps lesen direkt die Punktwolke.
@@ -16,10 +19,18 @@ import math
 
 import numpy as np
 import rclpy
+import tf2_ros
 from rclpy.node import Node
+from rclpy.time import Time
 from sensor_msgs.msg import Imu, LaserScan, PointCloud2, PointField
 
 from roboter_beschreibung.geometrie import quat_zu_rotmat
+
+
+def in_basis(pts, transform):
+    """Punkte (N x 3, Sensorframe) mit einem TF-Transform (geometry_msgs/Transform: Basis <- Sensor) uebertragen."""
+    q, t = transform.rotation, transform.translation
+    return pts @ quat_zu_rotmat((q.w, q.x, q.y, q.z)).T + np.array([t.x, t.y, t.z])
 
 
 def waagerecht(pts, quat):
@@ -91,20 +102,22 @@ def scan_aus_punkten(pts, quat, sensor_hoehe, min_hoehe, max_hoehe, n_bins, r_mi
 class PunktwolkeZuScan(Node):
     def __init__(self):
         super().__init__("punktwolke_zu_scan")
-        # Lidar ueber Boden im aufrechten Stand [m]; < 0 = aus roboter_beschreibung (becken_hoehe_stand +
-        # lidar_hoehe_ueber_becken, eine Quelle fuer Simulation, Sensorik und Beinodometrie)
-        self.declare_parameter("sensor_hoehe", -1.0)
+        # Hoehe des Basis-Ursprungs (Becken) ueber dem Boden im Stand [m]; < 0 = aus roboter_beschreibung
+        self.declare_parameter("becken_hoehe", -1.0)
+        self.declare_parameter("basis_frame", "base_link")
         self.declare_parameter("min_hoehe", 0.12)       # Boden ausblenden
         self.declare_parameter("max_hoehe", 1.9)
         self.declare_parameter("bins", 360)
         self.declare_parameter("range_min", 0.2)
         self.declare_parameter("range_max", 10.0)
         g = lambda n: self.get_parameter(n).value
-        self.h0, self.hmin, self.hmax = float(g("sensor_hoehe")), float(g("min_hoehe")), float(g("max_hoehe"))
+        self.h0, self.hmin, self.hmax = float(g("becken_hoehe")), float(g("min_hoehe")), float(g("max_hoehe"))
         if self.h0 < 0:
             from roboter_beschreibung import lade as lade_roboter
-            r = lade_roboter()
-            self.h0 = float(r["becken_hoehe_stand"]) + float(r["lidar_hoehe_ueber_becken"])
+            self.h0 = float(lade_roboter()["becken_hoehe_stand"])
+        self.basis = str(g("basis_frame"))
+        self.tf_puffer = tf2_ros.Buffer()
+        self.tf_hoerer = tf2_ros.TransformListener(self.tf_puffer, self)
         self.n, self.rmin, self.rmax = int(g("bins")), float(g("range_min")), float(g("range_max"))
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
         self.pub = self.create_publisher(LaserScan, "/scan", 10)
@@ -122,7 +135,13 @@ class PunktwolkeZuScan(Node):
         # und Collision-Monitor, (2) Hinderniswolke (Hoehenband, 5 cm ausgeduennt) fuer die Costmaps.
         # Ausrichtung ueber die zuletzt empfangene IMU-Orientierung.
         pts = xyz_aus_wolke(m.data, m.fields, m.point_step, m.width * m.height, m.is_bigendian)
-        level = waagerecht(pts, self.quat)                  # einmal je Wolke (vorher doppelt gerechnet)
+        try:
+            tf = self.tf_puffer.lookup_transform(self.basis, m.header.frame_id, Time())
+        except tf2_ros.TransformException as e:
+            self.get_logger().warn(f"Lidar-Montage {self.basis} <- {m.header.frame_id} fehlt: {e}",
+                                   throttle_duration_sec=5.0)
+            return
+        level = waagerecht(in_basis(pts, tf.transform), self.quat)      # einmal je Wolke
         mask = maske_aus_level(level, self.h0, self.hmin, self.hmax, self.rmin, self.rmax)
         ranges = scan_aus_level(level, mask, self.n)
         hp = ausduennen(pts[mask]).astype(np.float32)
@@ -136,7 +155,8 @@ class PunktwolkeZuScan(Node):
         hc.is_dense = True
         self.pub_hind.publish(hc)
         sc = LaserScan()
-        sc.header = m.header
+        sc.header.stamp = m.header.stamp
+        sc.header.frame_id = self.basis
         sc.angle_min = -math.pi
         sc.angle_increment = 2 * math.pi / self.n
         sc.angle_max = math.pi - sc.angle_increment

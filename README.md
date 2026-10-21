@@ -46,8 +46,10 @@ ros2 topic echo /mission/status                           # Fortschritt
 ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /not_aus std_msgs/msg/Bool "{data: true}"
 ```
 `system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/extern/testdouble), `nav2_params`,
-`slam`, `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`, `record_path`, `cmd_vel_timeout_s`,
-`auto_start`, `rviz`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
+`slam`, `karte` (feste Karte der Welt + AMCL), `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`,
+`record_path`, `cmd_vel_timeout_s`, `auto_start` (nur Simulation), `rviz` (mit Roboterkörper).
+Weitere Bedienung: `ros2 service call /mission/starte roboter_interfaces/srv/MissionStarten "{mission: patrouille}"`,
+Zustand `ros2 topic echo /steuerung/zustand`, Störung quittieren `ros2 service call /steuerung/quittieren std_srvs/srv/Trigger`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
 
 Missionen (`roboter_task_planning/missions/`): `beispiel`, `testwelt`, `patrouille`, `testwelt3d`, `demo_lager`
 (Ziele `besucht`, `balanciert`, `gewartet`, `am_ort`). Eine Mission verweist mit `welt:` auf eine Welt aus

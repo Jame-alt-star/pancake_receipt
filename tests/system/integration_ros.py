@@ -16,6 +16,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPo
 from geometry_msgs.msg import Twist, Point
 from sensor_msgs.msg import Imu, JointState
 from nav_msgs.msg import Odometry
+from rosgraph_msgs.msg import Clock
 from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Bool
 
@@ -40,6 +41,8 @@ class Probe(Node):
         self.p = None; self.quat = None; self.dq = None
         self.odom = None; self.tf_ok = False
         self.odom_vx = []        # twist.linear.x aller /odom-Nachrichten (fuer Auswertungen ueber eine Phase)
+        self.sim_zeit = None     # Simulationszeit aus /clock [s]
+        self.create_subscription(Clock, "/clock", lambda m: setattr(self, "sim_zeit", m.clock.sec + m.clock.nanosec * 1e-9), 10)
         self.create_subscription(Odometry, "/odom", self._odom, 10)
         self.create_subscription(TFMessage, "/tf", self._tf, 10)
         self.create_subscription(Point, "/base_position", lambda m: setattr(self, "p", (m.x, m.y, m.z)), 10)
@@ -148,11 +151,17 @@ def main():
         check("S2b Drift im Stand < 5 cm in 30 s", drift < 0.05, f"drift={drift*100:.1f} cm")
 
         print("== S3 Gehen 0.4 m/s, 12 s (Kurshaltung)")
-        pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t0 = time.time()
+        pr.spin(1); p0 = pr.p; y0 = pr.yaw(); pr.twist(0.4); t_sim0, t_wand0 = pr.sim_zeit, time.time()
         pr.spin(6); pr.odom_vx.clear(); pr.spin(6)          # Geschwindigkeit ueber die zweite Haelfte auswerten
         dx = float(np.hypot(pr.p[0] - p0[0], pr.p[1] - p0[1])); dyaw = pr.yaw() - y0
+        dt_sim = (pr.sim_zeit - t_sim0) if (pr.sim_zeit is not None and t_sim0 is not None) else float("nan")
+        echtzeit = dt_sim / (time.time() - t_wand0)
         check("S3 kein Sturz", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
-        check("S3 Strecke >= 3 m", dx > 3.0, f"dx={dx:.2f}")
+        # In SIMULATIONSZEIT gemessen (Review 2): laeuft die Simulation unter Last langsamer als Echtzeit, legt der
+        # Roboter in 12 s Wanduhr weniger Strecke zurueck, ohne langsamer zu gehen (beobachtet: 2.85 statt ~4.1 m).
+        v_sim = dx / dt_sim if dt_sim > 0 else 0.0
+        check("S3 Gehgeschwindigkeit >= 0.25 m/s (Simulationszeit)", v_sim >= 0.25,
+              f"v={v_sim:.2f} m/s, dx={dx:.2f} m in {dt_sim:.1f} s Simzeit, Echtzeitfaktor {echtzeit:.2f}")
         check("S3 geradeaus (|dyaw|<8 Grad)", abs(dyaw) < 8, f"dyaw={dyaw:.1f}")
         check("S3 Zustand Gehen", "-> Gehen" in read_log(logfile))
         # Median ueber 6 s statt eines Einzelwerts: am 14.10.2026 lag ein einzelner Wert der Beinodometrie bei
@@ -204,6 +213,15 @@ def main():
         log = read_log(logfile)
         check("S8 keine MuJoCo-Instabilitaetswarnung", "simulation is unstable" not in log)
         check("S8 keine Python-Tracebacks", "Traceback" not in log)
+
+        print("== S9 Steuerung faellt aus -> Simulation daempft (Review 2)")
+        pids = subprocess.run(["pgrep", "-f", "lib/roboter_steuerung/steuereinheit_node"], capture_output=True,
+                              text=True).stdout.split()
+        check("S9 Steuerknoten gefunden", len(pids) == 1, f"pids={pids}")
+        for pid in pids:
+            os.kill(int(pid), signal.SIGKILL)               # harter Ausfall, kein sauberes Beenden
+        pr.spin(3)
+        check("S9 Simulation meldet Daempfungsmodus", "Daempfungsmodus" in read_log(logfile))
     finally:
         pr.destroy_node(); rclpy.shutdown()
         try:

@@ -3,7 +3,8 @@
 
 Aufruf: python3 tests/system/integration_mission.py [--nav2]   (ROS2 + Workspace gesourct, Display noetig)
         --nav2: echtes Nav2 aus roboter_navigation (ros-jazzy-navigation2 muss installiert sein)
-Szenarien: (1) Mission laeuft komplett durch, (2) NotAus waehrend der Mission bricht ab.
+        --karte: Navigation auf der festen Karte der Welt (map_server + AMCL, Wegkosten ueber den Nav2-Planer)
+Szenarien: (1) Mission laeuft komplett durch, (2) NotAus waehrend der Mission bricht ab, Start per Name abgelehnt.
 """
 import json, os, signal, subprocess, sys, tempfile, time
 import numpy as np
@@ -15,6 +16,8 @@ from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool, String
 from tf2_msgs.msg import TFMessage
 from std_srvs.srv import Trigger
+
+from roboter_interfaces.srv import MissionStarten
 
 R = []
 
@@ -42,6 +45,7 @@ class Probe(Node):
         self.create_subscription(OccupancyGrid, "/map", lambda m: setattr(self, "map", m), lat)
         self.create_subscription(TFMessage, "/tf", self._tf, 50)
         self.start = self.create_client(Trigger, "/mission/start")
+        self.starte = self.create_client(MissionStarten, "/mission/starte")
 
     def _tf(self, m):
         for t in m.transforms:
@@ -97,6 +101,12 @@ class Probe(Node):
                 return self.status[-1]
         return None
 
+    def starte_mission(self, name):
+        f = self.starte.call_async(MissionStarten.Request(mission=name))
+        while not f.done():
+            self.spin(0.05)
+        return f.result()
+
     def start_mission(self):
         n0 = len(self.status)
         f = self.start.call_async(Trigger.Request())
@@ -109,8 +119,9 @@ NAV2 = "--nav2" in sys.argv     # echtes Nav2 (roboter_navigation) statt Testdou
 DREI_D = "--drei-d" in sys.argv       # Welt mit niedriger Palette (3D-Lidar ist Standard) (impliziert --welt)
 NUR_2D = "--nur-2d" in sys.argv        # Gegenprobe: dieselbe Welt mit alter Einzel-Scanebene (Kontakt erwartet)
 SLAM = "--slam" in sys.argv       # slam_toolbox (impliziert --welt); prueft /map und map->odom
+KARTE = "--karte" in sys.argv     # feste Karte + AMCL (impliziert --welt); prueft /map, map->odom, Wegkosten
 PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
-WELT = "--welt" in sys.argv or PATROUILLE or SLAM or DREI_D or NUR_2D   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
+WELT = "--welt" in sys.argv or PATROUILLE or SLAM or DREI_D or NUR_2D or KARTE   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
 if WELT:
     NAV2 = True
 # Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
@@ -124,6 +135,8 @@ def launch(logfile):
     nav = ["navigation:=nav2", "headless:=true"] if NAV2 else ["navigation:=testdouble"]   # Nav2 + Viewer: zu wenig RAM
     if SLAM:
         nav += ["slam:=true"]
+    if KARTE:
+        nav += ["karte:=true"]
     if "--realistisch" in sys.argv:
         nav += ["realistic_sensors:=true"]
     if "--beinodometrie" in sys.argv:
@@ -187,6 +200,8 @@ def main():
         tol_b = 1.0 if SLAM else 0.6   # SLAM: Ziele im map-Frame, Scan-Matching-Versatz gegen die Welt
         check(f"S1 Roboter nahe b (<{tol_b} m)", dist_b < tol_b, f"abstand={dist_b:.2f}")
         check("S1 steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
+        check("S1 Freigabe nach Missionsende entzogen (Review 2)",
+              "Bewegungsfreigabe entzogen" in open(log, errors="replace").read())
 
         if SLAM:
             print("== S1b SLAM: /map und map->odom")
@@ -207,6 +222,20 @@ def main():
             check("S1b Karte reicht bis zur Nordwand (y >= 2.9)", top >= 2.9, f"oberer Rand y={top:.2f}")
             check("S1b Tuer in der Karte frei", not pr.map_occupied(4.5, 0.0, 0.15))
 
+        if KARTE:
+            print("== S1c feste Karte: map_server + AMCL, Wegkosten ueber Nav2")
+            pr.spin(3)
+            check("S1c /map von map_server", pr.map is not None)
+            check("S1c TF map->odom von AMCL", pr.tf_map_odom)
+            txt = open(log, errors="replace").read()
+            check("S1c AMCL laeuft", "amcl" in txt and "Mission startet" in txt)
+            # Luftlinie: start->a 335 + a->b 410 + balanciere 100 + warte 100 = 945. Mit Wegkosten ueber den Nav2-Planer
+            # (um Hindernis und Palette, durch die Tuer) muss der erste Plan teurer sein.
+            import re
+            kosten = [int(k) for k in re.findall(r"Plan \((\d+)\)", txt)]
+            check("S1c Wegkosten vom Nav2-Planer (Plankosten > Luftlinie 945)", bool(kosten) and kosten[0] > 945,
+                  f"Plankosten={kosten[:1]}")
+
         print("== S2 NotAus waehrend der Mission")
         # Roboter ist bei b; Mission erneut starten: Ziele sind bezogen auf start_ort 'start' -> er muss laufen
         r, n0 = pr.start_mission()
@@ -222,6 +251,12 @@ def main():
               f"z={pr.p[2]:.3f}, Strecke={dxy:.3f} m")
         r, _ = pr.start_mission()
         check("S2 Start bei aktivem NotAus abgelehnt", not r.success, r.message)
+        r = pr.starte_mission("beispiel")
+        check("S2 Start per Name (/mission/starte) bei NotAus ebenfalls abgelehnt", not r.erfolg, r.meldung)
+        pr.not_aus.publish(Bool(data=False)); pr.spin(1)
+        r = pr.starte_mission("gibt_es_nicht")
+        check("S2 unbekannte Mission per Name abgelehnt (Meldung statt Absturz)", not r.erfolg and "nicht ladbar" in r.meldung,
+              r.meldung[:80])
 
         txt = open(log, errors="replace").read()
         check("S3 keine MuJoCo-Instabilitaet", "simulation is unstable" not in txt)

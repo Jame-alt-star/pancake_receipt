@@ -6,6 +6,7 @@ Je Umgebung ein Ordner `welten/<name>/`:
 |---|---|---|
 | `szene.xml` | Simulation (Layer 4, `mujoco_node` Parameter `welt`) | nur die Umgebung (Wände, Regale, Hindernisse), **ohne Roboter**; das Robotermodell hängt die Simulation beim Laden dazu |
 | `orte.yaml` | Missionsplanung (Layer 1) | benannte Orte `{x, y}` im map-Frame und ungerichtete Verbindungen |
+| `karte.yaml` + `karte.pgm` | Navigation mit `karte:=true` (map_server + AMCL) | Belegungskarte, aus `szene.xml` gerechnet: `python3 src/roboter_welten/roboter_welten/karte_aus_szene.py [welt]`; für eine echte Halle stattdessen per SLAM aufnehmen und speichern |
 
 Missionen (`roboter_task_planning/missions/*.yaml`) enthalten nur noch Ziele und Parameter und verweisen mit
 `welt: <name>` auf die Welt. `roboter_system/launch/system.launch.py` startet die Simulation automatisch mit derselben Welt.

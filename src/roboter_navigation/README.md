@@ -13,7 +13,8 @@ ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 h
 #   oder sein Nav2 selbst starten und unser System mit navigation:=extern
 ```
 
-- Lokalisierung: `map→odom` statisch (Identität) oder mit `slam:=true` von `slam_toolbox`;
+- Lokalisierung: `map→odom` statisch (Identität), mit `slam:=true` von `slam_toolbox` oder mit `karte:=<karte.yaml>`
+  (System: `karte:=true`) von AMCL auf der festen Karte der Welt (dann plant die globale Costmap auf der ganzen Karte);
   `/odom` + TF `odom→base_link` aus `mujoco_node` (Ground-Truth) oder `beinodometrie_node`.
 - Hindernisse: 3D-Lidar → `punktwolke_zu_scan` (Paket `roboter_sensorik`) → `VoxelLayer` (beide Costmaps) und `/scan` für
   SLAM und `collision_monitor` (siehe Abschnitt Lidar).
@@ -26,7 +27,9 @@ ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=nav2 h
 - `nav2_params.yaml`: Standard mit einem 3D-Lidar. Costmaps = `VoxelLayer` auf `/punkte_hindernis`;
   `/scan` für SLAM und Collision-Monitor kommt aus `punktwolke_zu_scan` (`roboter_sensorik`, bleibt auch
   bei einer anderen Nav2-Variante erhalten).
-- `nav2_params_2d.yaml`: alte Variante mit einer Scanebene (`lidar_modus:=2d`).
+- `nav2_params_2d.yaml`: **Overlay** mit nur den Unterschieden für eine Scanebene (`lidar_modus:=2d`);
+  `nav2_karte.yaml`: Overlay für die feste Karte (static_layer, AMCL, map_server). `navigation.launch.py` legt
+  Overlays über die Basisdatei (Argument `overlays`); eigene Parameter (`nav2_params:=`) bleiben unverändert.
 
 ## Visualisierung
 `system.launch.py ... rviz:=true` (Ansicht `roboter_system/rviz/ansicht_3d.rviz`)

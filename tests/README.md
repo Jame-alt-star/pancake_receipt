@@ -10,11 +10,11 @@ Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`), Workspace gesourct
 ## Wo liegt was
 | Ort | Art | Inhalt |
 |---|---|---|
-| `src/roboter_steuerung/test/` | Unit (Layer 3) | `test_kommando_haltung.py`: Rampe, Begrenzung, Kombigrenze, Watchdog, Kurshaltung akkumuliert nicht (Regression −572 rad/s), Positionshaltung; `test_steuereinheit_logik.py`: Knoten mit NotAus/Freigabe, Watchdog-Meldung, Befehl ohne Freigabe |
+| `src/roboter_steuerung/test/` | Unit (Layer 3) | `test_kommando_haltung.py`: Rampe, Begrenzung, Kombigrenze, Watchdog, Kurshaltung akkumuliert nicht (Regression −572 rad/s), Positionshaltung; `test_steuereinheit_logik.py`: Knoten mit NotAus/Freigabe, Watchdog, Befehl ohne Freigabe, Stoerung bei Sensorausfall/Sturz/NaN, Quittieren, Gelenkgrenzen, Vorrang des Balance-Eingangs |
 | `src/roboter_sensorik/test/` | Unit (Sensorvorverarbeitung) | `test_punktwolke_zu_scan.py`: Boden raus, niedrige Hindernisse drin, Neigungsausgleich, Ausdünnung |
 | `src/roboter_task_planning/test/` | Unit (Layer 1) | `test_layer1.py`: Weltwissen, PDDL, Planer, Dispatcher, Neuplanung (braucht Fast Downward) |
 | `tests/simulation/` | Simulation + Controller ohne ROS | `test_closed_loop.py` (Stehen, Gehen, Kurshaltung, Robustheit gegen Verzögerung/Jitter, Welten laden), `test_beinodometrie.py` (< 2 % der Strecke), `test_konfiguration.py` (Parameterdateien nur mit deklarierten Parametern, Policy passt zum Modell, Takt), `test_sim_bausteine.py` (Lidar, Sensormodell, Posenaufnahme), Helfer `sim_helpers.py` |
-| `tests/system/` | System (`ros2 launch`) | `integration_ros.py` (Pipeline: Startrennen, Freigabe, Gehen, Begrenzung, NotAus, Odometrie), `integration_watchdog.py`, `integration_mission.py` (Layer 1–4), `stop_all.sh` |
+| `tests/system/` | System (`ros2 launch`) | `integration_ros.py` (Pipeline: Startrennen, Freigabe, Gehen, Begrenzung, NotAus, Odometrie; zum Schluss Ausfall der Steuerung -> Daempfungsmodus), `integration_watchdog.py` (Watchdog; zum Schluss Sensorausfall -> Stoerung), `integration_mission.py` (Layer 1–4, Freigabe-Entzug am Ende), `stop_all.sh` |
 | `experimente/` | Experiment + Regression | `arm_feasibility.py` (Greifen im Stehen, Optionen `--obs-mask`, `--waist`, `--empfohlen`, `--phases`), `test_arm_feasibility.py` sichert den Betriebspunkt (0,30 m, ≤ 1 kg je Hand) |
 
 `python3 -m pytest -q` sammelt alle schnellen Tests (siehe `pytest.ini`).
@@ -24,7 +24,7 @@ Alle Aufrufe aus dem Projekt-Root (`~/humanoid_robot`), Workspace gesourct
 |---|---|
 | `python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie]` | ~2,5 min |
 | `python3 tests/system/integration_watchdog.py` | ~1 min |
-| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --drei-d \| --nur-2d \| --slam] [--realistisch] [--beinodometrie]` | 2–6 min |
+| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --drei-d \| --nur-2d \| --slam \| --karte] [--realistisch] [--beinodometrie]` | 2–6 min |
 
 Hinweise:
 - Die Systemtests starten und beenden die Pipeline selbst; währenddessen keine eigenen `ros2 topic echo/hz`-Aufrufe.

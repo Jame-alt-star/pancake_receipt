@@ -25,6 +25,11 @@ class BeinodometrieNode(Node):
         self.declare_parameter("start_position", [0.0, 0.0, -1.0])   # z < 0: becken_hoehe_stand aus roboter.yaml
         self.declare_parameter("odom_frame", "odom")
         self.declare_parameter("base_frame", "base_link")
+        # Unsicherheit (Standardabweichung) fuer die Kovarianz in /odom: frueher 0 = "perfekt", was fuer Sensorfusion
+        # und AMCL falsch ist. Werte nach den Messungen (< 1 % der Strecke, Geschwindigkeit nach Tiefpass ~0.05 m/s).
+        self.declare_parameter("sigma_position_m", 0.05)
+        self.declare_parameter("sigma_gier_rad", 0.02)
+        self.declare_parameter("sigma_geschwindigkeit_m_s", 0.05)
         # Kinematik und Starthoehe aus der Roboterbeschreibung (gilt auf Hardware genauso).
         roboter = lade_roboter()
         self.est = Beinodometrie(roboter["modell_xml"])
@@ -36,6 +41,15 @@ class BeinodometrieNode(Node):
         self.base_frame = self.get_parameter("base_frame").value
         self.quat = None
         self.omega = np.zeros(3)
+        sp, sg, sv = (float(self.get_parameter(n).value) for n in
+                      ("sigma_position_m", "sigma_gier_rad", "sigma_geschwindigkeit_m_s"))
+        # 6x6 (x, y, z, roll, pitch, yaw): z/roll/pitch aus Kinematik und IMU genauer als die Ebene
+        self.kov_pose = [0.0] * 36
+        for i, s in enumerate((sp, sp, 0.01, 0.01, 0.01, sg)):
+            self.kov_pose[i * 7] = s * s
+        self.kov_twist = [0.0] * 36
+        for i, s in enumerate((sv, sv, sv, 0.02, 0.02, 0.02)):
+            self.kov_twist[i * 7] = s * s
         self.pub = self.create_publisher(Odometry, "/odom", 10)
         self.tf = TransformBroadcaster(self)
         self.create_subscription(Imu, "/imu", self._imu, 10)
@@ -66,6 +80,7 @@ class BeinodometrieNode(Node):
         od.pose.pose.orientation.y, od.pose.pose.orientation.z = float(y), float(z)
         od.twist.twist.linear.x, od.twist.twist.linear.y, od.twist.twist.linear.z = map(float, vb)
         od.twist.twist.angular.x, od.twist.twist.angular.y, od.twist.twist.angular.z = map(float, self.omega)
+        od.pose.covariance, od.twist.covariance = self.kov_pose, self.kov_twist
         self.pub.publish(od)
         tr = TransformStamped()
         tr.header = od.header

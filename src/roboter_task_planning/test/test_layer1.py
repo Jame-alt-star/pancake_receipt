@@ -279,3 +279,31 @@ def test_alle_missionsdateien_passen_zu_ihrer_welt():
 def test_unbekannte_missionsparameter_abgelehnt():
     with pytest.raises(ValueError):
         Mission.from_dict(dict(MISSION, parameter={"warte_s": 1.0, "nav_toleranz_m": 0.3}))
+
+
+def test_wegkosten_ueber_schaetzer_mit_rueckfall_auf_luftlinie():
+    """Mit Wegschaetzer (Nav2) zaehlt die echte Weglaenge; liefert er nichts, die Luftlinie."""
+    m = Mission.from_dict(MISSION)
+    aufrufe = []
+    def schaetzer(von, nach):
+        aufrufe.append((von, nach))
+        return None if nach == (10.0, 0.0) or von == (10.0, 0.0) else 7.5     # Umweg statt 3 m Luftlinie
+    w = WorldKnowledge(m, "start", schaetzer)
+    assert w.strecke_cm("start", "a") == 750 and w.strecke_cm("a", "start") == 750
+    assert len(aufrufe) == 1                                     # je Ortspaar nur einmal gefragt
+    assert w.strecke_cm("a", "c") == 700                         # Schaetzer ohne Ergebnis -> Luftlinie 7 m
+    assert "(= (strecke start a) 750)" in generate_problem(w)
+
+
+def test_umweg_aendert_die_reihenfolge():
+    """Luftlinie wuerde a vor b nehmen; ist der Weg zu a in Wahrheit lang (Wand), plant er b zuerst."""
+    d = {"orte": {"s": {"x": 0, "y": 0}, "a": {"x": 1, "y": 0}, "b": {"x": 0, "y": 2}},
+         "start_ort": "s", "ziele": [{"art": "besucht", "ort": "a"}, {"art": "besucht", "ort": "b"}]}
+    m = Mission.from_dict(d)
+    lang = {frozenset({(0.0, 0.0), (1.0, 0.0)}): 9.0}
+    schaetzer = lambda von, nach: lang.get(frozenset({von, nach}))     # noqa: E731
+    if not fd_available():
+        pytest.skip("Fast Downward nicht installiert")
+    plan_luft = FastDownwardPlanner().plan(read_domain(), generate_problem(WorldKnowledge(m, "s")))
+    plan_weg = FastDownwardPlanner().plan(read_domain(), generate_problem(WorldKnowledge(m, "s", schaetzer)))
+    assert str(plan_luft.schritte[0]) == "gehe_zu(s, a)" and str(plan_weg.schritte[0]) == "gehe_zu(s, b)"

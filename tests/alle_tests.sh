@@ -33,6 +33,7 @@ if [ "$SCHNELL" = 0 ]; then
     lauf "Mission Testwelt (Nav2)" python3 tests/system/integration_mission.py --welt
     lauf "Mission Patrouille" python3 tests/system/integration_mission.py --patrouille
     lauf "Mission 3D-Palette" python3 tests/system/integration_mission.py --drei-d
+    lauf "Mission feste Karte (AMCL)" python3 tests/system/integration_mission.py --karte
     if [ "$SLAM" = 1 ]; then
         lauf "Mission SLAM realistisch" python3 tests/system/integration_mission.py --slam --realistisch --beinodometrie
     fi

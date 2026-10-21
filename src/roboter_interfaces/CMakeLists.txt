@@ -9,6 +9,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/GehAktion.action"
   "action/BalancierAktion.action"
   "srv/GleichgewichtService.srv"
+  "srv/MissionStarten.srv"
 )
 
 ament_package()

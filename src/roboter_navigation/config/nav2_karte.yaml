@@ -1,0 +1,36 @@
+# Overlay fuer Navigation mit fester Karte (karte:=<welt>): map_server laedt die Karte der Welt
+# (roboter_welten/welten/<welt>/karte.yaml), AMCL lokalisiert darauf (statt map = odom bzw. SLAM), und die globale
+# Costmap plant auf der ganzen Karte (static_layer) statt nur im 24-m-Fenster der aktuellen Lidardaten.
+# Damit sind die Orte der Missionen dauerhaft gueltig, solange die Karte zur Halle passt.
+# navigation.launch.py stellt static_layer vor die uebrigen Schichten der globalen Costmap.
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      rolling_window: false               # Groesse kommt aus der Karte
+      track_unknown_space: true
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+amcl:
+  ros__parameters:
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: map
+    scan_topic: scan
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    laser_model_type: "likelihood_field"
+    max_beams: 90
+    min_particles: 300                    # wenig, weil der Startpunkt bekannt ist; schont die CPU unter WSL
+    max_particles: 1000
+    laser_max_range: 10.0
+    laser_min_range: 0.2
+    update_min_d: 0.1
+    update_min_a: 0.1
+    transform_tolerance: 0.5
+    tf_broadcast: true
+    # Der Roboter startet im Kartenursprung (Startpose der Welt), wie die Orte in orte.yaml
+    set_initial_pose: true
+    initial_pose: {x: 0.0, y: 0.0, z: 0.0, yaw: 0.0}
+map_server:
+  ros__parameters:
+    yaml_filename: ""                     # setzt navigation.launch.py (Argument karte)

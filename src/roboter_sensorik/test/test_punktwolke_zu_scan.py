@@ -87,3 +87,21 @@ def test_wolke_mit_weiteren_feldern_wie_livox():
     f12 = [F(name=n, offset=4 * i, datatype=7) for i, n in enumerate("xyz")]
     assert np.allclose(xyz_aus_wolke(xyz.tobytes(), f12, 12, 2), xyz)
     assert xyz_aus_wolke(b"", f12, 12, 0).shape == (0, 3)
+
+
+def test_geneigte_montage_ueber_tf():
+    """Lidar 0.45 m ueber dem Becken, um 30 Grad nach vorn geneigt (wie am Kopf des G1): ein Punkt, der im
+    Sensorframe schraeg nach unten liegt, landet nach der Uebertragung in base_link an der richtigen Stelle."""
+    from types import SimpleNamespace as N
+    from roboter_sensorik.punktwolke_zu_scan import in_basis, scan_aus_punkten
+    nick = math.radians(30)
+    q = N(w=math.cos(nick / 2), x=0.0, y=math.sin(nick / 2), z=0.0)            # Drehung um y (nach vorn geneigt)
+    tf = N(rotation=q, translation=N(x=0.0, y=0.0, z=0.45))
+    # Hindernis 2 m vor dem Becken auf 0.3 m Hoehe -> im Basisframe (2, 0, 0.3 - 0.793)
+    ziel_basis = np.array([2.0, 0.0, 0.3 - 0.793])
+    R = np.array([[math.cos(nick), 0, math.sin(nick)], [0, 1, 0], [-math.sin(nick), 0, math.cos(nick)]])
+    p_sensor = (ziel_basis - np.array([0, 0, 0.45])) @ R                       # Umkehrung: R^T (p - t)
+    pts = in_basis(np.array([p_sensor]), tf)
+    assert np.allclose(pts[0], ziel_basis, atol=1e-9)
+    ranges = scan_aus_punkten(pts, np.array([1.0, 0, 0, 0]), 0.793, 0.12, 1.9, 360, 0.2, 10.0)
+    assert abs(ranges[bin_of(0)] - 2.0) < 1e-6                                 # Hindernis im Scan, 2 m voraus

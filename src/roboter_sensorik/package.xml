@@ -14,7 +14,8 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
-  <exec_depend>roboter_beschreibung</exec_depend>   <!-- Sensorgeometrie (Lidar-Hoehe) -->
+  <exec_depend>roboter_beschreibung</exec_depend>   <!-- Beckenhoehe, Quaternion-Hilfen -->
+  <exec_depend>tf2_ros</exec_depend>   <!-- Lidar-Montage aus dem TF-Baum -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <test_depend>python3-pytest</test_depend>

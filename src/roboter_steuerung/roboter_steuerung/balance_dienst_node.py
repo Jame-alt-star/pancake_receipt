@@ -3,7 +3,8 @@
 Eigener, schlanker Knoten neben steuereinheit_node - bewusst ohne Zugriff auf dessen
 Regelschleife, nur ueber Topics:
   - Service  /gleichgewicht   (roboter_interfaces/GleichgewichtService): Neigung aus /imu
-  - Action   /balanciere      (roboter_interfaces/BalancierAktion): Roboter anhalten (cmd_vel 0)
+  - Action   /balanciere      (roboter_interfaces/BalancierAktion): Roboter anhalten (Vorrang-Eingang
+    /cmd_vel/balance = 0)
     und melden, sobald er stabil steht (Neigung <= toleranz_grad UND Basisgeschwindigkeit klein
     fuer mind. STABIL_ZEIT_S).
 
@@ -67,7 +68,8 @@ class BalanceDienstNode(Node):
         cb = ReentrantCallbackGroup()
         self._tap_imu = _Tap(self, Imu, "/imu", self._imu, cb)
         self._tap_pos = _Tap(self, Odometry, "/odom", self._pos, cb)
-        self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
+        # Eigener Vorrang-Eingang der Steuerung: frueher auf /cmd_vel, dort konkurrierte der Haltebefehl mit Nav2.
+        self.pub_cmd = self.create_publisher(Twist, "/cmd_vel/balance", 10)
         self.create_service(GleichgewichtService, "/gleichgewicht", self._service, callback_group=cb)
         self.action = ActionServer(
             self, BalancierAktion, "/balanciere", execute_callback=self._execute,

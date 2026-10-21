@@ -12,6 +12,10 @@
   <exec_depend>navigation2</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>   <!-- nur fuer slam:=true -->
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>         <!-- nur karte:=... -->
+  <exec_depend>nav2_amcl</exec_depend>               <!-- nur karte:=... -->
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <!-- Eingaenge /scan und /punkte_hindernis liefert roboter_sensorik (unabhaengig von dieser Nav2-Variante). -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

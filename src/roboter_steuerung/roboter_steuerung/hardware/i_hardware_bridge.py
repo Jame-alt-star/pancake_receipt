@@ -46,3 +46,13 @@ class IRobotHardwareBridge(ABC):
         die jeweilige Implementierung dieser Klasse, nicht der Aufrufer.
         """
         pass
+
+    @abstractmethod
+    def sensor_alter_s(self) -> float:
+        """Alter der aeltesten der zuletzt empfangenen Messungen (IMU, Gelenke) in Sekunden; inf, solange noch
+        keine kam. Die Steuerung erkennt daran einen Sensorausfall, statt mit alten Werten weiterzuregeln."""
+        pass
+
+    def sensor_detail(self) -> str:
+        """Optional: Alter je Sensorquelle als Text, fuer die Diagnose einer Stoerung."""
+        return ""

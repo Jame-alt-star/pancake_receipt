@@ -16,6 +16,7 @@ GEH_ACTION = "/geh_aktion"           # GehAktion (SysML GehAktionPort): Server n
 BALANCIER_ACTION = "/balanciere"     # BalancierAktion (balance_dienst_node, Layer 3)
 NAV2_ACTION = "navigate_to_pose"     # nav2_msgs/NavigateToPose (Layer 2, Standard-Backend)
 NAV2_ACTIVE_SRV = "/lifecycle_manager_navigation/is_active"   # std_srvs/Trigger
+NAV2_PFAD_ACTION = "compute_path_to_pose"   # nav2_msgs/ComputePathToPose (Planer, fuer Wegkosten)
 
 
 def run_action(client: ActionClient, goal, cancel: threading.Event, timeout_s: float,
@@ -68,7 +69,10 @@ class NavigationBridge(IActionBridge):
         elif backend == "nav2":
             from nav2_msgs.action import NavigateToPose
             self._nav2_type = NavigateToPose
+            from nav2_msgs.action import ComputePathToPose
+            self._pfad_typ = ComputePathToPose
             self.client = ActionClient(node, NavigateToPose, NAV2_ACTION)
+            self._pfad_cli = ActionClient(node, ComputePathToPose, NAV2_PFAD_ACTION)
             self._active_cli = node.create_client(Trigger, NAV2_ACTIVE_SRV)
         else:
             raise ValueError(f"unbekanntes nav_backend {backend!r} (gehaktion|nav2)")
@@ -109,6 +113,23 @@ class NavigationBridge(IActionBridge):
             goal.pose.pose.orientation.w = 1.0
             ok, res, text = self._send_nav2(goal, cancel)
         return BridgeResult(bool(ok), text)
+
+    def weglaenge(self, von, nach):
+        """Laenge des von Nav2 geplanten Wegs [m] oder None (anderes Backend, Planer nicht bereit, kein Weg).
+        Ohne gespeicherte Karte plant Nav2 durch Unbekanntes geradeaus - dann entspricht das der Luftlinie."""
+        if self.backend != "nav2" or not self._wait_nav2_active(threading.Event(), timeout_s=60.0):
+            return None
+        goal = self._pfad_typ.Goal()
+        for pose, (x, y) in ((goal.start, von), (goal.goal, nach)):
+            pose.header.frame_id = "map"
+            pose.pose.position.x, pose.pose.position.y = float(x), float(y)
+            pose.pose.orientation.w = 1.0
+        goal.use_start = True
+        ok, res, _ = run_action(self._pfad_cli, goal, threading.Event(), timeout_s=10.0)
+        if not ok or res is None or len(res.path.poses) < 2:
+            return None
+        p = [(q.pose.position.x, q.pose.position.y) for q in res.path.poses]
+        return float(sum(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 for (x0, y0), (x1, y1) in zip(p, p[1:])))
 
     def _send_nav2(self, goal, cancel: threading.Event):
         """Nav2-Ziel senden; ein sofortiger Abbruch (< 6 s, z.B. Planner/TF gerade noch nicht

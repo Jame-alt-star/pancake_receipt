@@ -33,6 +33,12 @@ def szene_pfad(name: str) -> str:
     return os.path.join(welt_verzeichnis(name), "szene.xml")
 
 
+def karte_pfad(name: str):
+    """Kartendatei (Nav2-YAML) der Welt oder None, wenn sie keine hat (karte_aus_szene.py erzeugt sie)."""
+    p = os.path.join(welt_verzeichnis(name), "karte.yaml") if name else ""
+    return p if p and os.path.exists(p) else None
+
+
 def lade_orte(name: str) -> dict:
     """Inhalt von orte.yaml: {'orte': {name: {x, y}}, 'verbindungen': [[a, b], ...] (optional)}."""
     with open(os.path.join(welt_verzeichnis(name), "orte.yaml")) as f:

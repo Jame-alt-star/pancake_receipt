@@ -11,8 +11,8 @@ Stand 14.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `REA
 | Sensorik | `roboter_sensorik` | `punktwolke_zu_scan`: `/points` → `/scan` + `/punkte_hindernis` | wir |
 | Layer 3 Reactive | `roboter_steuerung` | `steuereinheit_node` (Zustandsautomat `states/`, Policy `control/`, Befehlsaufbereitung `kommando.py`, Haltung `haltung.py`), Hardware-Schnittstelle `hardware/`, `balance_dienst_node`, `beinodometrie_node` (`zustandsschaetzung/`), Policy `config/policy_29dof.yaml` + `modelle/policy_29dof.onnx` | wir |
 | Layer 4 HAL | `roboter_simulation` | `mujoco_node` mit `szene.py`, `sensormodell.py`, `lidar.py`, `aufnahme.py`, `geometrie.py` | wir |
-| Roboter | `roboter_beschreibung` | Unitree-G1-Modelle (unverändert) + `config/roboter.yaml` (Modell, Becken- und Lidar-Höhe) | – |
-| Umgebung | `roboter_welten` | je Welt `szene.xml` (Simulation) + `orte.yaml` (Missionen) | wir |
+| Roboter | `roboter_beschreibung` | Unitree-G1-Modelle (bis auf `armature` an den Gelenken unverändert), `config/roboter.yaml` (Modell, URDF, Beckenhöhe, Lidar-Montage), Quaternion-Hilfen, TF-Baum (`launch/beschreibung.launch.py`) | – |
+| Umgebung | `roboter_welten` | je Welt `szene.xml` (Simulation) + `orte.yaml` (Missionen) + `karte.yaml/.pgm` (Nav2-Karte, aus der Szene gerechnet) | wir |
 | Schnittstellen | `roboter_interfaces` | `GehAktion`, `BalancierAktion`, `GleichgewichtService`, `Antriebsparameter` | – |
 | Gesamt | `roboter_system` | `system.launch.py` (setzt die Schichten zusammen), RViz-Ansicht | wir |
 
@@ -34,13 +34,17 @@ Stand 14.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `REA
 
 | Name | Typ | Von → Zu | Bemerkung |
 |---|---|---|---|
-| `/joint_states`, `/imu` | Topic | L4 → L3, Beinodometrie, Sensorik | 100 Hz |
+| `/joint_states` (mit Namen), `/imu` | Topic | L4 → L3, Beinodometrie, Sensorik, `robot_state_publisher` | 100 Hz; L3 rechnet bei jeder 2. Gelenknachricht (Takt aus den Sensordaten) |
+| `/clock` | Topic | L4 → Tests | Simulationszeit (die Knoten nutzen die Wanduhr) |
 | `/joint_commands` | Topic | L3 → L4 | Zielwinkel, 50 Hz |
 | `/antrieb/parameter` | Topic (latched) | L3 → L4 | kp, kd, Ruhepose; L4 startet erst danach |
 | `/odom` + TF `odom→base_link` | Topic/TF | L4 (Ground-Truth) **oder** `beinodometrie_node` | Schalter `odom_quelle` |
 | `/points` | Topic | L4 → Sensorik | 3D-Lidar, 5 Hz |
 | `/scan`, `/punkte_hindernis` | Topic | Sensorik → L2 | SLAM/Collision-Monitor bzw. Costmaps |
 | `/cmd_vel` | Topic | L2 (oder Hand/Testdouble) → L3 | Wunsch [vx, vy, wz], L3 begrenzt |
+| `/cmd_vel/balance` | Topic | Balance-Dienst → L3 | Vorrang vor `/cmd_vel`, solange er sendet (0,5 s) |
+| `/steuerung/zustand` | Topic (latched) | L3 → L1, Bediener | Start/Bereitschaft/Gehen/Balancieren/NotAus/Stoerung |
+| `/steuerung/quittieren` | Service (Trigger) | Bediener → L3 | Stoerung bewusst verlassen |
 | `/freigabe` | Topic | L1 oder Bediener → L3 | eigener Kanal, während NotAus abgelehnt |
 | `/not_aus` | Topic (latched) | Bediener → L3, L1 | unterbricht jeden Zustand |
 | `navigate_to_pose` | Action (Nav2) | L1 → L2 | Standard-Backend |
@@ -48,7 +52,54 @@ Stand 14.10.2026 (Strukturumbau v2.x). Einstieg für Übergaben; Bedienung: `REA
 | `/balanciere` | Action `BalancierAktion` | L1 → L3 (`balance_dienst_node`) | |
 | `/gleichgewicht` | Service | → L3 | Neigung und Stabilität |
 | `/mission/start`, `/mission/abort`, `/mission/status` | Service/Topic | Bediener ↔ L1 | Status als JSON |
+| `/mission/starte` | Service `MissionStarten` | Bediener → L1 | Mission nach Name oder Pfad starten |
+| `compute_path_to_pose` | Action (Nav2) | L1 → L2 | Wegkosten für die Planung |
 | `/base_position` | Topic | L4 → Tests | nur Simulation (Ground-Truth) |
+
+## Sicherheit
+
+| Fall | Wer erkennt es | Reaktion |
+|---|---|---|
+| NotAus (`/not_aus`) | Layer 3 | Zustand NotAus: Policy aktiv mit Befehl 0 (aktiv geregelter Stillstand), Freigabe weg, Mission bricht ab |
+| Sensordaten bleiben aus (> `sensor_timeout_s`, 1 s) | Layer 3 | Zustand **Stoerung**: keine Zielwinkel mehr |
+| Policy liefert NaN/inf | Layer 3 | Stoerung (der Wert wird nicht gesendet) |
+| Sturz (Neigung > `sturz_neigung_grad`, 45°) | Layer 3 | Stoerung |
+| Zielwinkel ausserhalb der Gelenkgrenzen | Layer 3 | auf die Grenzen des Robotermodells begrenzt |
+| Kommandos bleiben aus (> `kommando_timeout_s`, 1 s) | Layer 4 (Simulation; auf Hardware die Unitree-Firmware) | **Daempfungsmodus**: Steifigkeit 0, nur Daempfung |
+| Stoerung | Layer 1 | Mission bricht ab, Neustart erst nach `/steuerung/quittieren` |
+| `/cmd_vel` bleibt aus (> 1 s mit Navigation) | Layer 3 | Watchdog setzt den Wunsch auf 0 |
+| Missionsende | Layer 1 | Freigabe wird entzogen |
+
+Zustand der Steuerung: `/steuerung/zustand` (latched). Stoerung verlassen nur bewusst: `ros2 service call
+/steuerung/quittieren std_srvs/srv/Trigger` (klappt nur mit Sensordaten, aufrecht, ohne NotAus).
+
+**Anforderungen an die Hardware-Anbindung (noch nicht umgesetzt):**
+- Der Software-NotAus ersetzt **keinen** physischen Not-Halt. Auf dem echten G1 braucht es den Not-Halt der Unitree-
+  Fernbedienung bzw. einen verdrahteten Not-Halt, der unabhaengig von dieser Software wirkt.
+- Die Unitree-SDK-Bridge muss bei ausbleibenden Kommandos selbst daempfen (Firmware-Daempfungsmodus) und kp/kd aus
+  `/antrieb/parameter` mit jedem Gelenkkommando senden.
+- `auto_start` ist nur fuer Simulation und Tests gedacht.
+
+## TF-Baum
+
+```
+map ──(statisch | SLAM | AMCL auf fester Karte)── odom ──(Simulation oder Beinodometrie)── base_link
+base_link ── pelvis ──(robot_state_publisher aus /joint_states + URDF)── alle Glieder (torso_link, head_link, ...)
+<Elternglied aus roboter.yaml, Standard pelvis> ── lidar_link
+```
+Die Lidar-Montage steht nur in `roboter.yaml` (Elternglied + Pose); Simulation, TF-Baum und Sensorik lesen sie von dort
+bzw. aus dem TF-Baum. Am echten G1 sitzt der MID-360 im Kopf: Elternglied `torso_link`, Pose aus dem Unitree-Datenblatt.
+
+## Karte und Lokalisierung (Layer 2)
+
+| Modus | `map → odom` | globale Planung | wann |
+|---|---|---|---|
+| ohne Karte (Standard) | statisch (Startpose = Kartenursprung) | nur im 24-m-Fenster der aktuellen Lidardaten | Simulation, schnelle Tests |
+| `slam:=true` | slam_toolbox (Kartierung) | wie ohne Karte | Karte aufnehmen |
+| `karte:=true` | AMCL auf `welten/<welt>/karte.yaml` | auf der ganzen Karte (static_layer) | feste Halle: Orte bleiben gültig |
+
+Layer 1 fragt die Wegkosten zwischen den Orten beim Nav2-Planer ab (`compute_path_to_pose`); ohne Planer gilt die Luftlinie.
+Für die echte Halle: Karte einmal mit SLAM aufnehmen und mit `map_saver_cli` als `karte.yaml/.pgm` der Welt speichern.
 
 ## Ablauf beim Start
 

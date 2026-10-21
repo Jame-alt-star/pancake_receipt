@@ -59,7 +59,12 @@ def test_policy_passt_zum_robotermodell():
 def test_geometrie_einmal_definiert():
     with open(BESCHREIBUNG + "config/roboter.yaml") as f:
         r = yaml.safe_load(f)
-    assert 0.6 < r["becken_hoehe_stand"] < 1.0 and 0.0 < r["lidar_hoehe_ueber_becken"] < 1.0
+    assert 0.6 < r["becken_hoehe_stand"] < 1.0
+    assert set(r["lidar"]) == {"parent", "xyz", "rpy"} and len(r["lidar"]["xyz"]) == len(r["lidar"]["rpy"]) == 3
+    m = mujoco.MjModel.from_xml_path(BESCHREIBUNG + r["modell_xml"])
+    assert mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, r["lidar"]["parent"]) >= 0     # Glied existiert im Modell
+    urdf = open(BESCHREIBUNG + "modelle/g1_description/" + r["urdf"]).read()
+    assert f'<link name="{r["lidar"]["parent"]}"' in urdf                                # ... und in der URDF
     with open(STEUER + "config/policy_29dof.yaml") as f:
         p = yaml.safe_load(f)
     assert "becken_hoehe_stand" not in p and "xml_path" not in p     # nur noch in roboter.yaml

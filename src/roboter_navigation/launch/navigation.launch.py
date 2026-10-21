@@ -1,62 +1,104 @@
 import os
+import tempfile
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
-from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+ARGUMENTE = [
+    ("params_file", "", "Nav2-Parameter (leer = config/nav2_params.yaml dieses Pakets)"),
+    ("overlays", "", "Overlay-Dateien, durch Komma getrennt; jede ueberschreibt nur ihre Eintraege (z. B. "
+                     "config/nav2_params_2d.yaml fuer lidar_modus:=2d)"),
+    ("karte", "", "Kartendatei (Nav2-YAML) -> map_server + AMCL + statische Kartenschicht; leer = ohne Karte"),
+    ("slam", "false", "true: slam_toolbox liefert /map und map->odom (nicht zusammen mit karte)"),
+    ("slam_params_file", "", "slam_toolbox-Parameter (leer = config/slam_params.yaml)"),
+    ("use_composition", "True", "Nav2-Knoten in einem gemeinsamen Container"),
+]
 
-def generate_launch_description():
-    """Layer 2: Nav2 (nur Navigation, ohne Lokalisierung/SLAM) fuer die Simulation.
 
-        ros2 launch roboter_navigation navigation.launch.py [params_file:=<datei>]
+def mischen(basis: dict, overlay: dict) -> dict:
+    """Overlay rekursiv ueber die Basis legen (Dictionaries werden zusammengefuehrt, alles andere ersetzt)."""
+    erg = dict(basis)
+    for k, v in overlay.items():
+        erg[k] = mischen(erg[k], v) if isinstance(v, dict) and isinstance(erg.get(k), dict) else v
+    return erg
 
-    - map->odom: statische Identitaet (Standard) oder slam:=true -> slam_toolbox (/map + map->odom)
-    - Ausgang: /cmd_vel (velocity_smoother) -> Layer 3
-    - Die Variante des Kollegen: params_file:=<seine.yaml> (oder dieses Paket ersetzen)
-    """
+
+def parameter_datei(basis_pfad: str, overlays, karte: str) -> str:
+    """Basis + Overlays (+ Kartenmodus) zu einer Datei zusammenfuehren; Pfad einer temporaeren Datei."""
+    with open(basis_pfad) as f:
+        p = yaml.safe_load(f)
+    for o in overlays:
+        with open(o) as f:
+            p = mischen(p, yaml.safe_load(f))
+    if karte:
+        gc = p["global_costmap"]["global_costmap"]["ros__parameters"]
+        if "static_layer" not in gc["plugins"]:
+            gc["plugins"] = ["static_layer"] + list(gc["plugins"])
+        p.setdefault("map_server", {}).setdefault("ros__parameters", {})["yaml_filename"] = karte
+    f = tempfile.NamedTemporaryFile("w", prefix="nav2_", suffix=".yaml", delete=False)
+    yaml.safe_dump(p, f, sort_keys=False)
+    f.close()
+    return f.name
+
+
+def _aufbauen(context):
     share = get_package_share_directory("roboter_navigation")
-    nav2 = get_package_share_directory("nav2_bringup")
-    params = DeclareLaunchArgument(
-        "params_file", default_value=os.path.join(share, "config", "nav2_params.yaml"))
-    composition = DeclareLaunchArgument("use_composition", default_value="True")
-    slam = DeclareLaunchArgument(
-        "slam", default_value="false",
-        description="true: slam_toolbox liefert /map und map->odom (statt statischer Identitaet)")
-    slam_params = DeclareLaunchArgument(
-        "slam_params_file", default_value=os.path.join(share, "config", "slam_params.yaml"))
-
-    static_tf = Node(package="tf2_ros", executable="static_transform_publisher", name="map_to_odom",
-                     arguments=["--frame-id", "map", "--child-frame-id", "odom"],
-                     condition=UnlessCondition(LaunchConfiguration("slam")))
-    def _slam(context):
-        # slam_toolbox nur aufloesen, wenn slam:=true (Review B7) - sonst brach nav2:=true auch ohne
-        # SLAM ab, wenn slam_toolbox nicht installiert war.
-        if LaunchConfiguration("slam").perform(context).lower() not in ("true", "1"):
-            return []
-        return [IncludeLaunchDescription(
+    a = {n: LaunchConfiguration(n).perform(context) for n, _, _ in ARGUMENTE}
+    slam, karte = a["slam"].lower() in ("true", "1"), a["karte"]
+    if slam and karte:
+        raise ValueError("karte:= und slam:=true schliessen sich aus (Lokalisierung auf fester Karte ODER Kartierung)")
+    overlays = [o for o in a["overlays"].split(",") if o]
+    if karte:
+        overlays.append(os.path.join(share, "config", "nav2_karte.yaml"))
+    params = parameter_datei(a["params_file"] or os.path.join(share, "config", "nav2_params.yaml"), overlays, karte)
+    aktionen = []
+    if karte:
+        # Lokalisierung auf der festen Karte: map_server + AMCL (AMCL liefert map->odom)
+        aktionen += [
+            Node(package="nav2_map_server", executable="map_server", name="map_server", output="screen",
+                 parameters=[params]),
+            Node(package="nav2_amcl", executable="amcl", name="amcl", output="screen", parameters=[params]),
+            Node(package="nav2_lifecycle_manager", executable="lifecycle_manager", name="lifecycle_manager_localization",
+                 output="screen", parameters=[{"autostart": True, "node_names": ["map_server", "amcl"]}]),
+        ]
+    elif slam:
+        # slam_toolbox nur aufloesen, wenn gebraucht (Review B7: sonst brach nav2:=true ohne slam_toolbox ab)
+        aktionen.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
                 get_package_share_directory("slam_toolbox"), "launch", "online_async_launch.py")),
-            launch_arguments={"slam_params_file": LaunchConfiguration("slam_params_file"),
-                              "use_sim_time": "false", "autostart": "true"}.items())]
-    slam_launch = OpaqueFunction(function=_slam)
-    # navigation_launch.py laedt bei use_composition=True die Knoten nur in einen BEREITS
-    # laufenden Container (den startet sonst bringup_launch.py) - also hier selbst starten.
-    container = Node(
-        condition=IfCondition(LaunchConfiguration("use_composition")),
-        package="rclcpp_components", executable="component_container_isolated",
-        name="nav2_container", output="screen",
-        parameters=[LaunchConfiguration("params_file"), {"autostart": True}],
-        arguments=["--ros-args", "--log-level", "info"])
-    navigation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(nav2, "launch", "navigation_launch.py")),
-        launch_arguments={
-            "params_file": LaunchConfiguration("params_file"),
-            "use_sim_time": "false",
-            "autostart": "true",
-            "use_composition": LaunchConfiguration("use_composition"),
-        }.items())
-    return LaunchDescription([params, composition, slam, slam_params, static_tf, slam_launch, container, navigation])
+            launch_arguments={"slam_params_file": a["slam_params_file"] or os.path.join(share, "config",
+                                                                                        "slam_params.yaml"),
+                              "use_sim_time": "false", "autostart": "true"}.items()))
+    else:
+        # ohne Karte: map = odom (Startpose = Kartenursprung)
+        aktionen.append(Node(package="tf2_ros", executable="static_transform_publisher", name="map_to_odom",
+                             arguments=["--frame-id", "map", "--child-frame-id", "odom"]))
+    # navigation_launch.py laedt bei use_composition=True die Knoten nur in einen BEREITS laufenden Container
+    # (den startet sonst bringup_launch.py) - also hier selbst starten.
+    if a["use_composition"].lower() in ("true", "1"):
+        aktionen.append(Node(package="rclcpp_components", executable="component_container_isolated",
+                             name="nav2_container", output="screen", parameters=[params, {"autostart": True}],
+                             arguments=["--ros-args", "--log-level", "info"]))
+    aktionen.append(IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(get_package_share_directory("nav2_bringup"), "launch",
+                                                   "navigation_launch.py")),
+        launch_arguments={"params_file": params, "use_sim_time": "false", "autostart": "true",
+                          "use_composition": a["use_composition"]}.items()))
+    return aktionen
+
+
+def generate_launch_description():
+    """Layer 2: Nav2 fuer die Simulation (Platzhalter; die Variante des Kollegen ersetzt ihn).
+
+        ros2 launch roboter_navigation navigation.launch.py [params_file:=<datei>] [karte:=<karte.yaml> | slam:=true]
+
+    - map->odom: statisch (Standard), slam:=true -> slam_toolbox, karte:=... -> AMCL auf der festen Karte
+    - Ausgang: /cmd_vel (velocity_smoother -> collision_monitor) -> Layer 3
+    """
+    return LaunchDescription([DeclareLaunchArgument(n, default_value=d, description=t) for n, d, t in ARGUMENTE]
+                             + [OpaqueFunction(function=_aufbauen)])

@@ -7,6 +7,7 @@ eigenen Paket); hier wird nur entschieden, WELCHE Schichten laufen und mit welch
     ros2 launch roboter_system system.launch.py mission:=testwelt navigation:=extern     # Nav2 laeuft separat
 
 Schichten:
+  Roboter  TF-Baum        roboter_beschreibung/launch/beschreibung.launch.py (immer: Glieder, Lidar-Montage)
   Layer 4  Simulation     roboter_simulation/launch/simulation.launch.py   (immer)
   Layer 3  Steuerung      roboter_steuerung/launch/steuerung.launch.py     (immer)
   Sensorik                roboter_sensorik/launch/sensorik.launch.py       (bei lidar_modus 3d)
@@ -32,6 +33,8 @@ ARGUMENTE = [
                           "Lidar, Sensorik und Watchdog wie bei nav2) | testdouble (nur Tests: geradeaus, ohne Karte)"),
     ("nav2_params", "", "eigene Nav2-Parameterdatei (leer = Standard aus roboter_navigation passend zum Lidar)"),
     ("slam", "false", "slam_toolbox liefert /map und map->odom (nur mit navigation:=nav2)"),
+    ("karte", "false", "true: Navigation auf der festen Karte der Welt (map_server + AMCL, Planung auf der ganzen "
+                       "Karte); nur mit navigation:=nav2, nicht zusammen mit slam"),
     ("lidar_modus", "", "aus | 3d (ein 3D-Lidar, /scan abgeleitet) | 2d (eine Scanebene, Vergleich); "
                         "leer = 3d, sobald eine Navigation laeuft (nav2, extern, testdouble), sonst aus"),
     ("odom_quelle", "ground_truth", "ground_truth (Simulation) | beinodometrie (Schaetzer aus Gelenken + IMU)"),
@@ -77,6 +80,7 @@ def _aufbauen(context):
     timeout = a["cmd_vel_timeout_s"] or ("1.0" if navigation != "aus" else "0.0")
 
     aktionen = [
+        _include("roboter_beschreibung", "beschreibung.launch.py", {}),
         _include("roboter_simulation", "simulation.launch.py", {
             "welt": welt, "headless": a["headless"], "lidar_modus": lidar,
             "realistic_sensors": a["realistic_sensors"], "record_path": a["record_path"],
@@ -88,9 +92,17 @@ def _aufbauen(context):
         aktionen.append(_include("roboter_sensorik", "sensorik.launch.py", {}))
     if navigation == "nav2":
         cfg = os.path.join(get_package_share_directory("roboter_navigation"), "config")
-        params = a["nav2_params"] or os.path.join(cfg, "nav2_params_2d.yaml" if lidar == "2d" else "nav2_params.yaml")
+        # Overlay fuer 2D nur auf unsere Standardparameter; eigene Parameter (nav2_params) bleiben unveraendert.
+        overlays = os.path.join(cfg, "nav2_params_2d.yaml") if (lidar == "2d" and not a["nav2_params"]) else ""
+        karte = ""
+        if a["karte"].lower() == "true":
+            from roboter_welten import karte_pfad
+            karte = karte_pfad(welt)
+            if not karte:
+                raise ValueError(f"karte:=true, aber die Welt {welt!r} hat keine Karte (karte.yaml)")
         aktionen.append(_include("roboter_navigation", "navigation.launch.py",
-                                 {"slam": a["slam"], "params_file": params}))
+                                 {"slam": a["slam"], "params_file": a["nav2_params"], "overlays": overlays,
+                                  "karte": karte}))
     elif navigation == "testdouble":
         aktionen.append(Node(package="roboter_task_planning", executable="nav_testdouble_node", output="screen"))
     if mission:

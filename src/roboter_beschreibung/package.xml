@@ -4,14 +4,19 @@
   <name>roboter_beschreibung</name>
   <version>0.2.0</version>
   <description>
-    Beschreibung des Unitree G1: MuJoCo-/URDF-Modelle von Unitree (modelle/g1_description, unveraendert) und
-    die Robotergeometrie (config/roboter.yaml). Gemeinsame Quelle fuer Simulation, Zustandsschaetzung und Sensorik.
+    Beschreibung des Unitree G1: MuJoCo-/URDF-Modelle von Unitree (modelle/g1_description), die Robotergeometrie
+    (config/roboter.yaml), Quaternion-Hilfen und der TF-Baum des Roboters (launch/beschreibung.launch.py).
   </description>
   <maintainer email="pascalfranz02@gmail.com">Pascal Franz</maintainer>
-  <license>Apache-2.0</license>   <!-- Modelle in modelle/g1_description: Lizenz von Unitree, siehe dortiges README -->
+  <license>Apache-2.0</license>   <!-- eigener Code; Modelle in modelle/g1_description: Lizenz von Unitree, siehe THIRD_PARTY.md -->
 
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Integrationstest cmd_vel-Watchdog (Layer 3): ein einzelnes /cmd_vel darf den Roboter nicht
-dauerhaft laufen lassen. Aufruf: python3 tests/system/integration_watchdog.py"""
+dauerhaft laufen lassen; danach Sensorausfall -> Stoerung. Aufruf: python3 tests/system/integration_watchdog.py"""
 import os, signal, subprocess, sys, tempfile, time
 import numpy as np, rclpy
 from geometry_msgs.msg import Point, Twist
 from rclpy.node import Node
-from std_msgs.msg import Bool
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, String
 
 R = []
 
@@ -44,6 +45,23 @@ def main():
         txt = open(log, errors="replace").read()
         check("Watchdog meldet", "nicht empfangen" in txt)
         check("keine Instabilitaet", "simulation is unstable" not in txt)
+
+        # Review 2: Sensorausfall -> Steuerung meldet Stoerung und sendet nichts mehr
+        zustand = []
+        lq = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE)
+        n.create_subscription(String, "/steuerung/zustand", lambda m: zustand.append(m.data), lq)
+        spin(1.0)
+        check("Zustand wird gemeldet", bool(zustand) and zustand[-1] in ("Balancieren", "Bereitschaft", "Gehen"),
+              f"{zustand[-1:] }")
+        pids = subprocess.run(["pgrep", "-f", "lib/roboter_simulation/mujoco_node"], capture_output=True,
+                              text=True).stdout.split()
+        for pid in pids:
+            os.kill(int(pid), signal.SIGKILL)               # Sensorquelle faellt hart aus
+        spin(2.0)
+        txt = open(log, errors="replace").read()
+        check("Sensorausfall -> STOERUNG im Log", "STOERUNG: Sensordaten" in txt)
+        check("Sensorausfall -> Zustand Stoerung", bool(zustand) and zustand[-1].startswith("Stoerung"),
+              f"{zustand[-1:]}")
     finally:
         rclpy.shutdown()
         try: os.killpg(proc.pid, signal.SIGINT); proc.wait(timeout=20)

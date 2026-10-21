@@ -99,8 +99,13 @@ class WorldKnowledge:
     Orte inkl. dynamischem Ort der Neuplanung. Wird nach jedem erfolgreichen Schritt aktualisiert;
     daraus erzeugt problem_generator das naechste PDDL-Problem."""
 
-    def __init__(self, mission: Mission, current_ort: str):
+    def __init__(self, mission: Mission, current_ort: str, wegschaetzer=None):
+        """wegschaetzer(von_xy, nach_xy) -> Weglaenge [m] oder None (z. B. ueber den Nav2-Planer). Ohne ihn - oder
+        wenn er nichts liefert - gilt die Luftlinie. Die Luftlinie unterschaetzt Wege um Waende und durch Tueren
+        stark und konnte deshalb eine falsche Reihenfolge der Ziele liefern."""
         self.mission = mission
+        self.wegschaetzer = wegschaetzer
+        self._weg_cache: Dict[frozenset, int] = {}
         self.orte = dict(mission.orte)
         self.verbindungen = set(mission.verbindungen)
         self.current_ort = current_ort
@@ -113,8 +118,15 @@ class WorldKnowledge:
         return min(orte, key=lambda n: math.hypot(orte[n][0] - pos[0], orte[n][1] - pos[1]))
 
     def strecke_cm(self, a: str, b: str) -> int:
-        (ax, ay), (bx, by) = self.orte[a], self.orte[b]
-        return max(1, int(round(100.0 * math.hypot(ax - bx, ay - by))))
+        """Wegkosten in cm (ganzzahlig, Fast Downward verlangt ganzzahlige Kosten); je Ortspaar einmal geschaetzt."""
+        schluessel = frozenset((a, b, self.orte[a], self.orte[b]))
+        if schluessel not in self._weg_cache:
+            (ax, ay), (bx, by) = self.orte[a], self.orte[b]
+            meter = self.wegschaetzer((ax, ay), (bx, by)) if self.wegschaetzer else None
+            if meter is None:
+                meter = math.hypot(ax - bx, ay - by)
+            self._weg_cache[schluessel] = max(1, int(round(100.0 * meter)))
+        return self._weg_cache[schluessel]
 
     def aktualisiere_position(self, pos, gescheitertes_ziel: Optional[str] = None, n_naechste: int = 2):
         """Nach einem Fehlschlag steht der Roboter evtl. zwischen Orten: dynamischer Ort an pos.

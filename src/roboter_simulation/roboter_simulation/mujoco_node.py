@@ -1,15 +1,18 @@
 """Simulations-Knoten (Layer 4): MuJoCo-Physik des G1 mit Low-Level-PD-Regelung und Sensorik.
 
 Rechnet in einem Hintergrund-Thread (der Viewer blockiert) und spricht nur ueber ROS2-Topics:
-  raus: /joint_states, /imu (100 Hz), /odom + TF odom->base_link (Ground-Truth, abschaltbar),
-        /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar),
-        TF base_link->lidar_link (statisch)
+  raus: /joint_states (mit Gelenknamen), /imu (100 Hz), /clock (Simulationszeit), /odom + TF odom->base_link
+        (Ground-Truth, abschaltbar), /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar).
+        Die uebrigen Frames (Glieder, lidar_link) kommen aus roboter_beschreibung/launch/beschreibung.launch.py.
   rein: /joint_commands (Zielwinkel), /antrieb/parameter (kp, kd, Startpose von der Steuerung, latched)
 Kennt keine Policy. Bausteine: szene.py (Roboter + Welt), sensormodell.py, lidar.py, aufnahme.py.
 Parameter: config/simulation.yaml; Robotermodell und Geometrie: roboter_beschreibung.
 
 Ablauf beim Start: (1) warten auf die Antriebsparameter (nichts senden), (2) Ruhepose einnehmen und
 Sensordaten senden, Physik pausiert, (3) mit dem ersten /joint_commands laeuft die Physik in Echtzeit.
+Bleiben danach die Kommandos laenger als kommando_timeout_s aus (Steuerung ausgefallen oder in Stoerung), geht die
+Simulation wie ein Motortreiber in den Daempfungsmodus (Steifigkeit 0, nur Daempfung): frueher hielt sie fuer immer
+starr das letzte Ziel. Mit dem naechsten Kommando regelt sie wieder normal.
 Schritt (2) ist noetig, weil der Regler ~7 s zum Hochfahren braucht und reine PD-Haltung auf der Ruhepose
 nachweislich umkippt (13.10.2026: z=0.096 bei Simzeit 1.9 s, bevor die Policy ihr erstes Kommando senden konnte).
 """
@@ -23,11 +26,12 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import Point, TransformStamped
 from nav_msgs.msg import Odometry
+from rosgraph_msgs.msg import Clock
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Imu, JointState, LaserScan, PointCloud2, PointField
 from std_msgs.msg import Float32MultiArray
-from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
+from tf2_ros import TransformBroadcaster
 
 from roboter_beschreibung import lade as lade_roboter
 from roboter_interfaces.msg import Antriebsparameter
@@ -45,7 +49,7 @@ PUBLISH_DECIMATION = 5
 # Alle Parameter mit Typ-Standardwerten; die gueltigen Werte stehen in config/simulation.yaml, die
 # simulation.launch.py immer laedt (tests/simulation/test_konfiguration.py prueft, dass dort nur Deklariertes steht).
 PARAMETER = {
-    "welt": "", "simulation_dt": 0.002, "wait_for_controller": True, "render_decimation": 25,
+    "welt": "", "simulation_dt": 0.002, "wait_for_controller": True, "kommando_timeout_s": 1.0, "render_decimation": 25,
     "profile": False, "headless": False, "record_path": "",
     "publish_odom": True, "publish_tf": True, "odom_frame": "odom", "base_frame": "base_link",
     "realistic_sensors": False, "noise_joint_pos": 0.001, "noise_joint_vel": 0.02, "noise_gyro": 0.01,
@@ -55,8 +59,6 @@ PARAMETER = {
     "lidar": False, "lidar_2d": True, "lidar_3d": False, "lidar_rate_hz": 10.0, "lidar_rays": 360,
     "lidar_range_max": 10.0, "lidar_geomgroup": 2, "lidar_3d_rings": 24,
     "lidar_3d_elev_min_deg": -40.0, "lidar_3d_elev_max_deg": 10.0,
-    # Lidar-Montagehoehe ueber dem Becken; < 0 = aus roboter_beschreibung (eine Quelle mit der Sensorik)
-    "lidar_z": -1.0,
 }
 
 
@@ -98,6 +100,10 @@ class MujocoBridgeNode(Node):
         self.model.opt.timestep = p["simulation_dt"]
         self.data = mujoco.MjData(self.model)
         mujoco.mj_forward(self.model, self.data)
+        # Gelenknamen in Aktuator-Reihenfolge (= Reihenfolge der Zielwinkel): robot_state_publisher baut daraus den
+        # TF-Baum; ohne Namen konnte niemand ausser der Steuerung die Gelenkwerte zuordnen.
+        self.gelenknamen = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.model.actuator_trnid[i, 0])
+                            for i in range(self.model.nu)]
         self.get_logger().info(f"[mujoco_bridge_node] Welt: {p['welt'] or '(keine, nur Ebene)'}")
 
         # Antrieb: kommt von der Steuerung (siehe Modul-Docstring)
@@ -105,6 +111,9 @@ class MujocoBridgeNode(Node):
         self.target_dof_pos = None
         self._antrieb_neu = None
         self.controller_connected = not p["wait_for_controller"]
+        self.kommando_timeout_s = float(p["kommando_timeout_s"])
+        self._t_kommando = None            # Empfangszeit (monotonic) des letzten Kommandos
+        self.daempfung_aktiv = False
         self._cmd_buf = deque()        # (sim_zeit_ankunft, cmd) fuer die Kommando-Latenz
 
         # Sensorik
@@ -127,6 +136,9 @@ class MujocoBridgeNode(Node):
         # Publisher / Subscriber
         self.pub_joint_states = self.create_publisher(JointState, "/joint_states", 10)
         self.pub_imu = self.create_publisher(Imu, "/imu", 10)
+        # Simulationszeit auf /clock (100 Hz): Tests messen damit Geschwindigkeiten unabhaengig davon, ob die Simulation
+        # unter Last langsamer als Echtzeit laeuft. Die Knoten selbst nutzen weiter die Wanduhr (use_sim_time aus).
+        self.pub_clock = self.create_publisher(Clock, "/clock", 10)
         # /base_position: wahre Basisposition (Ground-Truth) nur fuer Tests/Auswertung; alle Positionsnutzer
         # lesen /odom. Auf echter Hardware gibt es dieses Topic nicht.
         self.pub_base_position = self.create_publisher(Point, "/base_position", 10)
@@ -155,9 +167,9 @@ class MujocoBridgeNode(Node):
         self.lidar2d_on = self.lidar3d_on = False
         if not p["lidar"]:
             return
-        hoehe = p["lidar_z"] if p["lidar_z"] >= 0 else float(self.roboter["lidar_hoehe_ueber_becken"])
         self.lidar2d_on, self.lidar3d_on = bool(p["lidar_2d"]), bool(p["lidar_3d"])
-        self.lidar = Lidar(self.model, hoehe, int(p["lidar_rays"]), float(p["lidar_range_max"]),
+        # Montage (Elternglied + Pose) aus roboter_beschreibung - dieselbe Quelle wie der TF-Baum
+        self.lidar = Lidar(self.model, self.roboter["lidar"], int(p["lidar_rays"]), float(p["lidar_range_max"]),
                            int(p["lidar_geomgroup"]), ringe=int(p["lidar_3d_rings"]) if self.lidar3d_on else 0,
                            elev_min_deg=p["lidar_3d_elev_min_deg"], elev_max_deg=p["lidar_3d_elev_max_deg"])
         self.lidar_period = max(1, int(round(100.0 / float(p["lidar_rate_hz"]))))
@@ -166,16 +178,6 @@ class MujocoBridgeNode(Node):
             self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
         if self.lidar3d_on:
             self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
-        # Montage base_link -> lidar_link IMMER (auch im reinen 3D-Modus und wenn odom->base_link vom Schaetzer
-        # kommt; fehlte anfangs im 3D-Modus: Nav2 konnte die Punktwolke nicht einordnen).
-        st = TransformStamped()
-        st.header.stamp = self.get_clock().now().to_msg()
-        st.header.frame_id = self.base_frame
-        st.child_frame_id = "lidar_link"
-        st.transform.translation.z = hoehe
-        st.transform.rotation.w = 1.0
-        self._static_tf = StaticTransformBroadcaster(self)
-        self._static_tf.sendTransform(st)
 
     # ---------------------------------------------------------------- Eingaenge
     def _antrieb_callback(self, msg: Antriebsparameter):
@@ -209,6 +211,7 @@ class MujocoBridgeNode(Node):
         # Laengen-Check: eine falsch dimensionierte Nachricht wird ignoriert statt die Simulation abzubrechen.
         if self.target_dof_pos is None or len(cmd) != len(self.target_dof_pos):
             return
+        self._t_kommando = time.monotonic()
         if self.command_latency > 0.0 and self.controller_connected:
             self._cmd_buf.append((float(self.data.time), cmd))   # im Sim-Thread verzoegert angewendet
         else:
@@ -260,7 +263,9 @@ class MujocoBridgeNode(Node):
                 # PD-Regelung auf die Gelenke (qpos[7:]/qvel[6:]: nach 7 bzw. 6 Werten der freien Basis)
                 while self._cmd_buf and self._cmd_buf[0][0] + self.command_latency <= self.data.time:
                     self.target_dof_pos = self._cmd_buf.popleft()[1]
-                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[7:], self.kps,
+                self._pruefe_kommando_timeout()
+                kp = np.zeros_like(self.kps) if self.daempfung_aktiv else self.kps
+                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[7:], kp,
                                                np.zeros_like(self.kds), self.data.qvel[6:], self.kds)
                 _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
@@ -299,6 +304,18 @@ class MujocoBridgeNode(Node):
                     prof = {"step": 0.0, "pub": 0.0, "sync": 0.0, "sleep": 0.0, "n": 0}
                     prof_t0 = time.perf_counter()
 
+    def _pruefe_kommando_timeout(self):
+        """Daempfungsmodus ein/aus je nach Alter des letzten Kommandos (siehe Modul-Docstring)."""
+        if self.kommando_timeout_s <= 0.0 or self._t_kommando is None:
+            return
+        alt = time.monotonic() - self._t_kommando > self.kommando_timeout_s
+        if alt and not self.daempfung_aktiv:
+            self.get_logger().error(f"[mujoco_bridge_node] Kein Kommando seit > {self.kommando_timeout_s:.1f} s - "
+                                    f"Daempfungsmodus (Steifigkeit 0).")
+        elif not alt and self.daempfung_aktiv:
+            self.get_logger().info("[mujoco_bridge_node] Kommandos wieder da - normale Regelung.")
+        self.daempfung_aktiv = alt
+
     def _profil_melden(self, prof, dauer):
         """Zeitanteile je Physikschritt (Parameter profile:=true), alle 2 s."""
         n = prof["n"]
@@ -313,6 +330,10 @@ class MujocoBridgeNode(Node):
     # ---------------------------------------------------------------- Ausgaenge
     def _publish_states(self):
         now = self.get_clock().now().to_msg()
+        uhr = Clock()
+        uhr.clock.sec = int(self.data.time)
+        uhr.clock.nanosec = int((self.data.time - int(self.data.time)) * 1e9)
+        self.pub_clock.publish(uhr)
         q, dq = self.data.qpos[7:].copy(), self.data.qvel[6:].copy()
         quat_m, omega = self.data.qpos[3:7].copy(), self.data.qvel[3:6].copy()
         if self.sensormodell is not None:
@@ -320,6 +341,7 @@ class MujocoBridgeNode(Node):
 
         js = JointState()
         js.header.stamp = now
+        js.name = self.gelenknamen
         js.position = q.tolist()
         js.velocity = dq.tolist()
         self.pub_joint_states.publish(js)
@@ -328,6 +350,7 @@ class MujocoBridgeNode(Node):
         # Basis-Drehrate und Schwerkraftrichtung.
         imu = Imu()
         imu.header.stamp = now
+        imu.header.frame_id = "imu_in_pelvis"          # Glied der Unitree-URDF (gleiche Ausrichtung wie das Becken)
         imu.orientation.w, imu.orientation.x, imu.orientation.y, imu.orientation.z = map(float, quat_m)
         imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z = map(float, omega)
         self.pub_imu.publish(imu)
@@ -348,6 +371,8 @@ class MujocoBridgeNode(Node):
             tl, ta = od.twist.twist.linear, od.twist.twist.angular
             tl.x, tl.y, tl.z = map(float, rotate_inverse(quat, self.data.qvel[0:3]))
             ta.x, ta.y, ta.z = map(float, self.data.qvel[3:6])     # MuJoCo: bereits im Koerper-Frame
+            od.pose.covariance[::7] = [1e-6] * 6                   # Ground-Truth: praktisch exakt (nicht 0)
+            od.twist.covariance[::7] = [1e-6] * 6
             self.pub_odom.publish(od)
         if self.tf_broadcaster is not None:
             t = TransformStamped()
@@ -363,18 +388,19 @@ class MujocoBridgeNode(Node):
             if self._lidar_count >= self.lidar_period:
                 self._lidar_count = 0
                 if self.lidar2d_on:
-                    self._publish_scan(now, quat)
+                    self._publish_scan(now)
                 if self.lidar3d_on:
                     self._cloud_count += 1
                     if self._cloud_count >= 2:
                         self._cloud_count = 0
-                        self._publish_cloud(now, quat)
+                        self._publish_cloud(now)
 
     def _rauschen(self):
+        """(rng, sigma, p_ausfall) fuer das Lidar: nur mit realistic_sensors."""
         return (self._rng, self.n_lidar, self.p_drop) if self.realistic else (None, 0.0, 0.0)
 
-    def _publish_cloud(self, now, quat):
-        pts = self.lidar.wolke(self.data, quat, *self._rauschen())
+    def _publish_cloud(self, now):
+        pts = self.lidar.wolke(self.data, *self._rauschen())
         msg = PointCloud2()
         msg.header.stamp = now
         msg.header.frame_id = "lidar_link"
@@ -386,8 +412,8 @@ class MujocoBridgeNode(Node):
         msg.is_dense = True
         self.pub_cloud.publish(msg)
 
-    def _publish_scan(self, now, quat):
-        ranges = self.lidar.scan(self.data, quat, *self._rauschen())
+    def _publish_scan(self, now):
+        ranges = self.lidar.scan(self.data, *self._rauschen())
         n = self.lidar.n
         sc = LaserScan()
         sc.header.stamp = now

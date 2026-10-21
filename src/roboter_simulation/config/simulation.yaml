@@ -7,6 +7,8 @@ mujoco_bridge_node:
   ros__parameters:
     simulation_dt: 0.002          # Physik-Zeitschritt [s] (500 Hz)
     wait_for_controller: true     # Physik erst mit dem ersten /joint_commands starten (sonst kippt der Roboter)
+    kommando_timeout_s: 1.0       # danach ohne Kommando: Daempfungsmodus wie ein Motortreiber (0 = aus); normal 20 ms,
+                                  # gemessen max. 89 ms - Abstand gegen Fehlalarme unter Last
     render_decimation: 25         # Viewer alle 25 Physikschritte (20 Hz)
     profile: false                # Zeitanteile der Schleife alle 2 s loggen
 
@@ -31,7 +33,7 @@ mujoco_bridge_node:
     lidar_dropout: 0.01
     noise_seed: 0
 
-    # Lidar (Raycast auf Welt-Geoms der Gruppe 2). Montagehoehe: roboter_beschreibung (lidar_hoehe_ueber_becken)
+    # Lidar (Raycast auf Welt-Geoms der Gruppe 2). Montage (Elternglied + Pose): roboter_beschreibung, Eintrag lidar
     lidar: false
     lidar_2d: true
     lidar_3d: false

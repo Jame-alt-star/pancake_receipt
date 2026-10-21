@@ -14,6 +14,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>roboter_beschreibung</exec_depend>   <!-- TF-Baum des Roboters -->
   <exec_depend>roboter_simulation</exec_depend>     <!-- Layer 4 -->
   <exec_depend>roboter_steuerung</exec_depend>      <!-- Layer 3 -->
   <exec_depend>roboter_sensorik</exec_depend>

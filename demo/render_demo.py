@@ -18,7 +18,7 @@ W, H, FPS = 1280, 720, 25
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")   # relativ zum Repo
 sys.path.insert(0, os.path.join(SRC, "roboter_simulation"))
 sys.path.insert(0, os.path.join(SRC, "roboter_beschreibung"))
-from roboter_beschreibung.geometrie import quat_zu_rotmat, yaw_aus_quat  # noqa: E402
+from roboter_beschreibung.geometrie import yaw_aus_quat  # noqa: E402
 from roboter_simulation.lidar import Lidar  # noqa: E402
 from roboter_simulation.szene import lade_modell  # noqa: E402
 
@@ -51,7 +51,7 @@ for g in range(m.ngeom):
 m.vis.global_.offwidth, m.vis.global_.offheight = W, H
 
 # 3D-Lidar wie in der Simulation (24 Ringe -40..+10 Grad, 360 Azimutwerte, Montage ueber dem Becken)
-LIDAR = Lidar(m, float(ROBOTER["lidar_hoehe_ueber_becken"]), 360, 10.0, ringe=24)
+LIDAR = Lidar(m, ROBOTER["lidar"], 360, 10.0, ringe=24)
 BAND = (0.12, 1.9)            # Hoehenband der Hinderniswolke [m ueber Boden], wie roboter_sensorik
 
 
@@ -59,9 +59,9 @@ def lidar_welt(q):
     """Treffer der 3D-Punktwolke in Weltkoordinaten; Maske der Hindernispunkte (Hoehenband, ohne Boden)."""
     d.qpos[:] = q
     mujoco.mj_kinematics(m, d)
-    pts = LIDAR.wolke(d, q[3:7])                       # im lidar_link-Frame
-    R = quat_zu_rotmat(q[3:7])
-    welt = q[0:3] + R @ np.array([0.0, 0.0, LIDAR.hoehe]) + pts.astype(float) @ R.T
+    pts = LIDAR.wolke(d)                               # im lidar_link-Frame
+    ursprung, R = LIDAR.pose(d)
+    welt = ursprung + pts.astype(float) @ R.T
     hind = (welt[:, 2] >= BAND[0]) & (welt[:, 2] <= BAND[1])
     return welt, hind
 

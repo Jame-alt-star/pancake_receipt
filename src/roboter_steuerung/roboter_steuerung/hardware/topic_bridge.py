@@ -1,4 +1,6 @@
+import time
 from typing import Tuple
+
 import numpy as np
 
 from rclpy.node import Node
@@ -35,6 +37,9 @@ class TopicBridge(IRobotHardwareBridge):
         # num_joints kommt aus num_actions der Policy-Config (eine Stelle fuer die Gelenkanzahl).
         self.last_joint_pos = np.zeros(num_joints, dtype=np.float32)
         self.last_joint_vel = np.zeros(num_joints, dtype=np.float32)
+        self._t_gelenke = self._t_imu = None          # Empfangszeit (monotonic) der letzten Nachricht
+        # Optional: wird nach jeder Gelenknachricht aufgerufen (Takt der Steuerung aus den Sensordaten).
+        self.bei_gelenken = None
 
         self.cmd_pub = self.node.create_publisher(Float32MultiArray, "/joint_commands", 10)
         self.node.create_subscription(JointState, "/joint_states", self._joint_callback, 10)
@@ -58,6 +63,9 @@ class TopicBridge(IRobotHardwareBridge):
         if len(msg.position) > 0:
             self.last_joint_pos = np.array(msg.position, dtype=np.float32)
             self.last_joint_vel = np.array(msg.velocity, dtype=np.float32)
+            self._t_gelenke = time.monotonic()
+            if self.bei_gelenken is not None:
+                self.bei_gelenken()
 
     def _imu_callback(self, msg: Imu):
         # Wird automatisch bei jeder neuen /imu-Nachricht aufgerufen.
@@ -71,6 +79,18 @@ class TopicBridge(IRobotHardwareBridge):
             [msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z],
             dtype=np.float32
         )
+        self._t_imu = time.monotonic()
+
+    def sensor_detail(self) -> str:
+        """Alter je Quelle, fuer die Diagnose einer Stoerung."""
+        jetzt = time.monotonic()
+        alter = lambda t: "nie" if t is None else f"{jetzt - t:.2f} s"     # noqa: E731
+        return f"Gelenke {alter(self._t_gelenke)}, IMU {alter(self._t_imu)}"
+
+    def sensor_alter_s(self) -> float:
+        if self._t_gelenke is None or self._t_imu is None:
+            return float("inf")
+        return time.monotonic() - min(self._t_gelenke, self._t_imu)
 
     def read_imu(self) -> Tuple[np.ndarray, np.ndarray]:
         # .copy() ist wichtig: ohne Kopie koennte der Aufrufer (z.B. der

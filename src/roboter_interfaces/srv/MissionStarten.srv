@@ -1,0 +1,6 @@
+# Mission starten (Layer 1). mission: Name aus roboter_task_planning/missions (z. B. "patrouille") oder Pfad zu einer
+# YAML-Datei; leer = die beim Start konfigurierte Mission (Parameter mission_file).
+string mission
+---
+bool erfolg
+string meldung

@@ -1,13 +1,24 @@
 # Robotermodell und Geometrie des Unitree G1 (29 DOF). Gemeinsame Quelle fuer alle Schichten, die den
-# Koerper kennen muessen: Simulation (Modell), Beinodometrie (Kinematik, Starthoehe), Sensorik (Lidar-Hoehe).
-# Die Datei beschreibt den Roboter, nicht die Simulation: auf echter Hardware gilt sie genauso.
+# Koerper kennen muessen: Simulation (Modell, Lidar-Montage), TF-Baum (URDF, Lidar-Montage), Beinodometrie
+# (Kinematik, Starthoehe), Sensorik (Beckenhoehe fuer das Hoehenband). Gilt auf echter Hardware genauso.
 
-# MuJoCo-Modell (Unitree, unveraendert bis auf Boden/Licht), relativ zum Share-Verzeichnis dieses Pakets.
+# MuJoCo-Modell von Unitree, relativ zum Share-Verzeichnis dieses Pakets. Einzige Aenderung gegenueber Unitree:
+# armature="0.01" an allen Gelenken (Rotor-Traegheit; ohne sie war die Simulation weniger stabil). Boden, Licht und
+# Skybox stehen schon in Unitrees Datei und bleiben dort (die Datei soll moeglichst nah am Original bleiben).
 # Gelenk-/Aktuator-Reihenfolge = MUJOCO_JOINT_ORDER in roboter_steuerung/control/rl_locomotion_controller_29dof.py.
 modell_xml: "modelle/g1_description/g1_29dof.xml"
+
+# URDF (gleiche Gelenknamen) fuer robot_state_publisher und RViz, relativ zu modelle/g1_description.
+urdf: "g1_29dof.urdf"
 
 # Beckenhoehe im aufrechten Stand (Startpose der Policy) [m].
 becken_hoehe_stand: 0.793
 
-# Montagehoehe des Lidars ueber dem Becken [m] (Sensor am Torso, kippt mit dem Roboter).
-lidar_hoehe_ueber_becken: 0.45
+# Lidar-Montage: Elternglied (Link der URDF bzw. Body im MuJoCo-Modell) und Pose relativ dazu [m, rad].
+# Simulation und TF-Baum lesen beide diesen Eintrag. Simulation bisher: 0.45 m senkrecht ueber dem Becken.
+# Am echten G1 sitzt der Livox MID-360 im Kopf (Elternglied torso_link, geneigt montiert) - die Werte dafuer stehen
+# im Unitree-Datenblatt bzw. in der Unitree-URDF mit Lidar und sind hier einzutragen, bevor Hardware genutzt wird.
+lidar:
+  parent: pelvis
+  xyz: [0.0, 0.0, 0.45]
+  rpy: [0.0, 0.0, 0.0]
