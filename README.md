@@ -109,4 +109,5 @@ git-Historie) enthalten.
 
 ## Weitere Dokumente
 `NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`, `PROJEKTSTAND_AKTUELL.md`, `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
-Messwerten), `src/*/README.md` (Layer 1, Layer 2, Welten), `tests/README.md`.
+Messwerten), `docs/g1_hardware_checkliste.md` (G1 bestellen und konfigurieren), `src/*/README.md` (Layer 1, Layer 2, Welten),
+`tests/README.md`.

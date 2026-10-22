@@ -75,7 +75,8 @@ Stand 21.10.2026 (v2.7, nach Review 2). Einstieg für Übergaben; Bedienung: `RE
 Zustand der Steuerung: `/steuerung/zustand` (latched). Stoerung verlassen nur bewusst: `ros2 service call
 /steuerung/quittieren std_srvs/srv/Trigger` (klappt nur mit Sensordaten, aufrecht, ohne NotAus).
 
-**Anforderungen an die Hardware-Anbindung (noch nicht umgesetzt):**
+**Anforderungen an die Hardware-Anbindung (noch nicht umgesetzt; Bestellung und zu ermittelnde Werte:
+`docs/g1_hardware_checkliste.md`):**
 - Der Software-NotAus ersetzt **keinen** physischen Not-Halt. Auf dem echten G1 braucht es den Not-Halt der Unitree-
   Fernbedienung bzw. einen verdrahteten Not-Halt, der unabhaengig von dieser Software wirkt.
 - Die Unitree-SDK-Bridge muss bei ausbleibenden Kommandos selbst daempfen (Firmware-Daempfungsmodus) und kp/kd aus

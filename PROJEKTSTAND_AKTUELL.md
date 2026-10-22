@@ -25,7 +25,8 @@ bei jedem Push auf GitHub (`.github/workflows/tests.yml`).
 ## Offen
 | Punkt | Warum offen |
 |---|---|
-| Unitree-SDK-Bridge für echte Hardware | Schnittstelle (`IRobotHardwareBridge`, `/antrieb/parameter`) steht; Anforderungen in `docs/architektur.md` (Sicherheit) |
+| Unitree-SDK-Bridge für echte Hardware | Schnittstelle (`IRobotHardwareBridge`, `/antrieb/parameter`) steht; Bestellung und Konfiguration: `docs/g1_hardware_checkliste.md` |
+| Simulationsmodell auf `g1_29dof_rev_1_0` umstellen | Policy ist darauf trainiert, aktuelle Roboter sind Rev. 1.0; wir simulieren noch `g1_29dof` (älter, Hüft-Roll 88 statt 139 Nm, 1,8 kg schwerer) |
 | Echte Lidar-Montage eintragen | Pose des MID-360 (Kopf, geneigt) aus Unitree-Datenblatt in `roboter_beschreibung/config/roboter.yaml` |
 | Karte der echten Halle + Orte (Teach-in) | heute: Karten aus der Simulationsszene; für die Halle per SLAM aufnehmen (`docs/architektur.md`, Karte) |
 | Nav2-Variante des Kollegen | liegt noch nicht vor; Einbindung: `navigation:=nav2 nav2_params:=...` oder `navigation:=extern` |
@@ -46,6 +47,7 @@ bei jedem Push auf GitHub (`.github/workflows/tests.yml`).
 | Einrichten eines Rechners | `scripts/einrichten.sh --pruefen` |
 | Verlauf mit allen Messwerten | `docs/statusupdate_g1_projekt.md` |
 | Fremdbestandteile und Lizenzen | `THIRD_PARTY.md` |
+| G1 bestellen und konfigurieren (Checkliste für Unitree/Händler) | `docs/g1_hardware_checkliste.md` |
 
 ## Arbeitsweise
 Messbare Behauptungen belegen, „getestet“ von „angenommen“ trennen. Jeder Schritt: komplette Testserie, Commit, Tag
