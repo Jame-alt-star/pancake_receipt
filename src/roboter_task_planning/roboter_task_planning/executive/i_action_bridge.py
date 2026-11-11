@@ -12,6 +12,7 @@ from roboter_task_planning.executive.world_knowledge import Mission
 class BridgeResult:
     erfolg: bool
     meldung: str = ""
+    wiederholbar: bool = True      # False: Neuplanen waere sinnlos (z. B. Kiste falsch abgelegt) - Mission endet
 
 
 class IActionBridge(ABC):

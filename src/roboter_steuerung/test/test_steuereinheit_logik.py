@@ -82,6 +82,7 @@ def make(cmd_target=(0.0, 0.0, 0.0)):
 def make29():
     """Wie make(), aber mit 29 Gelenken (Armfuehrung braucht die echten Indizes 15..28)."""
     n = make()
+    n.bewegung_freigegeben = True        # Armkommandos werden nur mit Freigabe angenommen
     n.bridge = _Bridge(n=29)
     n.controller = _Policy()
     n.controller.ausgabe = np.zeros(29, dtype=np.float32)
@@ -133,6 +134,18 @@ def test_notaus_und_freigabeentzug_halten_die_arme():
     n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
     n._setze_freigabe(False, "test")
     assert n.armfuehrung.modus == "halten"
+
+
+def test_fuehren_ohne_freigabe_wird_verworfen():
+    """Der Greif-Dienst sendet alle 50 ms FUEHREN; nach Freigabe-Entzug darf das den Halte-Befehl nicht aufheben."""
+    n = make29()
+    n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
+    n._setze_freigabe(False, "test")
+    assert n.armfuehrung.modus == "halten"
+    for _ in range(5):
+        n._arm_callback(_ArmMsg(1, np.full(14, 0.3)))     # Dienst sendet weiter
+    assert n.armfuehrung.modus == "halten"
+    assert np.allclose(n.armfuehrung.ziele, 0.1)
 
 
 def test_ausblenden_gibt_die_arme_weich_an_die_policy_zurueck():

@@ -41,12 +41,14 @@ def quader(szene_xml: str):
     return boxen
 
 
-def rastern(boxen, aufloesung=AUFLOESUNG, rand=RAND):
-    """Belegungsraster (Zeile 0 = oben, wie PGM) und Ursprung (x, y der linken unteren Ecke)."""
-    x0 = math.floor((min(b[0] for b in boxen) - rand) / aufloesung) * aufloesung
-    y0 = math.floor((min(b[1] for b in boxen) - rand) / aufloesung) * aufloesung
-    x1 = max(b[2] for b in boxen) + rand
-    y1 = max(b[3] for b in boxen) + rand
+def rastern(boxen, aufloesung=AUFLOESUNG, rand=RAND, punkte=()):
+    """Belegungsraster (Zeile 0 = oben, wie PGM) und Ursprung (x, y der linken unteren Ecke).
+    punkte: (x, y), die auf der Karte liegen muessen (Orte der Mission), ohne selbst Hindernis zu sein."""
+    alle = list(boxen) + [(x, y, x, y) for x, y in punkte]
+    x0 = math.floor((min(b[0] for b in alle) - rand) / aufloesung) * aufloesung
+    y0 = math.floor((min(b[1] for b in alle) - rand) / aufloesung) * aufloesung
+    x1 = max(b[2] for b in alle) + rand
+    y1 = max(b[3] for b in alle) + rand
     breite, hoehe = int(math.ceil((x1 - x0) / aufloesung)), int(math.ceil((y1 - y0) / aufloesung))
     bild = np.full((hoehe, breite), FREI, dtype=np.uint8)
     for bx0, by0, bx1, by1 in boxen:
@@ -78,7 +80,13 @@ def main(namen):
         if not boxen:
             print(f"{n}: keine Hindernisse - keine Karte (Navigation ohne Karte)")
             continue
-        bild, ursprung = rastern(boxen)
+        punkte = []
+        orte_yaml = os.path.join(ordner, "orte.yaml")
+        if os.path.isfile(orte_yaml):
+            import yaml
+            with open(orte_yaml) as f:
+                punkte = [(float(o["x"]), float(o["y"])) for o in (yaml.safe_load(f) or {}).get("orte", {}).values()]
+        bild, ursprung = rastern(boxen, punkte=punkte)
         schreiben(ordner, bild, ursprung)
         print(f"{n}: {bild.shape[1]} x {bild.shape[0]} Zellen, {len(boxen)} Hindernisse, Ursprung {ursprung}")
 

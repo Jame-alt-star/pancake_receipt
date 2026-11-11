@@ -228,9 +228,10 @@ class SteuereinheitNode(Node):
         return self.cmd_wunsch.copy()
 
     def _arm_callback(self, msg: Armkommando):
-        """Armkommando des Greif-Dienstes. Waehrend NotAus wird nur gehalten (kein Fuehren, kein Ausblenden)."""
+        """Armkommando des Greif-Dienstes. Waehrend NotAus und ohne Freigabe wird nur gehalten (kein Fuehren, kein
+        Ausblenden): sonst setzte das naechste Kommando des Dienstes (alle 50 ms) den Halte-Befehl wieder zurueck."""
         modus = int(msg.modus)
-        if self.not_aus_aktiv and modus != Armkommando.HALTEN:
+        if (self.not_aus_aktiv or not self.bewegung_freigegeben) and modus != Armkommando.HALTEN:
             self.armfuehrung.halten()
             return
         fehler = self.armfuehrung.empfange(modus, list(msg.namen), list(msg.ziele), float(msg.taille_anteil),

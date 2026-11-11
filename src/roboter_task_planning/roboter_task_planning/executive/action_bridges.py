@@ -184,7 +184,9 @@ class GreifBridge(IActionBridge):
         goal = GreifAktion.Goal()
         goal.objekt, goal.modus, goal.ablage = gegenstand, modus, ablage
         ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
+        wiederholbar = True
         if res is not None:
             ok = ok and res.erfolgreich
             text = res.ergebnis or text
-        return BridgeResult(bool(ok), text)
+            wiederholbar = bool(res.wiederholbar) or bool(res.erfolgreich)
+        return BridgeResult(bool(ok), text, wiederholbar)

@@ -62,6 +62,16 @@ def _mission_pfad(mission):
     return os.path.join(get_package_share_directory("roboter_task_planning"), "missions", mission + ".yaml")
 
 
+def _greif_simulation(gegenstand, md):
+    """Simulationsargumente fuer Missionen mit Gegenstand: Handmodell und Objektposen (Gegenstand + ablage_<ort>
+    je Ablageziel; die Sites muessen in der Welt stehen)."""
+    if not gegenstand:
+        return {}
+    orte = [str(z["ort"]).lower() for z in md.get("ziele", []) if z.get("art") == "abgelegt"]
+    objekte = [str(gegenstand["name"]).lower()] + [f"ablage_{o}" for o in orte]
+    return {"haende": "true", "objekte": ",".join(objekte)}
+
+
 def _aufbauen(context):
     a = {name: LaunchConfiguration(name).perform(context) for name, _, _ in ARGUMENTE}
     navigation = a["navigation"].lower()
@@ -75,9 +85,13 @@ def _aufbauen(context):
     # Eine Quelle fuer die Umgebung: ohne Argument welt laeuft die Simulation in der Welt der Mission, damit
     # Simulation und Orte nicht auseinanderlaufen koennen.
     welt = a["welt"]
-    if not welt and mission:
+    gegenstand = None
+    if mission:
         with open(mission) as f:
-            welt = (yaml.safe_load(f) or {}).get("welt", "")
+            md = yaml.safe_load(f) or {}
+        if not welt:
+            welt = md.get("welt", "")
+        gegenstand = md.get("gegenstand")     # Greifen: Haende, Objektposen und Greif-Dienst gehoeren dazu
     lidar = a["lidar_modus"] or ("3d" if navigation != "aus" else "aus")
     timeout = a["cmd_vel_timeout_s"] or ("1.0" if navigation != "aus" else "0.0")
 
@@ -86,10 +100,13 @@ def _aufbauen(context):
         _include("roboter_simulation", "simulation.launch.py", {
             "welt": welt, "headless": a["headless"], "lidar_modus": lidar,
             "realistic_sensors": a["realistic_sensors"], "record_path": a["record_path"],
-            "odom_ground_truth": str(a["odom_quelle"] == "ground_truth").lower()}),
+            "odom_ground_truth": str(a["odom_quelle"] == "ground_truth").lower(),
+            **_greif_simulation(gegenstand, md if mission else {})}),
         _include("roboter_steuerung", "steuerung.launch.py", {
             "odom_quelle": a["odom_quelle"], "cmd_vel_timeout_s": timeout}),
     ]
+    if gegenstand:
+        aktionen.append(Node(package="roboter_steuerung", executable="greif_dienst_node", output="screen"))
     if lidar == "3d":
         aktionen.append(_include("roboter_sensorik", "sensorik.launch.py", {}))
     if navigation == "nav2":

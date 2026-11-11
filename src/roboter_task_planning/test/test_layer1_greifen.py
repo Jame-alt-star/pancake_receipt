@@ -85,3 +85,19 @@ def test_greif_executor_erfolg_und_wiederholung():
     r = executor(b, locator=lambda: (1.0, 0.0)).run(Mission.from_dict(GREIF_MISSION), threading.Event())
     assert r.status == ERFOLG and r.replans == 1
     assert b.log.count("ablegen(kiste, platz)") == 1 and sum(s.startswith("greife") for s in b.log) == 2
+
+
+class NichtWiederholbar(GreifSkript):
+    def execute(self, s, mission, cancel, orte=None):
+        r = super().execute(s, mission, cancel, orte)
+        if s.name == "ablegen":
+            return BridgeResult(False, "Kiste liegt falsch", wiederholbar=False)
+        return r
+
+
+@needs_fd
+def test_nicht_wiederholbarer_fehlschlag_beendet_die_mission_ohne_neuplanung():
+    b = NichtWiederholbar()
+    r = executor(b, locator=lambda: (1.0, 2.4)).run(Mission.from_dict(GREIF_MISSION), threading.Event())
+    assert r.status == "fehlgeschlagen" or r.status != ERFOLG
+    assert r.replans == 0 and "nicht wiederholbar" in r.meldung

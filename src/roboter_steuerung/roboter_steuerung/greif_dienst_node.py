@@ -22,7 +22,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
+from std_srvs.srv import Trigger
 
 from roboter_beschreibung import lade as lade_roboter
 from roboter_interfaces.action import GreifAktion
@@ -67,6 +69,8 @@ class GreifDienstNode(Node):
         self._lagen = {}               # name -> (t_empfang, pos_rel, quat_rel)
         self._abos = {}
         self.not_aus = False
+        self.freigabe = None           # None = noch nicht gehoert; False waehrend eines Auftrags bricht ihn ab
+        self._reserviert = False       # Auftrag angenommen (zwischen goal_callback und Ende), unter _lock
         # Zustand ueber Auftraege hinweg: gehaltene Arme/Finger nach dem Greifen
         self.gehalten = None           # (arme, haende, taille, objekt) oder None
         self._auftrag_laeuft = False
@@ -74,7 +78,12 @@ class GreifDienstNode(Node):
         cb = ReentrantCallbackGroup()
         self.create_subscription(Odometry, "/odom", self._odom_cb, 10, callback_group=cb)
         self.create_subscription(JointState, "/joint_states", self._gelenke_cb, 10, callback_group=cb)
-        self.create_subscription(Bool, "/not_aus", self._not_aus_cb, 10, callback_group=cb)
+        # wie in der Steuerung latched: ein NotAus vor dem Start des Dienstes darf nicht "unbekannt = ok" sein
+        not_aus_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                                 reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
+        self.create_subscription(Bool, "/not_aus", self._not_aus_cb, not_aus_qos, callback_group=cb)
+        self.create_subscription(Bool, "/freigabe", self._freigabe_cb, 10, callback_group=cb)
+        self.create_service(Trigger, "/greife/freigeben", self._freigeben, callback_group=cb)
         self.pub_cmd = self.create_publisher(Twist, "/cmd_vel/greifen", 10)
         self.pub_arme = self.create_publisher(Armkommando, "/arme/kommando", 10)
         self.pub_hand = self.create_publisher(Handkommando, "/hand/kommando", 10)
@@ -101,6 +110,26 @@ class GreifDienstNode(Node):
 
     def _not_aus_cb(self, m: Bool):
         self.not_aus = bool(m.data)
+
+    def _freigabe_cb(self, m: Bool):
+        self.freigabe = bool(m.data)
+
+    def _freigeben(self, req, res):
+        """Notausgang aus 'haelt etwas' (Mission abgebrochen, Auftrag unterbrochen): Haende oeffnen, Arme an die Policy
+        zurueck, Merker loeschen. Der Gegenstand faellt dabei, wenn er noch in den Haenden liegt - nur im Stand und
+        ohne laufenden Auftrag."""
+        with self._lock:
+            if self._reserviert:
+                res.success, res.message = False, "Auftrag laeuft"
+                return res
+            self.gehalten = None
+        if self.not_aus or self.freigabe is False:
+            res.success, res.message = False, "NotAus oder keine Freigabe: Steuerung haelt die Arme"
+            return res
+        self._sende_haende(greifablauf.HAND_OFFEN)
+        self._sende_arme(AUSBLENDEN, None, 0.0)
+        res.success, res.message = True, "Haende offen, Arme an die Policy zurueck"
+        return res
 
     def _abo(self, name: str):
         if name and name not in self._abos:
@@ -146,7 +175,7 @@ class GreifDienstNode(Node):
 
     def _halten_senden(self):
         """Zwischen den Auftraegen: Tragepose weiter fuehren, solange ein Objekt gehalten wird."""
-        if self._auftrag_laeuft or self.gehalten is None:
+        if self._auftrag_laeuft or self._reserviert or self.gehalten is None:
             return
         arme, haende, taille, _ = self.gehalten
         self._sende_arme(HALTEN if self.not_aus else FUEHREN, arme, taille)
@@ -154,10 +183,12 @@ class GreifDienstNode(Node):
 
     # ------------------------------------------------------------ Aktion
     def _goal_ok(self, goal):
-        if self._auftrag_laeuft:
-            return GoalResponse.REJECT
         if goal.modus not in ("greifen", "ablegen"):
             return GoalResponse.REJECT
+        with self._lock:                 # atomar reservieren: zwei schnell aufeinander folgende Ziele
+            if self._reserviert:
+                return GoalResponse.REJECT
+            self._reserviert = True
         return GoalResponse.ACCEPT
 
     def _eingang(self, objekt, ablage):
@@ -169,6 +200,13 @@ class GreifDienstNode(Node):
                        objekt=self._lage(objekt), ablage=self._lage(ablage) if ablage else None)
 
     def _execute(self, goal_handle):
+        try:
+            return self._ausfuehren(goal_handle)
+        finally:
+            with self._lock:
+                self._reserviert = False
+
+    def _ausfuehren(self, goal_handle):
         req = goal_handle.request
         res = GreifAktion.Result()
         self._abo(req.objekt)
@@ -192,20 +230,21 @@ class GreifDienstNode(Node):
         try:
             t_warten = time.monotonic()
             while rclpy.ok():
-                if goal_handle.is_cancel_requested or self.not_aus:
+                if goal_handle.is_cancel_requested or self.not_aus or self.freigabe is False:
                     self._anhalten(auftrag)
                     if goal_handle.is_cancel_requested:
                         goal_handle.canceled()
                     else:
                         goal_handle.abort()
-                    res.erfolgreich, res.ergebnis = False, "abgebrochen" + (" (NotAus)" if self.not_aus else "")
+                    res.erfolgreich, res.ergebnis = False, "abgebrochen" + (
+                        " (NotAus)" if self.not_aus else " (Freigabe entzogen)" if self.freigabe is False else "")
                     res.wiederholbar = False
                     return res
                 e = self._eingang(req.objekt, req.ablage)
                 if e is None:
                     if time.monotonic() - t_warten > 5.0:
                         goal_handle.abort()
-                        res.erfolgreich, res.ergebnis = False, "keine Odometrie/Gelenkwinkel"
+                        res.erfolgreich, res.ergebnis, res.wiederholbar = False, "keine Odometrie/Gelenkwinkel", True
                         return res
                     time.sleep(TAKT_S)
                     continue
@@ -229,9 +268,12 @@ class GreifDienstNode(Node):
     def _anhalten(self, auftrag):
         """Abbruch: stehen bleiben, Arme halten (nichts loslassen)."""
         self.pub_cmd.publish(Twist())
-        if auftrag.arme is not None:
+        if auftrag.arme is not None and not auftrag.frei:
             self._sende_arme(HALTEN, None, 0.0)
             self.gehalten = (auftrag.arme, auftrag.haende, auftrag.taille, None)
+        else:
+            # nichts mehr in den Haenden (Ablegen schon losgelassen): kein Dauer-Halten ohne Ausweg
+            self.gehalten = None
 
     def _abschliessen(self, req, auftrag, a):
         """Haelt der Auftrag am Ende noch Arme (gegriffen, oder Ablegen ohne Ablagestelle abgebrochen), wird weiter

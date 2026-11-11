@@ -133,6 +133,7 @@ class Kreis:
 
     def lage_site(self, name):
         sid = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SITE, name)
+        assert sid >= 0, f"Site {name!r} nicht in der Welt (Konvention ablage_<ort>)"
         q = np.zeros(4)
         mujoco.mju_mat2Quat(q, self.d.site_xmat[sid])
         return self.relativ(self.d.site_xpos[sid], q)

@@ -125,6 +125,7 @@ class Greifauftrag:
         self.haende = self.start_haende.copy()
         self.taille = start_taille
         self._ergebnis = None                # (erfolg, meldung, wiederholbar)
+        self.frei = False                    # Ablegen: Kiste schon losgelassen (Haende halten nichts mehr)
         self._nachgeplant = set()            # Phasen, vor denen schon nachgeplant wurde
         self._versatz = None                 # Ablegen: Handflaechenmitte relativ zur Kiste (Welt)
         self._korrektur = np.zeros(3)        # Greifen: summierter Fehler der Handflaechen (Welt)
@@ -175,7 +176,7 @@ class Greifauftrag:
                 self._wechsel("anfahren", e.t)
             elif e.t - self._t0 > self.par.sicht_timeout_s:
                 self._ergebnis = (False, f"{'Objekt' if self.modus == 'greifen' else 'Ablagestelle'} nicht gesehen",
-                                  self.modus == "greifen")
+                                  True)
                 self._wechsel("fertig", e.t)
                 return self._beenden(a)
             return self._arm_ausgabe(a, HALTEN) if haelt else a
@@ -209,6 +210,8 @@ class Greifauftrag:
                 arme, haende, taille, name, fertig = self._ablauf.sollwerte(0.0)
             self.arme, self.haende, self.taille = arme, haende, taille
             a.phase = name
+            if self.modus == "ablegen" and name in ("loesen", "oeffnen", "hochziehen", "vor_brust", "zurueck"):
+                self.frei = True
             a.fortschritt = min(1.0, (e.t - self._t_ausfuehren) / max(self._dauer_gesamt, 1e-6))
             if fertig:
                 self._nach_ablauf(e, ziel)
@@ -223,6 +226,7 @@ class Greifauftrag:
             return self._arm_ausgabe(a)
 
         if self.phase == "ausblenden":
+            self.frei = self.frei or self.modus == "ablegen"
             self._arm_ausgabe(a, AUSBLENDEN)
             if e.t - self._t_phase > 2.0:
                 self.arme = None

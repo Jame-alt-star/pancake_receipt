@@ -97,6 +97,8 @@ class MissionExecutor:
                 else:
                     fehler = f"{s} fehlgeschlagen: {r.meldung}"
                     fehl_ziel = s.args[-1] if s.args else None
+                    if not r.wiederholbar:
+                        return self._finish(res, FEHLGESCHLAGEN, f"{fehler} (nicht wiederholbar)")
                     break
 
             if fehler is None and not world.offene_ziele():
