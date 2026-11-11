@@ -125,6 +125,7 @@ class Greifauftrag:
         self.haende = self.start_haende.copy()
         self.taille = start_taille
         self._ergebnis = None                # (erfolg, meldung, wiederholbar)
+        self._uhr_neu = False                # nach der Planung Phasenuhr neu starten (IK rechnet Sekunden)
         self.frei = False                    # Ablegen: Kiste schon losgelassen (Haende halten nichts mehr)
         self._nachgeplant = set()            # Phasen, vor denen schon nachgeplant wurde
         self._versatz = None                 # Ablegen: Handflaechenmitte relativ zur Kiste (Welt)
@@ -133,6 +134,12 @@ class Greifauftrag:
         self._dauer_gesamt = 0.0
 
     # -------------------------------------------------------------- Hilfen
+    @staticmethod
+    def _in_haenden(p_rel) -> bool:
+        """Liegt der Gegenstand (Position relativ zum Becken) im Bereich der Tragepose?"""
+        v, q, h = greifablauf.TRAGEPOSE
+        return abs(p_rel[0] - v) < 0.20 and abs(p_rel[1] - q) < 0.25 and abs(p_rel[2] - 0.10) < 0.20
+
     def _wechsel(self, phase, t):
         self.phase, self._t_phase = phase, t
 
@@ -152,11 +159,19 @@ class Greifauftrag:
     def takt(self, e: Eingang) -> Ausgabe:
         if self._t0 is None:
             self._t0, self._t_phase = e.t, e.t
-        a = Ausgabe(phase=self.phase)
+        a = Ausgabe(phase=self.phase, haende=self.haende)      # Finger immer mitsenden (Sim startet mit Fingern bei 0)
         ziel = e.objekt if self.modus == "greifen" else e.ablage
         haelt = self.arme is not None
 
         if self.phase == "warten":
+            if self.modus == "ablegen" and haelt and e.objekt is not None and not self._in_haenden(e.objekt[0]):
+                # Der Gegenstand ist unterwegs heruntergefallen (gemessen im Systemtest mit Nav2: Drehung auf der
+                # Stelle mit Last). Nicht in die Ablegebewegung laufen - die Arme planten sonst fuer eine Kiste, die
+                # gar nicht mehr da ist, und der Roboter fiel um.
+                self._ergebnis = (False, "Gegenstand nicht mehr in den Haenden (unterwegs verloren)", False)
+                self.frei = True
+                self._wechsel("ausblenden", e.t)
+                return self._arm_ausgabe(a)
             if ziel is not None:
                 p, yaw = in_odom(e, ziel)
                 abstand = self.par.abstand
@@ -191,6 +206,7 @@ class Greifauftrag:
                 else:
                     self._plane(e, ziel)
                     self._t_ausfuehren, self._dauer_gesamt = e.t, self._ablauf.dauer
+                    self._uhr_neu = True
                     self._wechsel("ausfuehren", e.t)
                 a.cmd = (0.0, 0.0, 0.0)
             elif e.t - self._t_phase > self.par.anfahrt_timeout_s:
@@ -199,6 +215,12 @@ class Greifauftrag:
             return self._arm_ausgabe(a) if haelt else a
 
         if self.phase == "ausfuehren":
+            if self._uhr_neu:
+                # Die IK-Planung dauert im Betrieb Sekunden Rechenzeit (in der Simulation ohne ROS steht die Zeit
+                # dabei still, deshalb fiel es dort nie auf): ohne Neustart der Uhr waeren die ersten Phasen schon
+                # abgelaufen, und die Arme spraengen in die Endpose (gemessen im ROS-Systemtest 11.11.2026).
+                self._t_phase = self._t_ausfuehren = e.t
+                self._uhr_neu = False
             arme, haende, taille, name, fertig = self._ablauf.sollwerte(e.t - self._t_phase)
             if (name in greifablauf.NACHPLANEN[self.modus] and name not in self._nachgeplant
                     and ziel is not None and (self.modus == "greifen" or e.objekt is not None)):
@@ -207,6 +229,7 @@ class Greifauftrag:
                 self._nachgeplant.add(name)
                 self._plane(e, ziel, ab_phase=name)
                 self._t_phase = e.t
+                self._uhr_neu = True                  # naechster Takt startet die Uhr nach der Rechenzeit
                 arme, haende, taille, name, fertig = self._ablauf.sollwerte(0.0)
             self.arme, self.haende, self.taille = arme, haende, taille
             a.phase = name
@@ -218,6 +241,9 @@ class Greifauftrag:
             return self._arm_ausgabe(a)
 
         if self.phase == "loesen":            # Fehlgriff: Haende oeffnen und Arme zurueck in die Ruhepose
+            if self._uhr_neu:
+                self._t_phase = e.t
+                self._uhr_neu = False
             arme, haende, taille, name, fertig = self._ablauf.sollwerte(e.t - self._t_phase)
             self.arme, self.haende, self.taille = arme, haende, taille
             a.phase = "loesen"
@@ -323,6 +349,7 @@ class Greifauftrag:
                                            last_kg=0.0, arm_kp=self.par.arm_kp,    # Fehlgriff: keine Last
                                            griff_versatz=versatz, ab_phase="loesen")  # Haende sind schon dort
         self._ablauf = ab
+        self._uhr_neu = True
         self._wechsel("loesen", e.t)
 
     def _ausblenden(self, e):

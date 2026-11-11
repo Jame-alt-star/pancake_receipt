@@ -10,6 +10,7 @@ Nach erfolgreichem Greifen haelt der Dienst die Tragepose weiter (sendet FUEHREN
 Steuereinheit wuerde ohne Kommando ohnehin halten (armfuehrung.py). Abbruch (Cancel, NotAus): Fahrbefehl 0, Arme
 HALTEN - nie loslassen.
 """
+import dataclasses
 import threading
 import time
 
@@ -47,13 +48,13 @@ class GreifDienstNode(Node):
 
     def __init__(self):
         super().__init__("greif_dienst_node")
+        # Alle Felder von Greifparameter sind ROS-Parameter (gleicher Name, gleicher Standardwert); so bleiben
+        # Dataclass und Knoten nicht auseinander (ein umbenanntes Feld liess den Knoten beim Start abstuerzen).
         d = Greifparameter()
-        for name in ("abstand", "halbbreite", "taille_pitch", "tol_dock", "tol_rueck", "v", "v_last", "w",
-                     "anfahrt_timeout_s", "min_hub", "ablage_tol", "hand_kp", "hand_kd"):
+        namen = [f.name for f in dataclasses.fields(Greifparameter)]
+        for name in namen:
             self.declare_parameter(name, float(getattr(d, name)))
-        self.par = Greifparameter(**{n: float(self.get_parameter(n).value) for n in (
-            "abstand", "halbbreite", "taille_pitch", "tol_dock", "tol_rueck", "v", "v_last", "w",
-            "anfahrt_timeout_s", "min_hub", "ablage_tol", "hand_kp", "hand_kd")})
+        self.par = Greifparameter(**{n: float(self.get_parameter(n).value) for n in namen})
         roboter = lade_roboter()
         if not roboter.get("modell_xml_haende"):
             raise RuntimeError("roboter.yaml ohne modell_xml_haende - Greifen braucht das Modell mit Haenden")
@@ -229,6 +230,7 @@ class GreifDienstNode(Node):
         fb = GreifAktion.Feedback()
         try:
             t_warten = time.monotonic()
+            letzte = None
             while rclpy.ok():
                 if goal_handle.is_cancel_requested or self.not_aus or self.freigabe is False:
                     self._anhalten(auftrag)
@@ -249,6 +251,13 @@ class GreifDienstNode(Node):
                     time.sleep(TAKT_S)
                     continue
                 a = auftrag.takt(e)
+                if (auftrag.phase, a.phase) != letzte:
+                    letzte = (auftrag.phase, a.phase)
+                    ob = e.objekt[0] if e.objekt is not None else None
+                    self.get_logger().info(
+                        f"Phase {auftrag.phase}/{a.phase}: Objekt rel. Becken "
+                        f"{None if ob is None else [round(float(x), 3) for x in ob]}, Basis "
+                        f"{[round(float(x), 2) for x in e.pos[:2]]}")
                 self._sende(a)
                 fb.status, fb.fortschritt = a.phase, float(a.fortschritt)
                 goal_handle.publish_feedback(fb)

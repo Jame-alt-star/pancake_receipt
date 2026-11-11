@@ -47,3 +47,22 @@ Rest macht die Feinpositionierung.
 7. Systemtest mit Video; Doku.
 
 Nach jedem Schritt: Review durch einen unabhaengigen Pruef-Agenten, Tests gruen, nichts pushen.
+
+## Stand 11.11.2026 (Abend) - gemessen, nicht geplant
+
+Ersetzt die Entwurfsteile oben, wo sie abweichen: Es gibt keinen Zustand "Manipulieren", sondern die zustandsunabhaengige
+`armfuehrung.py` (Modi aus/fuehren/halten/ausblenden); Objektposen kommen auf `/objekte/<name>` (relativ zum Becken);
+die Mission kennt `gegenstand: {name, ort}`, Ablagestellen heissen `ablage_<ort>`; Layer 1 hat `greife`/`ablegen`.
+
+**Simulation ohne ROS** (`tests/simulation/greif_serie*.py`, gleiche Bausteine wie der Knoten):
+12 zufaellig verschobene Start-/Kistenlagen: 12/12 gegriffen, 11/12 abgelegt (0-3 cm neben der Sollstelle), kein Sturz.
+
+**ROS-Systemtest** (`tests/system/integration_greifen.py`, Welt greiftisch): noch NICHT bestanden.
+- Gefunden und behoben: Parameterliste des Knotens (Absturz beim Start), Finger ohne Kommando (Daumen haengen), Phasenuhr
+  lief waehrend der IK-Rechenzeit weiter (Arme sprangen in die Endpose), Freigabe-Entzug wurde vom Dienst ueberschrieben,
+  Doppelauftraege, wiederholbar-Flag, verlorene Kiste vor dem Ablegen.
+- Offen: (1) Greifen im ROS-Betrieb nicht reproduzierbar (2 von 3 Laeufen gegriffen). (2) Mit Nav2 faellt die Kiste beim
+  Transport (Drehen auf der Stelle mit Last; Tempo pro Mission "Weg 2" und ein Drehen mit Seitschritt waeren die Hebel).
+  (3) Nav2-Testdouble dreht mit 0,2 rad/s - die Policy fuehrt das mit Last nicht aus; Systemtest nur mit --nav2 sinnvoll.
+- Sicherheit: Handkommandos laufen direkt in die Simulation (`/hand/kommando`), ohne Steuereinheit. Fuer den echten G1
+  braucht es einen eigenen, geprueften Hand-Pfad (Vorrang, NotAus, Grenzen).
