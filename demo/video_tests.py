@@ -34,6 +34,13 @@ BAND = (0.12, 1.9)      # Hoehenband der Hinderniswolke [m], wie roboter_sensori
 
 # Was jeder Test zeigt (Titel aus lauf.json -> Zeilen der Titelkarte)
 BESCHREIBUNG = {
+    "Greifen Phase 1: Kiste holen und ablegen (Regelkreis ohne ROS)": [
+        "Derselbe Greif-Dienst, dieselbe Armfuehrung und Lauf-Policy wie im System, aber ohne ROS-Nachrichten und mit einer",
+        "Ersatz-Anfahrt statt Nav2: greifen, mit der Kiste zum Arbeitsplatz gehen, sauber auf der Markierung ablegen."],
+    "Greifen Phase 1: Kiste holen und ablegen": [
+        "Mission greiftisch: der Roboter (G1 mit Dex3-Haenden) faehrt zum Lagertisch, greift die Kiste (20 x 15 x 10 cm,",
+        "0,5 kg) beidhaendig, traegt sie mit Nav2 zum Arbeitsplatz und legt sie auf der gruenen Markierung ab.",
+        "Greif-Dienst (Layer 3) faehrt die letzten Meter selbst, Armfuehrung ersetzt die Arme der Lauf-Policy."],
     "Pipeline (Layer 3 + 4)": [
         "Steuerung + Simulation ohne Navigation: Freigabe, Stehen, Positionshaltung,",
         "Gehen mit Kurshaltung, Begrenzung, NOT-AUS, Hand-Vorrang, Stopp,",
@@ -116,13 +123,17 @@ class Kapitel:
                                                     self.lauf["mission"] + ".yaml"))).get("welt")
         self.welt = welt
         welt_dir = os.path.join(SRC, "roboter_welten", "welten", welt) if welt else None
-        self.m = lade_modell(ROBOTER_XML, os.path.join(welt_dir, "szene.xml") if welt_dir else None)
+        # Modell wie in der Aufzeichnung (mit Haenden hat qpos 14 Gelenke mehr, plus frei bewegliche Gegenstaende)
+        modell = str(pose["modell"]) if "modell" in pose.files and str(pose["modell"]) else ROBOTER_XML
+        self.m = lade_modell(modell, os.path.join(welt_dir, "szene.xml") if welt_dir else None)
         self.d = mujoco.MjData(self.m)
         self._welt_einfaerben()
         self.m.vis.global_.offwidth, self.m.vis.global_.offheight = W, H
-        self.boxen = [(p[0] - s[0], p[1] - s[1], p[0] + s[0], p[1] + s[1]) for p, s, g, typ in
-                      zip(self.m.geom_pos, self.m.geom_size, self.m.geom_group, self.m.geom_type)
-                      if g == 2 and typ == mujoco.mjtGeom.mjGEOM_BOX]
+        mujoco.mj_forward(self.m, self.d)          # Weltlage der Geometrien (Tische sitzen in Koerpern mit Versatz)
+        # nur feste Hindernisse (kein frei beweglicher Gegenstand wie die Kiste)
+        self.boxen = [(p[0] - s[0], p[1] - s[1], p[0] + s[0], p[1] + s[1]) for p, s, g, typ, b in
+                      zip(self.d.geom_xpos, self.m.geom_size, self.m.geom_group, self.m.geom_type, self.m.geom_bodyid)
+                      if g == 2 and typ == mujoco.mjtGeom.mjGEOM_BOX and self.m.body_weldid[b] == 0]
         self.lidar = Lidar(self.m, ROBOTER["lidar"], 360, 10.0, ringe=24) if self.boxen else None
         orte = yaml.safe_load(open(os.path.join(welt_dir, "orte.yaml")))["orte"] if welt_dir else {}
         self.orte = {k: (v["x"], v["y"]) for k, v in orte.items()}

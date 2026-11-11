@@ -15,16 +15,20 @@ import time
 
 import numpy as np
 import rclpy
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from testaufnahme import Aufnahme  # noqa: E402
 from geometry_msgs.msg import Point, PoseStamped
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 R = []
+AUF = Aufnahme(None, "")
 
 
 def check(name, ok, detail=""):
     R.append(bool(ok))
+    AUF.check(name, ok, detail)
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}  {detail}", flush=True)
 
 
@@ -37,10 +41,15 @@ class Probe(Node):
         self.objekte = {}
         self.verlauf = []          # (t, Kiste rel. Becken x/y/z, Basis x/y) etwa jede Sekunde
         self._t_letzt = 0.0
-        self.create_subscription(String, "/mission/status", lambda m: self.status.append(json.loads(m.data)), lat50)
+        self.create_subscription(String, "/mission/status", self._status, lat50)
         self.create_subscription(Point, "/base_position", self._pos, 10)
         for n in ("kiste", "ablage_arbeitsplatz"):
             self.create_subscription(PoseStamped, f"/objekte/{n}", lambda m, n=n: self._objekt(n, m), 10)
+
+    def _status(self, m):
+        st = json.loads(m.data)
+        self.status.append(st)
+        AUF.ereignis("mission", **st)
 
     def _objekt(self, n, m):
         self.objekte[n] = m
@@ -62,10 +71,16 @@ class Probe(Node):
 def main():
     timeout = float(sys.argv[sys.argv.index("--timeout") + 1]) if "--timeout" in sys.argv else 400.0
     nav = "nav2" if "--nav2" in sys.argv else "testdouble"
+    global AUF
+    AUF = Aufnahme(Aufnahme.ordner_aus(sys.argv), "Greifen Phase 1: Kiste holen und ablegen",
+                   welt="greiftisch", mission="greiftisch", navigation=nav, karte="welt" if nav == "nav2" else None,
+                   realistisch=False, beinodometrie=False)
     cmd = ["ros2", "launch", "roboter_system", "system.launch.py", "mission:=greiftisch", f"navigation:={nav}",
            "auto_start:=true", "headless:=true"]
     if nav == "nav2":
         cmd.append("karte:=true")
+    cmd += AUF.launch_args()
+    AUF.schritt("== G1 Mission greiftisch: Kiste holen, tragen, ablegen")
     launch = subprocess.Popen(cmd, stdout=open("/tmp/greifen_launch.log", "w"), stderr=subprocess.STDOUT,
                               start_new_session=True)
     rclpy.init()
@@ -93,6 +108,7 @@ def main():
                   f"Abweichung {np.round(d * 100, 1)} cm")
         else:
             check("Kiste und Ablagestelle gesehen", False, "keine /objekte-Nachrichten")
+        AUF.speichern(sum(R), len(R))          # vor dem Aufraeumen: stop_all.sh beendet auch diesen Test
     finally:
         probe.destroy_node()
         rclpy.shutdown()
