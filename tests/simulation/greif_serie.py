@@ -32,7 +32,7 @@ for name in (sys.argv[1:] or FAELLE):
             kk.arm_kommando(FUEHREN, g.arme, g.taille)
             return ok
         k.laufe(40, takt); k.cmd[:] = 0
-        g2, a2 = k.auftrag("ablegen", ablage_site="ablage_arbeitstisch", vorher=g)
+        g2, a2 = k.auftrag("ablegen", ablage_site="ablage_arbeitsplatz", vorher=g)
         k.laufe(2.0)
         kp, _ = k.kiste()
         d = (kp - np.array([1.95, 2.40, 0.79])) * 100

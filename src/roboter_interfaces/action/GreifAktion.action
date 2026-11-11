@@ -6,7 +6,7 @@
 # ===== Ziel (Goal) =====
 string objekt        # Name des Gegenstands, z. B. "kiste"
 string modus         # "greifen" | "ablegen"
-string ablage        # nur ablegen: Name der Ablagestelle, z. B. "ablage_arbeitstisch"
+string ablage        # nur ablegen: Name der Ablagestelle, z. B. "ablage_arbeitsplatz"
 ---
 # ===== Ergebnis (Result) =====
 bool erfolgreich

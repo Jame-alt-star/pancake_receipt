@@ -1,0 +1,10 @@
+# Greifen Phase 1: die Kiste vom Lagertisch holen und am Arbeitsplatz ablegen. Welt: roboter_welten/welten/greiftisch.
+# Der Greif-Dienst (Layer 3) faehrt von lager/arbeitsplatz selbst an die Tischkante, greift bzw. legt ab und tritt zurueck.
+welt: greiftisch
+start_ort: start
+gegenstand: {name: kiste, ort: lager}
+ziele:
+  - {art: abgelegt, ort: arbeitsplatz}
+  - {art: am_ort,   ort: start}
+parameter:
+  max_replans: 2

@@ -39,7 +39,7 @@ from std_srvs.srv import Trigger
 
 from roboter_interfaces.srv import MissionStarten
 from roboter_task_planning.deliberative.pddl_planner import FastDownwardPlanner
-from roboter_task_planning.executive.action_bridges import BalanceBridge, NavigationBridge
+from roboter_task_planning.executive.action_bridges import BalanceBridge, GreifBridge, NavigationBridge
 from roboter_task_planning.executive.action_dispatcher import MissionExecutor
 from roboter_task_planning.executive.simple_bridges import WarteBridge
 from roboter_task_planning.executive.world_knowledge import Mission
@@ -72,7 +72,7 @@ class MissionNode(Node):
         self._abort = threading.Event()
         self._thread = None
         backend = self.get_parameter("nav_backend").value
-        self.bridges = [NavigationBridge(self, backend), BalanceBridge(self), WarteBridge()]
+        self.bridges = [NavigationBridge(self, backend), BalanceBridge(self), WarteBridge(), GreifBridge(self)]
         self._publish({"phase": "bereit"})
         self.get_logger().info(f"Missions-Knoten bereit (nav_backend={backend}).")
         if self.get_parameter("auto_start").value:

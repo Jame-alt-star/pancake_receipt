@@ -7,13 +7,14 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
-from roboter_interfaces.action import BalancierAktion, GehAktion
+from roboter_interfaces.action import BalancierAktion, GehAktion, GreifAktion
 from roboter_task_planning.deliberative.i_planner import PlanSchritt
 from roboter_task_planning.executive.i_action_bridge import BridgeResult, IActionBridge
 from roboter_task_planning.executive.world_knowledge import Mission
 
 GEH_ACTION = "/geh_aktion"           # GehAktion (SysML GehAktionPort): Server nur im Testdouble
 BALANCIER_ACTION = "/balanciere"     # BalancierAktion (balance_dienst_node, Layer 3)
+GREIF_ACTION = "/greife"             # GreifAktion (greif_dienst_node, Layer 3)
 NAV2_ACTION = "navigate_to_pose"     # nav2_msgs/NavigateToPose (Layer 2, Standard-Backend)
 NAV2_ACTIVE_SRV = "/lifecycle_manager_navigation/is_active"   # std_srvs/Trigger
 NAV2_PFAD_ACTION = "compute_path_to_pose"   # nav2_msgs/ComputePathToPose (Planer, fuer Wegkosten)
@@ -154,6 +155,34 @@ class BalanceBridge(IActionBridge):
     def execute(self, schritt, mission: Mission, cancel: threading.Event, orte=None) -> BridgeResult:
         goal = BalancierAktion.Goal()
         goal.toleranz_grad = float(mission.param("balancier_toleranz_grad"))
+        ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
+        if res is not None:
+            ok = ok and res.erfolgreich
+            text = res.ergebnis or text
+        return BridgeResult(bool(ok), text)
+
+
+class GreifBridge(IActionBridge):
+    """'greife(gegenstand, ort)' und 'ablegen(gegenstand, ort)': GreifAktion. Die Ablagestelle heisst nach Konvention
+    'ablage_<ort>' (Site in der Welt, Pose ueber /objekte/ablage_<ort>). Der Greif-Dienst faehrt selbst die letzten
+    Meter an den Tisch und tritt danach zurueck."""
+    aktionen = ("greife", "ablegen")
+
+    def __init__(self, node: Node, timeout_s: float = 150.0):
+        self.client = ActionClient(node, GreifAktion, GREIF_ACTION)
+        self.timeout_s = timeout_s
+
+    @staticmethod
+    def ziel(schritt: PlanSchritt):
+        """GreifAktion.Goal aus dem Planschritt (ROS-frei pruefbar ueber die Felder)."""
+        gegenstand, ort = schritt.args[0], schritt.args[1]
+        modus = "greifen" if schritt.name == "greife" else "ablegen"
+        return gegenstand, modus, (f"ablage_{ort}" if modus == "ablegen" else "")
+
+    def execute(self, schritt, mission: Mission, cancel: threading.Event, orte=None) -> BridgeResult:
+        gegenstand, modus, ablage = self.ziel(schritt)
+        goal = GreifAktion.Goal()
+        goal.objekt, goal.modus, goal.ablage = gegenstand, modus, ablage
         ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
         if res is not None:
             ok = ok and res.erfolgreich

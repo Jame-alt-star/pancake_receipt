@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
-ZIEL_ARTEN = ("besucht", "balanciert", "gewartet", "am_ort")   # am_ort = Endposition
+ZIEL_ARTEN = ("besucht", "balanciert", "gewartet", "am_ort", "abgelegt")   # am_ort = Endposition
 DYNAMISCHER_ORT = "pos_aktuell"      # wird bei Neuplanung an der aktuellen Position eingefuegt
 
 
@@ -24,6 +24,8 @@ class Mission:
     start_ort: Optional[str] = None
     parameter: Dict[str, float] = field(default_factory=dict)
     welt: Optional[str] = None
+    gegenstand: Optional[Tuple[str, str]] = None    # (name, ort): der eine Gegenstand, den der Roboter bewegt
+
 
     # nav_geschwindigkeit wirkt nur im GehAktion-Backend (Testdouble); mit Nav2 gelten dessen Parameter.
     PARAMETER_DEFAULTS = {
@@ -86,7 +88,22 @@ class Mission:
         if unbekannt:
             # Frueher still ignoriert: ein Tippfehler (oder das entfernte nav_toleranz_m) blieb ohne Wirkung.
             raise ValueError(f"unbekannte Parameter {sorted(unbekannt)}, erlaubt: {sorted(Mission.PARAMETER_DEFAULTS)}")
-        return Mission(orte, verb, ziele, start, parameter, str(welt) if welt else None)
+        gegenstand = None
+        g = d.get("gegenstand")
+        if g is not None:
+            if not isinstance(g, dict) or set(g) != {"name", "ort"}:
+                raise ValueError("'gegenstand' braucht genau 'name' und 'ort'")
+            gname, gort = name(g["name"]), name(g["ort"])
+            if not gname.replace("_", "").isalnum() or not gname.isascii():
+                raise ValueError(f"Gegenstandsname {g['name']!r}: nur ASCII-Buchstaben, Ziffern und _ erlaubt")
+            if gname in orte:
+                raise ValueError(f"Gegenstandsname {gname!r} kollidiert mit einem Ortsnamen")
+            if gort not in orte:
+                raise ValueError(f"Gegenstand liegt an unbekanntem Ort {gort!r}")
+            gegenstand = (gname, gort)
+        if any(art == "abgelegt" for art, _ in ziele) and gegenstand is None:
+            raise ValueError("Ziel 'abgelegt' braucht einen 'gegenstand' in der Mission")
+        return Mission(orte, verb, ziele, start, parameter, str(welt) if welt else None, gegenstand)
 
     @staticmethod
     def from_yaml(path: str) -> "Mission":
@@ -110,6 +127,9 @@ class WorldKnowledge:
         self.verbindungen = set(mission.verbindungen)
         self.current_ort = current_ort
         self.fakten: Set[Tuple[str, str]] = {("besucht", current_ort)}
+        # Gegenstand: Ort, an dem er liegt (None solange er gehalten wird); abgelegt: Orte, an denen er abgelegt wurde
+        self.gegenstand_ort: Optional[str] = mission.gegenstand[1] if mission.gegenstand else None
+        self.haelt: bool = False
         # gerichtete Kanten NUR vom dynamischen Ort weg (siehe aktualisiere_position)
         self.dyn_ziele: Set[str] = set()
 
@@ -152,6 +172,11 @@ class WorldKnowledge:
             self.fakten.add(("balanciert", args[0]))
         elif name == "warte":
             self.fakten.add(("gewartet", args[0]))
+        elif name == "greife":
+            self.gegenstand_ort, self.haelt = None, True
+        elif name == "ablegen":
+            self.gegenstand_ort, self.haelt = args[1], False
+            self.fakten.add(("abgelegt", args[1]))
 
     def offene_ziele(self):
         def erfuellt(z):

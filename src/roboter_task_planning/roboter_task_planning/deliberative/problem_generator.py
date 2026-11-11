@@ -31,11 +31,22 @@ def read_domain() -> str:
 
 def generate_problem(world: WorldKnowledge) -> str:
     orte = sorted(world.orte)
+    gname = world.mission.gegenstand[0] if world.mission.gegenstand else None
+    objekte = f"  (:objects {' '.join(orte)} - ort" + (f" {gname} - gegenstand)" if gname else ")")
     lines = ["(define (problem mission)", "  (:domain roboter-mission)",
-             f"  (:objects {' '.join(orte)} - ort)", "  (:init", "    (= (total-cost) 0)",
+             objekte, "  (:init", "    (= (total-cost) 0)",
              f"    (at {world.current_ort})"]
     for art, ort in sorted(world.fakten):
-        lines.append(f"    ({art} {ort})")
+        if art == "abgelegt":
+            lines.append(f"    (abgelegt {gname} {ort})")
+        else:
+            lines.append(f"    ({art} {ort})")
+    if gname:
+        if world.haelt:
+            lines.append(f"    (haelt {gname})")
+        else:
+            lines.append("    (haende_frei)")
+            lines.append(f"    (liegt_bei {gname} {world.gegenstand_ort})")
     for v in sorted(tuple(sorted(p)) for p in world.verbindungen):
         a, b = v
         lines.append(f"    (verbunden {a} {b})")
@@ -48,7 +59,13 @@ def generate_problem(world: WorldKnowledge) -> str:
         lines.append(f"    (= (strecke {DYNAMISCHER_ORT} {ziel}) {world.strecke_cm(DYNAMISCHER_ORT, ziel)})")
     lines.append("  )")
     # am_ort (Endposition) entspricht dem Praedikat (at ort)
-    goals = [f"(at {ort})" if art == "am_ort" else f"({art} {ort})" for art, ort in world.mission.ziele]
+    def ziel(art, ort):
+        if art == "am_ort":
+            return f"(at {ort})"
+        if art == "abgelegt":
+            return f"(abgelegt {gname} {ort})"
+        return f"({art} {ort})"
+    goals = [ziel(art, ort) for art, ort in world.mission.ziele]
     lines.append(f"  (:goal (and {' '.join(goals)}))")
     lines.append("  (:metric minimize (total-cost)))")
     return "\n".join(lines) + "\n"
