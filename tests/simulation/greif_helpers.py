@@ -62,6 +62,10 @@ class Kreis:
         self.qa, self.va = self.m.jnt_qposadr[tid], self.m.jnt_dofadr[tid]
         self.kps = np.array(self.cfg["kps"])
         self.kds = np.array(self.cfg["kds"])
+        import os
+        f = float(os.environ.get('ARM_KP_TEST', '1'))   # Versuch: steifere Arme (Faktor auf kp und kd der Armgelenke)
+        self.kps[15:29] *= f
+        self.kds[15:29] *= f ** 0.5
         self.home = np.array(self.cfg["default_angles"], dtype=np.float32)
         self.hkp = np.full(14, haende["kp"] if hand_kp is None else hand_kp, dtype=float)
         self.hkd = np.full(14, haende["kd"] if hand_kd is None else hand_kd, dtype=float)
