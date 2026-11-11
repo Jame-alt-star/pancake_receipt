@@ -183,6 +183,12 @@ class GreifBridge(IActionBridge):
         gegenstand, modus, ablage = self.ziel(schritt)
         goal = GreifAktion.Goal()
         goal.objekt, goal.modus, goal.ablage = gegenstand, modus, ablage
+        if modus == "greifen":
+            # naechstes Ziel des Gegenstands (erster Ablageort der Mission): dorthin dreht der Dienst den Roboter vor
+            ziel = next((ort for art, ort in mission.ziele if art == "abgelegt"), None)
+            koord = (orte or mission.orte).get(ziel) if ziel else None
+            if koord is not None:
+                goal.hat_abgang, goal.abgang_x, goal.abgang_y = True, float(koord[0]), float(koord[1])
         ok, res, text = run_action(self.client, goal, cancel, self.timeout_s)
         wiederholbar = True
         if res is not None:

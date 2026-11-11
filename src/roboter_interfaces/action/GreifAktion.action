@@ -7,6 +7,9 @@
 string objekt        # Name des Gegenstands, z. B. "kiste"
 string modus         # "greifen" | "ablegen"
 string ablage        # nur ablegen: Name der Ablagestelle, z. B. "ablage_arbeitsplatz"
+bool hat_abgang      # nur greifen: nach dem Zuruecktreten zum Punkt (abgang_x, abgang_y) (odom/map-Frame) hindrehen,
+float64 abgang_x     # damit Nav2 nicht mit der Kiste auf der Stelle drehen muss (die Policy verliert dabei die Kiste)
+float64 abgang_y
 ---
 # ===== Ergebnis (Result) =====
 bool erfolgreich

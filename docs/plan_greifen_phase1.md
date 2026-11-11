@@ -66,3 +66,13 @@ die Mission kennt `gegenstand: {name, ort}`, Ablagestellen heissen `ablage_<ort>
   (3) Nav2-Testdouble dreht mit 0,2 rad/s - die Policy fuehrt das mit Last nicht aus; Systemtest nur mit --nav2 sinnvoll.
 - Sicherheit: Handkommandos laufen direkt in die Simulation (`/hand/kommando`), ohne Steuereinheit. Fuer den echten G1
   braucht es einen eigenen, geprueften Hand-Pfad (Vorrang, NotAus, Grenzen).
+
+### Nachtrag (spaeter am 11.11.2026)
+- Greifen allein im ROS-System (Diagnose, `/greife` direkt): 3/3 gegriffen. Der Greif-Dienst arbeitet jetzt in
+  Simulationszeit (`/clock`) und dreht den Roboter nach dem Zuruecktreten selbst zum Ablageort hin (`hat_abgang`,
+  `abgang_x/y` in GreifAktion), damit Nav2 nicht mit der Kiste auf der Stelle drehen muss.
+- Nav2-Systemtest (letzter Lauf): Kiste gegriffen UND heil zum Arbeitsplatz transportiert (Neuerung). Danach scheitert
+  das Ablegen: Nav2 uebergibt bei y=2,99 statt 2,4 (0,6 m Abweichung durch Seitschritte), die Anfahrt an den Tisch
+  erreicht die Standpose nicht innerhalb von 45 s (Roboter endet bei x=1,88/y=2,87 am Tischrand). Naechster Schritt:
+  Spur der Anfahrt aus grosser Seitabweichung mit Last (Befehle mitschreiben), Nav2-Uebergabe genauer (xy-Toleranz,
+  Seitschritt-Drift beim Abdrehen).

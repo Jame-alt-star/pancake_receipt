@@ -108,13 +108,16 @@ class Greifauftrag:
     """modus 'greifen' oder 'ablegen'. kin: Armkinematik (Modell mit Haenden), ruhe: Policy-Ruhepose (29).
     start_arme/start_haende/start_taille: Zustand der Haende zu Beginn (beim Ablegen: die Tragepose)."""
 
-    def __init__(self, modus, kin, ruhe, par: Greifparameter, start_arme=None, start_haende=None, start_taille=0.0):
+    def __init__(self, modus, kin, ruhe, par: Greifparameter, start_arme=None, start_haende=None, start_taille=0.0,
+                 abgang=None):
         assert modus in ("greifen", "ablegen")
         self.modus, self.kin, self.ruhe, self.par = modus, kin, np.asarray(ruhe, dtype=np.float32), par
         self.start_arme = None if start_arme is None else np.asarray(start_arme, dtype=np.float32)
         self.start_haende = (greifablauf.HAND_OFFEN.copy() if start_haende is None
                              else np.asarray(start_haende, dtype=np.float32))
         self.start_taille = start_taille
+        self.abgang = None if abgang is None else (float(abgang[0]), float(abgang[1]))
+        self._abdrehen = None
         self.phase = "warten"
         self._t0 = None
         self._t_phase = None
@@ -269,9 +272,26 @@ class Greifauftrag:
                 if not ok:
                     erfolg, meldung, wdh = self._ergebnis
                     self._ergebnis = (erfolg, meldung + " (Zuruecktreten nicht ganz erreicht)", wdh)
+                if self.modus == "greifen" and self._ergebnis[0] and self.abgang is not None and self.arme is not None:
+                    # Mit Kiste zum naechsten Ziel hindrehen (mit Seitschritt, langsam), bevor Nav2 uebernimmt
+                    x, y, _ = self._basis(e)
+                    yaw_ziel = float(np.arctan2(self.abgang[1] - y, self.abgang[0] - x))
+                    self._abdrehen = Anfahrt((x, y, yaw_ziel), tol_pos=1.0, tol_yaw=np.radians(25.0), w=self.par.w,
+                                             quer_beim_drehen=self.par.quer_beim_drehen, nah=0.0, linie=0.0)
+                    self._wechsel("abdrehen", e.t)
+                    return self._arm_ausgabe(a)
                 self._wechsel("fertig", e.t)
                 self._beenden(a)
             return self._arm_ausgabe(a) if self.arme is not None else a
+
+        if self.phase == "abdrehen":
+            vx, vy, wz, ok = self._abdrehen.befehl(self._basis(e), e.t)
+            a.cmd = (vx, vy, wz)
+            if ok or e.t - self._t_phase > 15.0:
+                a.cmd = (0.0, 0.0, 0.0)
+                self._wechsel("fertig", e.t)
+                self._beenden(a)
+            return self._arm_ausgabe(a)
 
         return self._beenden(a)
 

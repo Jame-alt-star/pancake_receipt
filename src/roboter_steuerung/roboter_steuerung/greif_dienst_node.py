@@ -22,6 +22,7 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import JointState
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
@@ -70,6 +71,7 @@ class GreifDienstNode(Node):
         self._lagen = {}               # name -> (t_empfang, pos_rel, quat_rel)
         self._abos = {}
         self.not_aus = False
+        self._sim_t = None             # Simulationszeit (/clock); ohne Uhr gilt die Wanduhr
         self.freigabe = None           # None = noch nicht gehoert; False waehrend eines Auftrags bricht ihn ab
         self._reserviert = False       # Auftrag angenommen (zwischen goal_callback und Ende), unter _lock
         # Zustand ueber Auftraege hinweg: gehaltene Arme/Finger nach dem Greifen
@@ -84,6 +86,9 @@ class GreifDienstNode(Node):
                                  reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
         self.create_subscription(Bool, "/not_aus", self._not_aus_cb, not_aus_qos, callback_group=cb)
         self.create_subscription(Bool, "/freigabe", self._freigabe_cb, 10, callback_group=cb)
+        # Zeitbasis der Ablaeufe = Simulationszeit: unter Last (Nav2, Lidar) laeuft die Simulation langsamer als die
+        # Wanduhr; mit Wanduhr eilten die Arme der Physik voraus (Kiste beim Greifen nicht gehalten, 11.11.2026).
+        self.create_subscription(Clock, "/clock", self._clock_cb, 10, callback_group=cb)
         self.create_service(Trigger, "/greife/freigeben", self._freigeben, callback_group=cb)
         self.pub_cmd = self.create_publisher(Twist, "/cmd_vel/greifen", 10)
         self.pub_arme = self.create_publisher(Armkommando, "/arme/kommando", 10)
@@ -111,6 +116,12 @@ class GreifDienstNode(Node):
 
     def _not_aus_cb(self, m: Bool):
         self.not_aus = bool(m.data)
+
+    def _clock_cb(self, m: Clock):
+        self._sim_t = m.clock.sec + 1e-9 * m.clock.nanosec
+
+    def _jetzt(self) -> float:
+        return self._sim_t if self._sim_t is not None else time.monotonic()
 
     def _freigabe_cb(self, m: Bool):
         self.freigabe = bool(m.data)
@@ -197,7 +208,7 @@ class GreifDienstNode(Node):
             odom, gelenke = self._odom, self._gelenke
         if odom is None or gelenke is None:
             return None
-        return Eingang(t=time.monotonic(), pos=odom[0], quat=odom[1], gelenke=gelenke,
+        return Eingang(t=self._jetzt(), pos=odom[0], quat=odom[1], gelenke=gelenke,
                        objekt=self._lage(objekt), ablage=self._lage(ablage) if ablage else None)
 
     def _execute(self, goal_handle):
@@ -224,7 +235,8 @@ class GreifDienstNode(Node):
             arme, haende, taille, _ = self.gehalten
             auftrag = Greifauftrag(req.modus, self.kin, self.ruhe, self.par, arme, haende, taille)
         else:
-            auftrag = Greifauftrag(req.modus, self.kin, self.ruhe, self.par)
+            abgang = (req.abgang_x, req.abgang_y) if req.hat_abgang else None
+            auftrag = Greifauftrag(req.modus, self.kin, self.ruhe, self.par, abgang=abgang)
         self._auftrag_laeuft = True
         self.get_logger().info(f"Auftrag {req.modus} '{req.objekt}'" + (f" auf '{req.ablage}'" if req.ablage else ""))
         fb = GreifAktion.Feedback()
