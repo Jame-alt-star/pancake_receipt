@@ -21,6 +21,8 @@ ARGUMENTE = [
     ("realistic_sensors", "false", "Sensorrauschen, Bias, Drift, Latenz, Lidar-Ausfaelle"),
     ("record_path", "", ".npz-Datei fuer die Posenaufzeichnung"),
     ("odom_ground_truth", "true", "/odom und TF odom->base_link aus der Simulation (false: Schaetzer liefert sie)"),
+    ("haende", "false", "Robotermodell mit Dex3-Haenden (Greifen): /hand/kommando, /hand/joint_states"),
+    ("objekte", "", "kommagetrennte Koerper/Sites der Welt, deren Pose relativ zum Roboter auf /objekte/<name> kommt"),
 ]
 
 
@@ -39,6 +41,8 @@ def generate_launch_description():
             "record_path": LaunchConfiguration("record_path"),
             "publish_odom": LaunchConfiguration("odom_ground_truth"),
             "publish_tf": LaunchConfiguration("odom_ground_truth"),
+            "haende": LaunchConfiguration("haende"),
+            "objekte": LaunchConfiguration("objekte"),
         }])
     return LaunchDescription([DeclareLaunchArgument(n, default_value=d, description=t) for n, d, t in ARGUMENTE]
                              + [sim])

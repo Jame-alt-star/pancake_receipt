@@ -8,8 +8,24 @@
 # Gelenk-/Aktuator-Reihenfolge = MUJOCO_JOINT_ORDER in roboter_steuerung/control/rl_locomotion_controller_29dof.py.
 modell_xml: "modelle/g1_description/g1_29dof.xml"
 
+# Modell mit Dex3-Haenden (Greifen): aus modell_xml erzeugt (scripts/erzeuge_handmodell.py), gleiche 29
+# Koerpergelenke in gleicher Reihenfolge, dahinter 14 Fingeraktuatoren. Die Simulation nutzt es mit haende:=true;
+# Steuerung und Beinodometrie rechnen weiter mit modell_xml (die Finger aendern dort nichts).
+modell_xml_haende: "modelle/g1_description/g1_29dof_mit_haenden.xml"
+
 # URDF (gleiche Gelenknamen) fuer robot_state_publisher und RViz, relativ zu modelle/g1_description.
 urdf: "g1_29dof.urdf"
+
+# Dex3-1-Haende: Fingergelenke in Aktuator-Reihenfolge des Handmodells und PD-Werte, mit denen die Simulation die
+# Finger regelt, solange kein Handkommando (mit eigenen kp/kd) kommt. Je Hand 7 Gelenke; Drehmomentgrenzen aus dem
+# Modell (Daumen 0: 2,45 Nm, sonst 1,4 Nm).
+haende:
+  gelenke: [left_hand_thumb_0_joint, left_hand_thumb_1_joint, left_hand_thumb_2_joint,
+            left_hand_middle_0_joint, left_hand_middle_1_joint, left_hand_index_0_joint, left_hand_index_1_joint,
+            right_hand_thumb_0_joint, right_hand_thumb_1_joint, right_hand_thumb_2_joint,
+            right_hand_middle_0_joint, right_hand_middle_1_joint, right_hand_index_0_joint, right_hand_index_1_joint]
+  kp: 2.0
+  kd: 0.05
 
 # Beckenhoehe im aufrechten Stand (Startpose der Policy) [m].
 becken_hoehe_stand: 0.793

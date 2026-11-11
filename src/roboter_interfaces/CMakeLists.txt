@@ -6,8 +6,11 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Antriebsparameter.msg"
+  "msg/Armkommando.msg"
+  "msg/Handkommando.msg"
   "action/GehAktion.action"
   "action/BalancierAktion.action"
+  "action/GreifAktion.action"
   "srv/GleichgewichtService.srv"
   "srv/MissionStarten.srv"
 )

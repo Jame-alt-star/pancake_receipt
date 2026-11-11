@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("rclpy")
 nodemod = pytest.importorskip("roboter_steuerung.steuereinheit_node")
+from roboter_steuerung.armfuehrung import Armfuehrung  # noqa: E402
 from roboter_steuerung.haltung import Kurshaltung, Positionshaltung  # noqa: E402
 from roboter_steuerung.kommando import Kommandobegrenzung, Watchdog  # noqa: E402
 from roboter_steuerung.states.bereitschaft_state import BereitschaftState  # noqa: E402
@@ -71,7 +72,81 @@ def make(cmd_target=(0.0, 0.0, 0.0)):
     n.state = BereitschaftState()
     n._log = _Log()
     n.get_logger = lambda: n._log
+    n.armfuehrung = Armfuehrung([nodemod.MUJOCO_JOINT_ORDER[i] for i in nodemod.ARM_INDIZES])
+    n.ruhepose = np.zeros(3, dtype=np.float32)
+    n.taille_pitch = -0.15
+    n.pub_arme, n._gemeldeter_armzustand, n._arm_fehler_gemeldet = _Pub(), None, -float("inf")
     return n
+
+
+def make29():
+    """Wie make(), aber mit 29 Gelenken (Armfuehrung braucht die echten Indizes 15..28)."""
+    n = make()
+    n.bridge = _Bridge(n=29)
+    n.controller = _Policy()
+    n.controller.ausgabe = np.zeros(29, dtype=np.float32)
+    n.controller.letzte_beobachtung = None
+    orig = n.controller.compute_joint_targets
+
+    def merken(**kw):
+        n.controller.letzte_beobachtung = kw["joint_positions"].copy()
+        return orig(**kw)
+    n.controller.compute_joint_targets = merken
+    n.ruhepose = np.full(29, 0.3, dtype=np.float32)
+    n.grenze_unten = np.full(29, -3.0, dtype=np.float32)
+    n.grenze_oben = np.full(29, 3.0, dtype=np.float32)
+    return n
+
+
+class _ArmMsg:
+    def __init__(self, modus, ziele=None, taille=1.0):
+        self.modus = modus
+        self.namen = [nodemod.MUJOCO_JOINT_ORDER[i] for i in nodemod.ARM_INDIZES]
+        self.ziele = list(ziele) if ziele is not None else []
+        self.taille_anteil = taille
+
+
+def test_armfuehrung_maskiert_ersetzt_arme_und_neigt_taille():
+    n = make29()
+    n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
+    for _ in range(60):
+        n.state._policy_schritt(n, np.zeros(3))
+    z = n.bridge.gesendet[-1]
+    assert np.allclose(z[15:29], 0.1, atol=1e-6)                       # Armziele statt Policy (0)
+    assert np.isclose(z[14], -0.15)                                     # Taille geneigt
+    assert np.allclose(n.controller.letzte_beobachtung[15:29], 0.3)     # Policy sieht Ruhepose
+    assert n.pub_arme.daten[-1] == "fuehren"
+
+
+def test_notaus_und_freigabeentzug_halten_die_arme():
+    n = make29()
+    n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
+    for _ in range(60):
+        n.state._policy_schritt(n, np.zeros(3))
+    n._not_aus_callback(type("M", (), {"data": True})())
+    n._arm_callback(_ArmMsg(3))                       # Ausblenden waehrend NotAus wird nicht angenommen
+    for _ in range(100):
+        n.state._policy_schritt(n, np.zeros(3))
+    assert n.armfuehrung.modus == "halten"
+    assert np.allclose(n.bridge.gesendet[-1][15:29], 0.1, atol=1e-6)
+    n._not_aus_callback(type("M", (), {"data": False})())
+    n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
+    n._setze_freigabe(False, "test")
+    assert n.armfuehrung.modus == "halten"
+
+
+def test_ausblenden_gibt_die_arme_weich_an_die_policy_zurueck():
+    n = make29()
+    n._arm_callback(_ArmMsg(1, np.full(14, 0.1)))
+    for _ in range(60):
+        n.state._policy_schritt(n, np.zeros(3))
+    n._arm_callback(_ArmMsg(3))
+    arme = []
+    for _ in range(100):
+        n.state._policy_schritt(n, np.zeros(3))
+        arme.append(float(n.bridge.gesendet[-1][20]))
+    assert arme[0] > 0.05 and arme[-1] == 0.0 and all(a >= b - 1e-6 for a, b in zip(arme, arme[1:]))
+    assert n.armfuehrung.modus == "aus" and n.pub_arme.daten[-1] == "aus"
 
 
 def test_watchdog_setzt_wunsch_auf_null_und_meldet_einmal():
@@ -187,6 +262,10 @@ def test_quittieren_nur_wenn_ursache_behoben():
     r = antwort()
     assert r.success is True and isinstance(n.state, BereitschaftState) and n.bewegung_freigegeben is False
     assert antwort().success is False                                             # keine Stoerung mehr
+
+
+def test_vorrang_reihenfolge_hand_balance_greifen():
+    assert nodemod.VORRANG_EINGAENGE == ("/cmd_vel/hand", "/cmd_vel/balance", "/cmd_vel/greifen")
 
 
 def test_vorrang_hand_vor_balance_vor_cmd_vel():

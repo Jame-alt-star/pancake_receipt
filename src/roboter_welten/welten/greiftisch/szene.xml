@@ -1,0 +1,44 @@
+<mujoco model="welt greiftisch">
+  <!-- Greifen Phase 1 (11.11.2026): Kiste vom Lagertisch holen und zum Arbeitstisch bringen.
+       Grundriss (x nach vorn, y nach links), Meter. Roboter startet bei (0, 0) mit Blick nach +x.
+         Lagertisch:   Mitte (2.10, 0.00), Platte 0.50 x 0.80 m, Oberkante 0.74 m (Vorderkante x = 1.85)
+         Arbeitstisch: Mitte (2.10, 2.40), gleiche Masse, Ablagestelle gruen markiert
+         Kiste (Schraubenkiste): 0.15 (x) x 0.20 (y) x 0.10 (z) m, 0.5 kg, frei beweglich, Mitte (1.95, 0, 0.79);
+           gegriffen wird sie beidhaendig an den Seiten (y), die Finger fassen um die Vorderkante.
+       Tische und Kiste in geom group 2 (kollidierend, fuer das Lidar sichtbar). Die Kiste ist ein Vollquader:
+       fuer den seitlichen Griff spielt die offene Oberseite einer echten Kiste keine Rolle. -->
+  <!-- Nur die Umgebung: den Roboter haengt die Simulation beim Laden dazu (roboter_simulation/szene.py). -->
+  <asset>
+    <material name="tisch" rgba="0.55 0.45 0.35 1"/>
+    <material name="kiste" rgba="0.15 0.35 0.85 1"/>
+    <material name="ablage" rgba="0.20 0.75 0.35 1"/>
+  </asset>
+  <worldbody>
+    <body name="lagertisch" pos="2.10 0 0">
+      <geom name="lagertisch_platte" type="box" pos="0 0 0.72" size="0.25 0.40 0.02" material="tisch" group="2"/>
+      <geom type="box" pos=" 0.21  0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos=" 0.21 -0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos="-0.21  0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos="-0.21 -0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+    </body>
+    <body name="arbeitstisch" pos="2.10 2.40 0">
+      <geom name="arbeitstisch_platte" type="box" pos="0 0 0.72" size="0.25 0.40 0.02" material="tisch" group="2"/>
+      <geom type="box" pos=" 0.21  0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos=" 0.21 -0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos="-0.21  0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <geom type="box" pos="-0.21 -0.36 0.35" size="0.03 0.03 0.35" material="tisch" group="2"/>
+      <!-- Markierung der Ablagestelle (ohne Kollision) -->
+      <geom type="box" pos="-0.15 0 0.7405" size="0.085 0.11 0.0005" material="ablage" contype="0" conaffinity="0"/>
+    </body>
+    <!-- Ablagestellen: Soll-Mitte der Kiste auf dem Tisch (die Simulation meldet sie wie Objekte, /objekte/<name>) -->
+    <site name="ablage_arbeitstisch" pos="1.95 2.40 0.79" size="0.01" rgba="0 0 0 0"/>
+    <site name="ablage_lagertisch" pos="1.95 0 0.79" size="0.01" rgba="0 0 0 0"/>
+    <body name="kiste" pos="1.95 0 0.79">
+      <freejoint name="kiste_frei"/>
+      <!-- Reibung: gleiten 1,0, drehen 0,02 (Laenge = Radius der Kontaktflaeche: Handflaeche plus Fingerkuppen an der
+           Kistenseite, konservativ 2 cm), rollen 0,001. Mit 0,01 drehte die Kiste beim Anheben um die Achse zwischen
+           den Handflaechen weg (13-20 Grad, gemessen 11.11.2026), sobald der Griff 2 cm neben dem Schwerpunkt sass. -->
+      <geom name="kiste" type="box" size="0.075 0.10 0.05" mass="0.5" material="kiste" group="2" condim="6" friction="1.0 0.02 0.001"/>
+    </body>
+  </worldbody>
+</mujoco>

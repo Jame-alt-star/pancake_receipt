@@ -19,7 +19,11 @@ Sicherheitspruefungen je Takt: Sensordaten aktuell (sensor_timeout_s), Roboter a
 Ausgabe endlich; Zielwinkel werden auf die Gelenkgrenzen des Robotermodells begrenzt.
 
 Topics: /cmd_vel (Twist, Wunsch, z. B. Nav2), Vorrang davor: /cmd_vel/hand (Bediener) vor /cmd_vel/balance
-(Balance-Dienst), /freigabe (Bool, eigener Kanal), /not_aus (Bool, latched), /odom (Positionshaltung); raus: /steuerung/zustand (String, latched).
+(Balance-Dienst) vor /cmd_vel/greifen (Greif-Dienst, Anfahrt an den Tisch), /freigabe (Bool, eigener Kanal), /not_aus
+(Bool, latched), /odom (Positionshaltung), /arme/kommando (Armkommando, Armfuehrung); raus: /steuerung/zustand
+(String, latched), /arme/zustand (String, latched: aus, fuehren, halten, ausblenden).
+Armfuehrung (armfuehrung.py): laeuft neben dem Zustandsautomaten; NotAus, Freigabe-Entzug und Stoerung halten die
+Arme, statt sie an die Policy zurueckzugeben.
 Dienst /steuerung/quittieren (Trigger): Stoerung bewusst verlassen.
 Parameter: config/steuerung.yaml; Policy: config/policy_29dof.yaml.
 """
@@ -39,6 +43,11 @@ from std_srvs.srv import Trigger
 
 from roboter_beschreibung import gelenkgrenzen, lade as lade_roboter
 from roboter_beschreibung.geometrie import neigung_grad
+from roboter_interfaces.msg import Armkommando
+
+from roboter_steuerung.armfuehrung import Armfuehrung
+from roboter_steuerung.control.rl_locomotion_controller_29dof import MUJOCO_JOINT_ORDER
+from roboter_steuerung.greifen.manipulation import ARM_INDIZES, maskiere_arme, mische
 
 from roboter_steuerung.hardware.topic_bridge import TopicBridge
 from roboter_steuerung.haltung import Kurshaltung, Positionshaltung
@@ -52,7 +61,7 @@ from roboter_steuerung.states.stoerung_state import StoerungState
 # Vorrang-Eingaenge vor /cmd_vel (Nav2 bzw. Testdouble), hoechster zuerst. Jeder gilt so lange nach seiner letzten
 # Nachricht; die Sender senden laufend (Balance-Dienst 10 Hz, Handsteuerung z. B. teleop). Hand vor Balance: ein
 # Bediener uebersteuert immer die Automatik. Ueber allem steht der NotAus (eigener Kanal).
-VORRANG_EINGAENGE = ("/cmd_vel/hand", "/cmd_vel/balance")
+VORRANG_EINGAENGE = ("/cmd_vel/hand", "/cmd_vel/balance", "/cmd_vel/greifen")
 VORRANG_HALTEZEIT_S = 0.5
 
 
@@ -94,6 +103,10 @@ class SteuereinheitNode(Node):
         # "timer" = alter Betrieb mit ROS-Timer (Wanduhr).
         self.declare_parameter("takt_quelle", "sensor")
         self.declare_parameter("sensor_periode_s", 0.01)    # Abstand der Gelenknachrichten (Simulation: 100 Hz)
+        # Armfuehrung (Greifen): Haltezeit ohne Kommando, Ratenbegrenzung der Armziele, volle Taillenneigung
+        self.declare_parameter("arme_timeout_s", 0.5)
+        self.declare_parameter("arme_max_rate", 2.0)
+        self.declare_parameter("manipulieren_taille_pitch", -0.15)
         self.sensor_timeout_s = float(self.get_parameter("sensor_timeout_s").value)
         self._letzte_sensorpruefung = time.monotonic()
         self.sturz_neigung_grad = float(self.get_parameter("sturz_neigung_grad").value)
@@ -159,6 +172,17 @@ class SteuereinheitNode(Node):
         self._gemeldeter_zustand = None
         self.create_service(Trigger, "/steuerung/quittieren", self._quittieren_callback)
 
+        # Armfuehrung (siehe armfuehrung.py): die Policy-Ruhepose ist zugleich die Beobachtung "Arme in Ruhe"
+        self.ruhepose = np.array(self.config["default_angles"], dtype=np.float32)
+        self.taille_pitch = float(self.get_parameter("manipulieren_taille_pitch").value)
+        self.armfuehrung = Armfuehrung([MUJOCO_JOINT_ORDER[i] for i in ARM_INDIZES],
+                                       timeout_s=float(self.get_parameter("arme_timeout_s").value),
+                                       max_rate=float(self.get_parameter("arme_max_rate").value))
+        self.create_subscription(Armkommando, "/arme/kommando", self._arm_callback, 10)
+        self.pub_arme = self.create_publisher(String, "/arme/zustand", not_aus_qos)
+        self._gemeldeter_armzustand = None
+        self._arm_fehler_gemeldet = -float("inf")
+
         self.state = StartState()
         self.takt_quelle = str(self.get_parameter("takt_quelle").value)
         if self.takt_quelle == "sensor":
@@ -203,6 +227,40 @@ class SteuereinheitNode(Node):
                 return cmd.copy()
         return self.cmd_wunsch.copy()
 
+    def _arm_callback(self, msg: Armkommando):
+        """Armkommando des Greif-Dienstes. Waehrend NotAus wird nur gehalten (kein Fuehren, kein Ausblenden)."""
+        modus = int(msg.modus)
+        if self.not_aus_aktiv and modus != Armkommando.HALTEN:
+            self.armfuehrung.halten()
+            return
+        fehler = self.armfuehrung.empfange(modus, list(msg.namen), list(msg.ziele), float(msg.taille_anteil),
+                                           time.monotonic())
+        if fehler and time.monotonic() - self._arm_fehler_gemeldet > 5.0:
+            self.get_logger().warn(fehler)
+            self._arm_fehler_gemeldet = time.monotonic()
+
+    def policy_beobachtung_arme(self, joint_pos, joint_vel):
+        """Beobachtung bei gefuehrten Armen: Arme in Ruhepose, Geschwindigkeit 0 (greifen/manipulation.py)."""
+        return maskiere_arme(joint_pos, joint_vel, self.ruhepose)
+
+    def arme_anwenden(self, ziele: np.ndarray, gemessen: np.ndarray) -> np.ndarray:
+        """Armfuehrung auf die Policy-Ziele anwenden (ein Regeltakt) und den Armzustand melden."""
+        if not self.armfuehrung.aktiv:
+            self._melde_armzustand()
+            return ziele
+        ergebnis = self.armfuehrung.takt(np.asarray(ziele)[ARM_INDIZES], np.asarray(gemessen)[ARM_INDIZES],
+                                         time.monotonic(), self.control_dt)
+        self._melde_armzustand()
+        if ergebnis is None:
+            return ziele
+        arme, gewicht, taille = ergebnis
+        return mische(ziele, arme, gewicht, self.taille_pitch, gewicht * taille)
+
+    def _melde_armzustand(self):
+        if self.armfuehrung.modus != self._gemeldeter_armzustand:
+            self._gemeldeter_armzustand = self.armfuehrung.modus
+            self.pub_arme.publish(String(data=self.armfuehrung.modus))
+
     def _freigabe_callback(self, msg: Bool):
         self._setze_freigabe(bool(msg.data), quelle="/freigabe")
 
@@ -216,6 +274,8 @@ class SteuereinheitNode(Node):
             self.get_logger().info(f"Bewegung freigegeben ({quelle}).")
         elif not frei and self.bewegung_freigegeben:
             self.get_logger().info(f"Freigabe entzogen ({quelle}) - Roboter bleibt stehen.")
+        if not frei:
+            self.armfuehrung.halten()          # gefuehrte Arme halten (Kiste nicht fallen lassen)
         self.bewegung_freigegeben = frei
 
     def _odom_callback(self, msg: Odometry):
@@ -227,6 +287,7 @@ class SteuereinheitNode(Node):
         Der Zustandswechsel selbst passiert zentral in _control_loop."""
         self.not_aus_aktiv = bool(msg.data)
         if self.not_aus_aktiv:
+            self.armfuehrung.halten()
             self.bewegung_freigegeben = False
             self.cmd_wunsch = np.zeros(3, dtype=np.float32)
             self.cmd_target = np.zeros(3, dtype=np.float32)
@@ -258,6 +319,7 @@ class SteuereinheitNode(Node):
         self.get_logger().error(f"STOERUNG: {grund} - keine Zielwinkel mehr; Layer 4 daempft. "
                                 f"Weiter nur ueber /steuerung/quittieren.")
         self.state = StoerungState(grund)
+        self.armfuehrung.halten()
         self._letzte_ziele = None
         self.bewegung_freigegeben = False
         self.cmd_wunsch = np.zeros(3, dtype=np.float32)

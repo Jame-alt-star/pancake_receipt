@@ -1,0 +1,18 @@
+# GreifAktion (Layer 1 -> Layer 3, Action /greife): einen Gegenstand beidhaendig greifen oder ablegen.
+# Der Greif-Dienst faehrt selbst vom Navigationsziel an den Tisch, greift bzw. legt ab und tritt danach wieder auf
+# die Startposition zurueck (dort kann Nav2 wieder losfahren). Lage von Gegenstand und Ablagestelle kommen aus der
+# Wahrnehmung (Topic /objekte/<name>, Pose relativ zum Roboter; in der Simulation Ground-Truth).
+
+# ===== Ziel (Goal) =====
+string objekt        # Name des Gegenstands, z. B. "kiste"
+string modus         # "greifen" | "ablegen"
+string ablage        # nur ablegen: Name der Ablagestelle, z. B. "ablage_arbeitstisch"
+---
+# ===== Ergebnis (Result) =====
+bool erfolgreich
+string ergebnis
+bool wiederholbar    # Fehlschlag ohne Verlust des Gegenstands: erneuter Versuch sinnvoll
+---
+# ===== Fortschritt (Feedback) =====
+float64 fortschritt
+string status        # aktuelle Phase (anfahren, vorgreifen, ..., zuruecktreten)

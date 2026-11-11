@@ -1,0 +1,14 @@
+# Orte der Welt "greiftisch" (szene.xml), map-Frame in Metern. map = odom = Startpose des Roboters.
+# lager/arbeitsplatz sind Vorpositionen 1,15 m vor den Tischkanten. Nav2 kaeme bis ~0,85 m (Roboterradius 0,36 m,
+# Inflation 0,55 m), liefert den Roboter aber mit beliebiger Ausrichtung ab (Layer 1 hat nur Positionsziele). Den
+# Rest faehrt der Greif-Dienst selbst als Linienfolge auf die Tischkante zu; mit Kiste dreht die Policy nur mit
+# Seitschritt und driftet dabei bis ~0,3 m - deshalb der Abstand (gemessen 11.11.2026, bei 0,85 m landete der
+# Roboter neben dem Tisch).
+orte:
+  start:        {x: 0.0, y: 0.0}
+  lager:        {x: 0.7, y: 0.0}
+  arbeitsplatz: {x: 0.7, y: 2.4}
+verbindungen:
+  - [start, lager]
+  - [lager, arbeitsplatz]
+  - [start, arbeitsplatz]

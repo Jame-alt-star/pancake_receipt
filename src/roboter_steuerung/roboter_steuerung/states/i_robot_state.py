@@ -22,10 +22,15 @@ class IRobotState(ABC):
 
     @staticmethod
     def _policy_schritt(node, cmd) -> None:
-        """Sensoren lesen, Policy mit Fahrbefehl cmd [vx, vy, wz] rechnen, Zielwinkel an Layer 4 senden."""
+        """Sensoren lesen, Policy mit Fahrbefehl cmd [vx, vy, wz] rechnen, Zielwinkel an Layer 4 senden.
+        Werden die Arme gefuehrt (node.armfuehrung, unabhaengig vom Zustand), sieht die Policy die Arme in Ruhepose
+        und die Armziele ersetzen ihre Ausgabe (node.arme_anwenden)."""
         quat, omega = node.bridge.read_imu()
         joint_pos, joint_vel = node.bridge.read_joint_states()
+        gemessen = joint_pos
+        if node.armfuehrung.aktiv:
+            joint_pos, joint_vel = node.policy_beobachtung_arme(joint_pos, joint_vel)
         ziele = node.controller.compute_joint_targets(
             joint_positions=joint_pos, joint_velocities=joint_vel, base_quat=quat, base_ang_vel=omega,
             cmd=np.asarray(cmd, dtype=np.float32))
-        node.sende_gelenkziele(ziele)
+        node.sende_gelenkziele(node.arme_anwenden(ziele, gemessen))

@@ -18,6 +18,8 @@ def lade(wurzel: str = None) -> dict:
     with open(os.path.join(w, "config", "roboter.yaml")) as f:
         r = yaml.safe_load(f)
     r["modell_xml"] = os.path.join(w, r["modell_xml"])
+    if r.get("modell_xml_haende"):
+        r["modell_xml_haende"] = os.path.join(w, r["modell_xml_haende"])
     if not os.path.exists(r["modell_xml"]):
         raise FileNotFoundError(f"Robotermodell nicht gefunden: {r['modell_xml']} - 'colcon build' ausgefuehrt?")
     return r

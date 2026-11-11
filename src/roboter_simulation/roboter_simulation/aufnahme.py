@@ -17,8 +17,11 @@ SCHREIBEN_S = 5.0      # Wandzeit
 
 class Posenaufnahme:
 
-    def __init__(self, pfad: str):
+    def __init__(self, pfad: str, modell: str = "", welt: str = ""):
+        """modell (Pfad des Robotermodells) und welt werden mitgespeichert: mit Haenden oder frei beweglichen
+        Gegenstaenden hat qpos eine andere Laenge, das Video muss dasselbe Modell laden."""
         self.pfad = pfad
+        self.modell, self.welt = modell, welt
         self._daten = {"wall": [], "t": [], "qpos": []}
         self._naechste = 0.0
         self._geschrieben = time.time()
@@ -45,5 +48,5 @@ class Posenaufnahme:
             # Unkomprimiert: schneller (der Simulationsthread schreibt selbst), die Dateien bleiben wenige MB.
             tmp = f"{self.pfad}.{os.getpid()}.tmp.npz"
             np.savez(tmp, wall=np.array(self._daten["wall"]), t=np.array(self._daten["t"]),
-                     qpos=np.array(self._daten["qpos"]))
+                     qpos=np.array(self._daten["qpos"]), modell=np.array(self.modell), welt=np.array(self.welt))
             os.replace(tmp, self.pfad)

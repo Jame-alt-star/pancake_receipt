@@ -5,6 +5,13 @@ Rechnet in einem Hintergrund-Thread (der Viewer blockiert) und spricht nur ueber
         (Ground-Truth, abschaltbar), /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar).
         Die uebrigen Frames (Glieder, lidar_link) kommen aus roboter_beschreibung/launch/beschreibung.launch.py.
   rein: /joint_commands (Zielwinkel), /antrieb/parameter (kp, kd, Startpose von der Steuerung, latched)
+Mit haende:=true (Greifen): Modell mit Dex3-Haenden (roboter.yaml modell_xml_haende). Die 29 Koerpergelenke bleiben
+der Kanal der Steuerung (/joint_states, /joint_commands, /antrieb/parameter unveraendert); dazu raus /hand/joint_states
+(14 Fingergelenke), rein /hand/kommando (Handkommando: q, kp, kd; das letzte Kommando gilt, bis ein neues kommt).
+Gelenke werden ueber Aktuator -> Gelenkadresse angesprochen, nicht ueber qpos[7:] (Finger und frei bewegliche
+Gegenstaende der Welt liegen ebenfalls in qpos).
+objekte:="kiste,ablage_x": Pose dieser Koerper/Sites relativ zum Becken (Frame base_link) auf /objekte/<name>
+(PoseStamped, 10 Hz) - in der Simulation Ground-Truth, auf dem Roboter spaeter eine Kamera-Erkennung.
 Kennt keine Policy. Bausteine: szene.py (Roboter + Welt), sensormodell.py, lidar.py, aufnahme.py.
 Parameter: config/simulation.yaml; Robotermodell und Geometrie: roboter_beschreibung.
 
@@ -24,7 +31,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import rclpy
-from geometry_msgs.msg import Point, TransformStamped
+from geometry_msgs.msg import Point, PoseStamped, TransformStamped
 from nav_msgs.msg import Odometry
 from rosgraph_msgs.msg import Clock
 from rclpy.node import Node
@@ -34,9 +41,9 @@ from std_msgs.msg import Float32MultiArray
 from tf2_ros import TransformBroadcaster
 
 from roboter_beschreibung import lade as lade_roboter
-from roboter_interfaces.msg import Antriebsparameter
+from roboter_interfaces.msg import Antriebsparameter, Handkommando
 from roboter_simulation.aufnahme import Posenaufnahme
-from roboter_beschreibung.geometrie import rotate_inverse
+from roboter_beschreibung.geometrie import quat_mul, rotate_inverse
 from roboter_simulation.lidar import R_MIN, Lidar
 from roboter_simulation.sensormodell import Sensormodell
 from roboter_simulation.szene import lade_welt
@@ -56,6 +63,7 @@ PARAMETER = {
     "gyro_bias": 0.005, "noise_orientation": 0.005, "yaw_drift_deg_per_min": 0.5,
     "sensor_latency_ms": 10.0, "command_latency_ms": 10.0, "lidar_noise_m": 0.02, "lidar_dropout": 0.01,
     "noise_seed": 0,
+    "haende": False, "objekte": "", "objekte_rate_hz": 10.0,
     "lidar": False, "lidar_2d": True, "lidar_3d": False, "lidar_rate_hz": 10.0, "lidar_rays": 360,
     "lidar_range_max": 10.0, "lidar_geomgroup": 2, "lidar_3d_rings": 24,
     "lidar_3d_elev_min_deg": -40.0, "lidar_3d_elev_max_deg": 10.0,
@@ -96,14 +104,28 @@ class MujocoBridgeNode(Node):
 
         # Modell: Roboter aus roboter_beschreibung + Welt aus roboter_welten ('' = nur Ebene)
         self.roboter = lade_roboter()
-        self.model = lade_welt(self.roboter["modell_xml"], p["welt"])
+        self.haende = bool(p["haende"])
+        modell = self.roboter["modell_xml_haende"] if self.haende else self.roboter["modell_xml"]
+        self.model = lade_welt(modell, p["welt"])
         self.model.opt.timestep = p["simulation_dt"]
         self.data = mujoco.MjData(self.model)
         mujoco.mj_forward(self.model, self.data)
         # Gelenknamen in Aktuator-Reihenfolge (= Reihenfolge der Zielwinkel): robot_state_publisher baut daraus den
         # TF-Baum; ohne Namen konnte niemand ausser der Steuerung die Gelenkwerte zuordnen.
-        self.gelenknamen = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.model.actuator_trnid[i, 0])
-                            for i in range(self.model.nu)]
+        alle = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.model.actuator_trnid[i, 0])
+                for i in range(self.model.nu)]
+        fingernamen = list(self.roboter.get("haende", {}).get("gelenke", [])) if self.haende else []
+        self.koerper_akt = np.array([i for i, n in enumerate(alle) if n not in fingernamen], dtype=int)
+        self.hand_akt = np.array([alle.index(n) for n in fingernamen], dtype=int)
+        tid = self.model.actuator_trnid[:, 0]
+        self.akt_q, self.akt_v = self.model.jnt_qposadr[tid], self.model.jnt_dofadr[tid]
+        self.gelenknamen = [alle[i] for i in self.koerper_akt]
+        self.fingernamen = fingernamen
+        self.n_koerper = len(self.koerper_akt)
+        hd = self.roboter.get("haende", {})
+        self.hand_ziel = np.zeros(len(self.hand_akt), dtype=np.float32)
+        self.hand_kp = np.full(len(self.hand_akt), float(hd.get("kp", 2.0)), dtype=np.float32)
+        self.hand_kd = np.full(len(self.hand_akt), float(hd.get("kd", 0.05)), dtype=np.float32)
         self.get_logger().info(f"[mujoco_bridge_node] Welt: {p['welt'] or '(keine, nur Ebene)'}")
 
         # Antrieb: kommt von der Steuerung (siehe Modul-Docstring)
@@ -128,7 +150,7 @@ class MujocoBridgeNode(Node):
             self.command_latency = p["command_latency_ms"] / 1000.0
         self.n_lidar, self.p_drop = p["lidar_noise_m"], p["lidar_dropout"]
 
-        self.aufnahme = Posenaufnahme(p["record_path"])
+        self.aufnahme = Posenaufnahme(p["record_path"], modell=modell, welt=p["welt"])
         self.render_decimation = max(1, p["render_decimation"])
         self.headless, self.profile = p["headless"], p["profile"]
         self.odom_frame, self.base_frame = p["odom_frame"], p["base_frame"]
@@ -149,11 +171,29 @@ class MujocoBridgeNode(Node):
                              reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(Antriebsparameter, "/antrieb/parameter", self._antrieb_callback, latched)
         self.create_subscription(Float32MultiArray, "/joint_commands", self._joint_commands_callback, 10)
+        if self.haende:
+            self.pub_hand_states = self.create_publisher(JointState, "/hand/joint_states", 10)
+            self.create_subscription(Handkommando, "/hand/kommando", self._hand_callback, 10)
+        self._objekte_einrichten(p)
 
         # Simulation im Hintergrundthread (der Viewer blockiert; rclpy.spin muss parallel laufen)
         self.is_running = True
         self.sim_thread = threading.Thread(target=self._run_simulation, daemon=True)
         self.sim_thread.start()
+
+    def _objekte_einrichten(self, p):
+        """Koerper oder Sites der Welt, deren Pose relativ zum Becken veroeffentlicht wird (siehe Modul-Docstring)."""
+        self.objekte = []
+        for name in [n.strip() for n in str(p["objekte"]).split(",") if n.strip()]:
+            b = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
+            si = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, name)
+            if b < 0 and si < 0:
+                self.get_logger().error(f"[mujoco_bridge_node] Objekt {name!r} weder Koerper noch Site der Welt.")
+                continue
+            self.objekte.append((name, "body" if b >= 0 else "site", b if b >= 0 else si,
+                                 self.create_publisher(PoseStamped, f"/objekte/{name}", 10)))
+        self.objekte_periode = max(1, int(round(100.0 / max(float(p["objekte_rate_hz"]), 1e-3))))
+        self._objekte_zaehler = 0
 
     def _parameter_lesen(self) -> dict:
         for name, wert in PARAMETER.items():
@@ -181,7 +221,7 @@ class MujocoBridgeNode(Node):
 
     # ---------------------------------------------------------------- Eingaenge
     def _antrieb_callback(self, msg: Antriebsparameter):
-        n = self.model.nu
+        n = self.n_koerper
         if not (len(msg.kp) == len(msg.kd) == len(msg.startpose) == n):
             self.get_logger().error(f"Antriebsparameter mit falscher Laenge ignoriert (erwartet {n} Gelenke).")
             return
@@ -197,7 +237,7 @@ class MujocoBridgeNode(Node):
         self.kps, self.kds, self.default_angles = kps, kds, start
         if erstes_mal:
             self.target_dof_pos = start.copy()
-            self.data.qpos[7:] = start
+            self.data.qpos[self.akt_q[self.koerper_akt]] = start
             mujoco.mj_forward(self.model, self.data)
             self.get_logger().info("[mujoco_bridge_node] Antriebsparameter von der Steuerung erhalten.")
 
@@ -219,6 +259,17 @@ class MujocoBridgeNode(Node):
         if not self.controller_connected:
             self.controller_connected = True
             self.get_logger().info("[mujoco_bridge_node] Regler verbunden - Physik gestartet.")
+
+    def _hand_callback(self, msg: Handkommando):
+        """Fingerkommando uebernehmen (alle drei Felder mit je 14 Werten); falsche Laenge wird ignoriert."""
+        n = len(self.hand_akt)
+        if not (len(msg.q) == len(msg.kp) == len(msg.kd) == n):
+            self.get_logger().error(f"[mujoco_bridge_node] Handkommando mit falscher Laenge ignoriert (erwartet {n}).")
+            return
+        q, kp, kd = (np.array(v, dtype=np.float32) for v in (msg.q, msg.kp, msg.kd))
+        if not (np.all(np.isfinite(q)) and np.all(np.isfinite(kp)) and np.all(np.isfinite(kd))):
+            return
+        self.hand_ziel, self.hand_kp, self.hand_kd = q, kp, kd
 
     # ---------------------------------------------------------------- Simulationsschleife
     def _run_simulation(self):
@@ -260,13 +311,18 @@ class MujocoBridgeNode(Node):
                     next_deadline = time.perf_counter()
                     continue
 
-                # PD-Regelung auf die Gelenke (qpos[7:]/qvel[6:]: nach 7 bzw. 6 Werten der freien Basis)
+                # PD-Regelung auf die Gelenke (Adressen ueber Aktuator -> Gelenk, siehe Modul-Docstring)
                 while self._cmd_buf and self._cmd_buf[0][0] + self.command_latency <= self.data.time:
                     self.target_dof_pos = self._cmd_buf.popleft()[1]
                 self._pruefe_kommando_timeout()
                 kp = np.zeros_like(self.kps) if self.daempfung_aktiv else self.kps
-                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[7:], kp,
-                                               np.zeros_like(self.kds), self.data.qvel[6:], self.kds)
+                ka = self.koerper_akt
+                self.data.ctrl[ka] = pd_control(self.target_dof_pos, self.data.qpos[self.akt_q[ka]], kp,
+                                                np.zeros_like(self.kds), self.data.qvel[self.akt_v[ka]], self.kds)
+                if len(self.hand_akt):
+                    ha = self.hand_akt
+                    self.data.ctrl[ha] = pd_control(self.hand_ziel, self.data.qpos[self.akt_q[ha]], self.hand_kp,
+                                                    0.0, self.data.qvel[self.akt_v[ha]], self.hand_kd)
                 _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
                 _t1 = time.perf_counter()
@@ -334,7 +390,8 @@ class MujocoBridgeNode(Node):
         uhr.clock.sec = int(self.data.time)
         uhr.clock.nanosec = int((self.data.time - int(self.data.time)) * 1e9)
         self.pub_clock.publish(uhr)
-        q, dq = self.data.qpos[7:].copy(), self.data.qvel[6:].copy()
+        ka = self.koerper_akt
+        q, dq = self.data.qpos[self.akt_q[ka]].copy(), self.data.qvel[self.akt_v[ka]].copy()
         quat_m, omega = self.data.qpos[3:7].copy(), self.data.qvel[3:6].copy()
         if self.sensormodell is not None:
             q, dq, quat_m, omega = self.sensormodell.anwenden(float(self.data.time), q, dq, quat_m, omega)
@@ -345,6 +402,18 @@ class MujocoBridgeNode(Node):
         js.position = q.tolist()
         js.velocity = dq.tolist()
         self.pub_joint_states.publish(js)
+        if len(self.hand_akt):
+            hs = JointState()
+            hs.header.stamp = now
+            hs.name = self.fingernamen
+            hs.position = self.data.qpos[self.akt_q[self.hand_akt]].tolist()
+            hs.velocity = self.data.qvel[self.akt_v[self.hand_akt]].tolist()
+            self.pub_hand_states.publish(hs)
+        if self.objekte:
+            self._objekte_zaehler += 1
+            if self._objekte_zaehler >= self.objekte_periode:
+                self._objekte_zaehler = 0
+                self._publish_objekte(now)
 
         # Idealisierte IMU an der Basis (Orientierung + Drehrate der freien Basis); die Policy erwartet
         # Basis-Drehrate und Schwerkraftrichtung.
@@ -394,6 +463,27 @@ class MujocoBridgeNode(Node):
                     if self._cloud_count >= 2:
                         self._cloud_count = 0
                         self._publish_cloud(now)
+
+    def _publish_objekte(self, now):
+        """Pose je Objekt relativ zum Becken (base_link): Position im Becken-Frame, Orientierung relativ."""
+        pb, qb = self.data.qpos[0:3], self.data.qpos[3:7]
+        qb_inv = np.array([qb[0], -qb[1], -qb[2], -qb[3]])
+        for name, art, idx, pub in self.objekte:
+            if art == "body":
+                p, q = self.data.xpos[idx], self.data.xquat[idx]
+            else:
+                p = self.data.site_xpos[idx]
+                q = np.zeros(4)
+                mujoco.mju_mat2Quat(q, self.data.site_xmat[idx])
+            rel_p = rotate_inverse(qb, p - pb)
+            rel_q = quat_mul(qb_inv, q)
+            msg = PoseStamped()
+            msg.header.stamp = now
+            msg.header.frame_id = self.base_frame
+            msg.pose.position.x, msg.pose.position.y, msg.pose.position.z = map(float, rel_p)
+            o = msg.pose.orientation
+            o.w, o.x, o.y, o.z = map(float, rel_q)
+            pub.publish(msg)
 
     def _rauschen(self):
         """(rng, sigma, p_ausfall) fuer das Lidar: nur mit realistic_sensors."""

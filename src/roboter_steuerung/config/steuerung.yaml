@@ -26,6 +26,12 @@ steuereinheit_node:
     # Takt der Regelung: sensor = im Takt der Sensordaten (Gelenke und IMU, Simulationszeit), timer = ROS-Timer (Wanduhr)
     takt_quelle: "sensor"
     sensor_periode_s: 0.01      # Simulation: 100 Hz; echte Hardware: Rate des Unitree-LowState
+    # Armfuehrung (Greifen, armfuehrung.py): ohne Armkommando laenger als arme_timeout_s wird gehalten;
+    # Armziele aendern sich hoechstens um arme_max_rate rad/s; Taille Pitch bei voller Neigung (Gegengewicht zur Last
+    # vor dem Koerper, gemessener Betriebspunkt -0.15 rad, docs/statusupdate_g1_projekt.md).
+    arme_timeout_s: 0.5
+    arme_max_rate: 2.0
+    manipulieren_taille_pitch: -0.15
 
 balance_dienst_node:
   ros__parameters:
