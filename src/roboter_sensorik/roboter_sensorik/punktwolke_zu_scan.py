@@ -23,8 +23,10 @@ import tf2_ros
 from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import Imu, LaserScan, PointCloud2, PointField
+from std_msgs.msg import String
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 
-from roboter_sensorik.wolke import ausduennen, in_basis, maske_aus_level, scan_aus_level, waagerecht, xyz_aus_wolke
+from roboter_sensorik.wolke import ausduennen, eigenkoerper_maske, in_basis, maske_aus_level, scan_aus_level, waagerecht, xyz_aus_wolke
 
 
 class PunktwolkeZuScan(Node):
@@ -50,9 +52,18 @@ class PunktwolkeZuScan(Node):
         self.quat = np.array([1.0, 0.0, 0.0, 0.0])
         self.pub = self.create_publisher(LaserScan, "/scan", 10)
         self.pub_hind = self.create_publisher(PointCloud2, "/punkte_hindernis", 5)
+        # Greifen: solange die Arme gefuehrt werden (/arme/zustand != aus), ist der Bereich vor dem Koerper tabu -
+        # der getragene Gegenstand waere sonst ein Hindernis direkt vor dem Roboter (Collision-Monitor, Costmap).
+        self.arme_gefuehrt = False
+        zustand_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+                                 reliability=QoSReliabilityPolicy.RELIABLE, history=QoSHistoryPolicy.KEEP_LAST)
+        self.create_subscription(String, "/arme/zustand", self._arme, zustand_qos)
         self.create_subscription(Imu, "/imu", self._imu, 10)
         self.create_subscription(PointCloud2, "/points", self._cloud, 5)
         self.get_logger().info("Punktwolke -> 2D-Scan aktiv (/points -> /scan).")
+
+    def _arme(self, m: String):
+        self.arme_gefuehrt = m.data != "aus"
 
     def _imu(self, m: Imu):
         o = m.orientation
@@ -71,6 +82,8 @@ class PunktwolkeZuScan(Node):
             return
         level = waagerecht(in_basis(pts, tf.transform), self.quat)      # einmal je Wolke
         mask = maske_aus_level(level, self.h0, self.hmin, self.hmax, self.rmin, self.rmax)
+        if self.arme_gefuehrt:
+            mask &= ~eigenkoerper_maske(level)
         ranges = scan_aus_level(level, mask, self.n)
         hp = ausduennen(pts[mask]).astype(np.float32)
         hc = PointCloud2()

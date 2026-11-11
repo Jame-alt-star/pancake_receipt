@@ -30,6 +30,19 @@ def maske_aus_level(level, sensor_hoehe, min_hoehe, max_hoehe, r_min, r_max):
     return (h >= min_hoehe) & (h <= max_hoehe) & (r >= r_min) & (r <= r_max)
 
 
+# Bereich vor dem Koerper, den getragene Gegenstaende und die gefuehrten Haende einnehmen (Becken-Frame, waagerecht):
+# vorn 0,08-0,55 m, seitlich +-0,28 m, hoch -0,20 bis +0,30 m. Die Tragepose liegt 0,24 m vor und 0,16 m ueber dem
+# Becken, die Kiste ist 0,20 x 0,15 x 0,10 m; Tischkante und Wand dahinter bleiben sichtbar.
+EIGENKOERPER = (0.08, 0.55, 0.28, -0.20, 0.30)
+
+
+def eigenkoerper_maske(level, bereich=EIGENKOERPER):
+    """True fuer Punkte im Bereich vor dem Koerper (der gehaltene Gegenstand ist kein Hindernis)."""
+    x0, x1, y, z0, z1 = bereich
+    return ((level[:, 0] >= x0) & (level[:, 0] <= x1) & (np.abs(level[:, 1]) <= y)
+            & (level[:, 2] >= z0) & (level[:, 2] <= z1))
+
+
 def scan_aus_level(level, mask, n_bins):
     ang = np.arctan2(level[mask, 1], level[mask, 0])
     idx = ((ang + math.pi) / (2 * math.pi) * n_bins).astype(int) % n_bins
