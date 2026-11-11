@@ -76,3 +76,12 @@ die Mission kennt `gegenstand: {name, ort}`, Ablagestellen heissen `ablage_<ort>
   erreicht die Standpose nicht innerhalb von 45 s (Roboter endet bei x=1,88/y=2,87 am Tischrand). Naechster Schritt:
   Spur der Anfahrt aus grosser Seitabweichung mit Last (Befehle mitschreiben), Nav2-Uebergabe genauer (xy-Toleranz,
   Seitschritt-Drift beim Abdrehen).
+
+### Nachtrag 2 (Abend 11.11.2026): Greifen und Ablegen im ROS-System durchgelaufen
+Letzter Nav2-Systemlauf (`tests/system/integration_greifen.py --nav2`): Kiste gegriffen (7 cm), mit Nav2 zum Arbeitsplatz
+getragen, abgelegt: 2,0 cm / 0,9 cm neben der Sollstelle, Hoehe +0,1 cm, kein Sturz. Es scheitert nur der letzte Missions-
+schritt `gehe_zu(arbeitsplatz, start)`: Nav2 bricht ab ("Failed to transform end pose to global frame ... extrapolation into
+the future", Status 6) - ein TF-Zeitproblem von Nav2 unter Last (2,8 GB RAM, Simulation laeuft langsamer als Echtzeit), nicht im
+Greifen. Behoben nebenbei: Anfahrt pendelte mit Last zwischen Rechts-/Linksdrehung (Hysterese fuer Rueckwaertsfahrt).
+Noch offen: dieses Nav2-Problem, mehrere Laeufe fuer eine Trefferquote im ROS-System (bisher 1 voller Durchlauf bis zum Ablegen),
+Video, sicherer Hand-Pfad fuer den echten G1.

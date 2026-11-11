@@ -63,6 +63,7 @@ class Anfahrt:
         self.puls_dauer = list(puls_s)       # je Achse (vor, seitlich), passt sich an
         self.pulse = 0                       # Anzahl Pulse (Diagnose)
         self._nahmodus = False
+        self._rueck_fahrt = False
         self._still_seit = None
         self._puls = None                    # (achse, richtung, t_ende, startpose)
         self._auswerten = None               # beendeter Puls, wird nach dem Beruhigen ausgewertet
@@ -149,7 +150,13 @@ class Anfahrt:
             zx, zy = ziel[0] - ist[0], ziel[1] - ist[1]
             c, s = np.cos(ist[2]), np.sin(ist[2])
             peilung = float(np.arctan2(-s * zx + c * zy, c * zx + s * zy))     # zum Zielpunkt, im Roboter-Frame
-            rueckwaerts = abs(peilung) > np.pi / 2 and abstand < 1.0
+            # Rueckwaerts nur nahe am Ziel und mit Hysterese: an einer festen Grenze (frueher 1,0 m, 90 Grad) wechselte
+            # die Anfahrt mit Last zwischen Rechts- und Linksdrehung, bis die Kiste herunterfiel (gemessen 11.11.2026).
+            if not self._rueck_fahrt and abs(peilung) > np.radians(110) and abstand < 0.6:
+                self._rueck_fahrt = True
+            elif self._rueck_fahrt and (abs(peilung) < np.radians(70) or abstand > 0.9):
+                self._rueck_fahrt = False
+            rueckwaerts = self._rueck_fahrt
             fehler_peilung = winkel(peilung - np.pi) if rueckwaerts else peilung
             if rueckwaerts:
                 if abs(fehler_peilung) > self.tol_peilung:
