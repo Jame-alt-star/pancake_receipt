@@ -40,7 +40,8 @@ ARGUMENTE = [
     ("lidar_modus", "", "aus | 3d (ein 3D-Lidar, /scan abgeleitet) | 2d (eine Scanebene, Vergleich); "
                         "leer = 3d, sobald eine Navigation laeuft (nav2, extern, testdouble), sonst aus"),
     ("odom_quelle", "ground_truth", "ground_truth (Simulation) | beinodometrie (Schaetzer aus Gelenken + IMU)"),
-    ("realistic_sensors", "false", "Sensorrauschen, Bias, Drift, Latenz, Lidar-Ausfaelle"),
+    ("realistic_sensors", "false", "Sensorrauschen, Bias, Drift, Latenz, Lidar-Ausfaelle (mit kamera: Tiefenrauschen)"),
+    ("kamera", "false", "RGBD-Kamera am Kopf (/kamera/color|depth/image_raw + camera_info); rendert ohne GPU ~50 ms je Bild"),
     ("headless", "false", "Simulation ohne Viewer-Fenster (weniger CPU/Speicher)"),
     ("record_path", "", ".npz-Datei fuer die Posenaufzeichnung (Demo-Video)"),
     ("cmd_vel_timeout_s", "", "cmd_vel-Watchdog [s]; leer = 1.0, sobald eine Navigation laeuft (auch extern; "
@@ -85,7 +86,7 @@ def _aufbauen(context):
         _include("roboter_beschreibung", "beschreibung.launch.py", {}),
         _include("roboter_simulation", "simulation.launch.py", {
             "welt": welt, "headless": a["headless"], "lidar_modus": lidar,
-            "realistic_sensors": a["realistic_sensors"], "record_path": a["record_path"],
+            "realistic_sensors": a["realistic_sensors"], "record_path": a["record_path"], "kamera": a["kamera"],
             "odom_ground_truth": str(a["odom_quelle"] == "ground_truth").lower()}),
         _include("roboter_steuerung", "steuerung.launch.py", {
             "odom_quelle": a["odom_quelle"], "cmd_vel_timeout_s": timeout}),

@@ -22,3 +22,17 @@ lidar:
   parent: pelvis
   xyz: [0.0, 0.0, 0.45]
   rpy: [0.0, 0.0, 0.0]
+
+# RGBD-Kamera: Elternglied und Pose relativ dazu wie beim Lidar (ROS-Konvention: x nach vorn, y nach links, z nach oben;
+# positiver Nickwinkel = nach unten geneigt), dazu Bildgroesse [Pixel] und vertikaler Oeffnungswinkel [Grad].
+# Simulation (Kamera im MuJoCo-Modell, roboter_simulation/szene.py + kamera.py) und TF-Baum (kamera_link,
+# kamera_optical_frame) lesen diesen Eintrag. BEISPIELWERTE: 1 cm vor dem Gesicht (Vorderkante des Kopf-Netzes bei
+# x = 0.078 m), 0.3 rad nach unten geneigt. Am echten G1 sitzt die Tiefenkamera im Kopf - Pose, Bildgroesse und
+# Oeffnungswinkel aus dem Unitree-Datenblatt eintragen, bevor Hardware genutzt wird.
+kamera:
+  parent: torso_link
+  xyz: [0.09, 0.0, 0.42]
+  rpy: [0.0, 0.3, 0.0]
+  fovy_grad: 58.0
+  breite: 320
+  hoehe: 240

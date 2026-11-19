@@ -2,10 +2,12 @@
 
 Rechnet in einem Hintergrund-Thread (der Viewer blockiert) und spricht nur ueber ROS2-Topics:
   raus: /joint_states (mit Gelenknamen), /imu (100 Hz), /clock (Simulationszeit), /odom + TF odom->base_link
-        (Ground-Truth, abschaltbar), /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar).
-        Die uebrigen Frames (Glieder, lidar_link) kommen aus roboter_beschreibung/launch/beschreibung.launch.py.
+        (Ground-Truth, abschaltbar), /base_position (Ground-Truth, nur Tests/Auswertung), /scan bzw. /points (Lidar),
+        /kamera/color|depth/image_raw + camera_info (RGBD-Kamera, abschaltbar).
+        Die uebrigen Frames (Glieder, lidar_link, kamera_optical_frame) kommen aus
+        roboter_beschreibung/launch/beschreibung.launch.py.
   rein: /joint_commands (Zielwinkel), /antrieb/parameter (kp, kd, Startpose von der Steuerung, latched)
-Kennt keine Policy. Bausteine: szene.py (Roboter + Welt), sensormodell.py, lidar.py, aufnahme.py.
+Kennt keine Policy. Bausteine: szene.py (Roboter + Welt + Kamera), sensormodell.py, lidar.py, kamera.py, aufnahme.py.
 Parameter: config/simulation.yaml; Robotermodell und Geometrie: roboter_beschreibung.
 
 Ablauf beim Start: (1) warten auf die Antriebsparameter (nichts senden), (2) Ruhepose einnehmen und
@@ -29,13 +31,14 @@ from nav_msgs.msg import Odometry
 from rosgraph_msgs.msg import Clock
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import Imu, JointState, LaserScan, PointCloud2, PointField
+from sensor_msgs.msg import CameraInfo, Image, Imu, JointState, LaserScan, PointCloud2, PointField
 from std_msgs.msg import Float32MultiArray
 from tf2_ros import TransformBroadcaster
 
 from roboter_beschreibung import lade as lade_roboter
 from roboter_interfaces.msg import Antriebsparameter
 from roboter_simulation.aufnahme import Posenaufnahme
+from roboter_simulation.kamera import KameraThread, intrinsik
 from roboter_beschreibung.geometrie import rotate_inverse
 from roboter_simulation.lidar import R_MIN, Lidar
 from roboter_simulation.sensormodell import Sensormodell
@@ -59,7 +62,11 @@ PARAMETER = {
     "lidar": False, "lidar_2d": True, "lidar_3d": False, "lidar_rate_hz": 10.0, "lidar_rays": 360,
     "lidar_range_max": 10.0, "lidar_geomgroup": 2, "lidar_3d_rings": 24,
     "lidar_3d_elev_min_deg": -40.0, "lidar_3d_elev_max_deg": 10.0,
+    "kamera": False, "kamera_rate_hz": 5.0, "kamera_tiefe_min_m": 0.2, "kamera_tiefe_max_m": 10.0,
+    "kamera_tiefe_rauschen": 0.01,
 }
+
+KAMERA_FRAME = "kamera_optical_frame"      # Bilder im optical frame (z nach vorn), siehe beschreibung.launch.py
 
 
 def pd_control(target_q, q, kp, target_dq, dq, kd):
@@ -94,9 +101,9 @@ class MujocoBridgeNode(Node):
         super().__init__("mujoco_bridge_node")
         p = self._parameter_lesen()
 
-        # Modell: Roboter aus roboter_beschreibung + Welt aus roboter_welten ('' = nur Ebene)
+        # Modell: Roboter aus roboter_beschreibung + Welt aus roboter_welten ('' = nur Ebene) + Kamera (nur wenn an)
         self.roboter = lade_roboter()
-        self.model = lade_welt(self.roboter["modell_xml"], p["welt"])
+        self.model = lade_welt(self.roboter["modell_xml"], p["welt"], self.roboter["kamera"] if p["kamera"] else None)
         self.model.opt.timestep = p["simulation_dt"]
         self.data = mujoco.MjData(self.model)
         mujoco.mj_forward(self.model, self.data)
@@ -145,6 +152,7 @@ class MujocoBridgeNode(Node):
         self.pub_odom = self.create_publisher(Odometry, "/odom", 10) if p["publish_odom"] else None
         self.tf_broadcaster = TransformBroadcaster(self) if p["publish_tf"] else None
         self._lidar_einrichten(p)
+        self._kamera_einrichten(p)
         latched = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(Antriebsparameter, "/antrieb/parameter", self._antrieb_callback, latched)
@@ -178,6 +186,40 @@ class MujocoBridgeNode(Node):
             self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
         if self.lidar3d_on:
             self.pub_cloud = self.create_publisher(PointCloud2, "/points", 5)
+
+    def _kamera_einrichten(self, p):
+        """RGBD-Kamera: rendert in einem eigenen Thread (kamera.py), Takt wie beim Lidar ueber den 100-Hz-Publish."""
+        self.kamera = None
+        if not p["kamera"]:
+            return
+        m = self.roboter["kamera"]
+        breite, hoehe = int(m["breite"]), int(m["hoehe"])
+        fx, fy, cx, cy = intrinsik(breite, hoehe, float(m["fovy_grad"]))
+        # CameraInfo: ideale Lochkamera ohne Verzeichnung; Farbe und Tiefe aus derselben Kamera (Tiefe pixelgenau
+        # zum Farbbild ausgerichtet, wie aligned_depth_to_color beim RealSense-Treiber).
+        self._kamera_info = CameraInfo()
+        self._kamera_info.header.frame_id = KAMERA_FRAME
+        self._kamera_info.width, self._kamera_info.height = breite, hoehe
+        self._kamera_info.distortion_model = "plumb_bob"
+        self._kamera_info.d = [0.0] * 5
+        self._kamera_info.k = [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]
+        self._kamera_info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        self._kamera_info.p = [fx, 0.0, cx, 0.0, 0.0, fy, cy, 0.0, 0.0, 0.0, 1.0, 0.0]
+        # Bilder sind gross (Farbe 230 KB, Tiefe 300 KB bei 320x240): kurze Warteschlange, alte Bilder sind wertlos.
+        self.pub_farbe = self.create_publisher(Image, "/kamera/color/image_raw", 2)
+        self.pub_farbe_info = self.create_publisher(CameraInfo, "/kamera/color/camera_info", 2)
+        self.pub_tiefe = self.create_publisher(Image, "/kamera/depth/image_raw", 2)
+        self.pub_tiefe_info = self.create_publisher(CameraInfo, "/kamera/depth/camera_info", 2)
+        self.kamera_period = max(1, int(round(100.0 / float(p["kamera_rate_hz"]))))
+        self._kamera_count = 0
+        # Eigener Zufallsgenerator: numpy-Generatoren sind nicht threadsicher, _rng nutzt der Simulationsthread.
+        rng = np.random.default_rng(int(p["noise_seed"]) + 1) if self.realistic else None
+        # Wartet, bis die Kamera angelegt ist (~1 s; haelt den GIL, siehe kamera.py) - vor dem Start der Simulation.
+        self.kamera = KameraThread(self.model, self._publish_kamera, float(p["kamera_tiefe_min_m"]),
+                                   float(p["kamera_tiefe_max_m"]), rng, float(p["kamera_tiefe_rauschen"]),
+                                   log_fehler=lambda t: self.get_logger().error(f"[mujoco_bridge_node] {t}"))
+        self.get_logger().info(f"[mujoco_bridge_node] RGBD-Kamera {breite}x{hoehe} an {m['parent']}, "
+                               f"{100.0 / self.kamera_period:.0f} Hz.")
 
     # ---------------------------------------------------------------- Eingaenge
     def _antrieb_callback(self, msg: Antriebsparameter):
@@ -395,6 +437,12 @@ class MujocoBridgeNode(Node):
                         self._cloud_count = 0
                         self._publish_cloud(now)
 
+        if self.kamera is not None:
+            self._kamera_count += 1
+            if self._kamera_count >= self.kamera_period:
+                self._kamera_count = 0
+                self.kamera.aufnehmen(self.data.qpos, now)      # nur qpos kopieren; gerendert wird im Kamerathread
+
     def _rauschen(self):
         """(rng, sigma, p_ausfall) fuer das Lidar: nur mit realistic_sensors."""
         return (self._rng, self.n_lidar, self.p_drop) if self.realistic else (None, 0.0, 0.0)
@@ -428,12 +476,35 @@ class MujocoBridgeNode(Node):
         sc.ranges = ranges.astype(np.float32)   # numpy-Array statt Python-Liste (1.6 ms -> 0.06 ms)
         self.pub_scan.publish(sc)
 
+    def _bild(self, arr, encoding, bytes_je_pixel, stempel) -> Image:
+        msg = Image()
+        msg.header.stamp = stempel
+        msg.header.frame_id = KAMERA_FRAME
+        msg.height, msg.width = int(arr.shape[0]), int(arr.shape[1])
+        msg.encoding = encoding
+        msg.is_bigendian = False
+        msg.step = msg.width * bytes_je_pixel
+        msg.data = arr.tobytes()
+        return msg
+
+    def _publish_kamera(self, rgb, tiefe, stempel):
+        """Aufruf aus dem Kamerathread. Zeitstempel = Zeitpunkt der Aufnahme (Zustand), nicht das Ende des Renderns.
+        Tiefe als 32FC1 in Metern, ungueltig = NaN (REP 118)."""
+        self._kamera_info.header.stamp = stempel
+        self.pub_farbe.publish(self._bild(rgb, "rgb8", 3, stempel))
+        self.pub_farbe_info.publish(self._kamera_info)
+        self.pub_tiefe.publish(self._bild(tiefe, "32FC1", 4, stempel))
+        self.pub_tiefe_info.publish(self._kamera_info)
+
     def destroy_node(self):
-        # Erst den Simulationsthread anhalten und abwarten (Review B8), dann die Aufnahme schreiben (sonst Race)
-        # und den Knoten zerstoeren (sonst publiziert der Thread noch auf einen zerstoerten Knoten).
+        # Erst den Simulationsthread anhalten und abwarten (Review B8), dann den Kamerathread (beide publizieren), dann
+        # die Aufnahme schreiben (sonst Race) und den Knoten zerstoeren (sonst publiziert ein Thread noch auf einen
+        # zerstoerten Knoten).
         self.is_running = False
         if self.sim_thread.is_alive():
             self.sim_thread.join(timeout=2.0)
+        if self.kamera is not None:
+            self.kamera.stoppen()
         self.aufnahme.schreiben()
         super().destroy_node()
 

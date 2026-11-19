@@ -44,3 +44,15 @@ mujoco_bridge_node:
     lidar_3d_rings: 24
     lidar_3d_elev_min_deg: -40.0
     lidar_3d_elev_max_deg: 10.0
+
+    # RGBD-Kamera (Schalter kamera). Montage, Bildgroesse, Oeffnungswinkel: roboter_beschreibung, Eintrag kamera.
+    # Gerendert in einem eigenen Thread (kamera.py); gemessen 11.11.2026 (WSL2 ohne GPU, 320x240, Neigung 0.3 rad) ~115 ms
+    # je Bild. NEBENWIRKUNG (Systemlauf Testwelt, je 12 s): ohne Kamera /joint_states 100 Hz, groesste Luecke 12-22 ms
+    # (3 Laeufe); mit Kamera in etwa jedem zweiten Lauf einzelne Luecken bis ~350 ms und 0.87-0.9x Echtzeit (6 Laeufe,
+    # kein Daempfungsmodus, keine Stoerung). Ursache nicht das Rendern selbst (gibt den GIL frei); vermutlich Rechenzeit
+    # des Software-Renderers. Abhilfe, falls noetig: Kamera als eigener Prozess.
+    kamera: false
+    kamera_rate_hz: 5.0           # bezogen auf den 100-Hz-Publish-Takt; ist das vorige Bild noch nicht fertig, entfaellt eins
+    kamera_tiefe_min_m: 0.2       # naeher oder weiter: ungueltig (NaN), wie bei einer echten Tiefenkamera
+    kamera_tiefe_max_m: 10.0
+    kamera_tiefe_rauschen: 0.01   # nur mit realistic_sensors: sigma = Wert * Tiefe^2 [1/m] (ANNAHME, typisch Stereo-Tiefe)

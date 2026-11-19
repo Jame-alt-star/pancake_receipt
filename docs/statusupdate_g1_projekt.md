@@ -1,6 +1,23 @@
 # Statusupdate – G1 Humanoid-Projekt
 
-**Verlaufsprotokoll ab 12.10.2026 (chronologisch; aktueller Stand am Ende und in README.md).** Das Projekt ist ein Arbeitsprojekt (keine Thesis).
+**Verlaufsprotokoll ab 12.10.2026 (chronologisch; aktueller Stand am Ende und in `docs/projektstand.md`).** Das Projekt ist ein Arbeitsprojekt (keine Thesis).
+
+> **Historisches Protokoll.** Jeder Abschnitt gibt den Stand seines Datums wieder: Hypothesen, „noch nicht getestet“ und
+> „nächste Schritte“ sind in späteren Abschnitten aufgelöst oder korrigiert. Dateipfade bis einschließlich v1.9 gelten vor
+> dem Strukturumbau (v2.0–v2.4). Die wichtigsten heutigen Orte:
+>
+> | Damals | Heute |
+> |---|---|
+> | Paket `r1_bringup` | `roboter_simulation` (Modelle: `roboter_beschreibung/modelle/`) |
+> | `g1_policy.yaml` (12 DOF) | entfernt (Tag `v1.9-review-abgeschlossen`) |
+> | `g1_policy_29dof.yaml` | `roboter_steuerung/config/policy_29dof.yaml` (+ Parameterdateien je Schicht) |
+> | `scene_*_29dof.xml` | `roboter_welten/welten/<welt>/szene.xml` + `orte.yaml` |
+> | `steuereinheit.launch.py`, `mission.launch.py nav2:=true` | `roboter_system/launch/system.launch.py` (+ Launch-Datei je Paket) |
+> | `tests/arm_feasibility.py`, `tests/test_arm_feasibility.py` | entfernt am 18.11.2026 (siehe Ende), in der Git-Historie |
+> | `tests/test_closed_loop.py`, `tests/test_beinodometrie.py` | `tests/simulation/` |
+> | `tests/test_node_logic.py` | `src/roboter_steuerung/test/test_steuereinheit_logik.py` |
+> | `tests/integration_*.py`, `tests/stop_all.sh` | `tests/system/` |
+> | `roboter_navigation/punktwolke_zu_scan` | `roboter_sensorik/punktwolke_zu_scan` |
 
 ## Ausgangspunkt
 
@@ -71,13 +88,13 @@ Beobachtung: der Roboter lief nach dem Hochfahren sofort automatisch los, ohne d
 
 1. Den erweiterten Zustandsautomaten (Start/Bereitschaft/NotAus) in der Simulation testen und bestätigen, insb. dass `/not_aus` den Roboter zuverlässig einfrieren lässt und die anderen Zustandsübergänge nicht stören.
 2. Danach: Navigation (Umfang siehe Scope-Entscheidung oben), danach PDDL-Dispatcher.
-3. **GitHub-Backup abgeschlossen (12.10.2026):** kompletter aktueller Stand (inkl. der gesamten Zustandsautomat-Erweiterung) liegt jetzt unter https://github.com/Pascho02/g1-humanoid-robot (privat) – Absicherung vor der DOF-Migration (siehe unten), falls die schiefgeht.
+3. **GitHub-Backup abgeschlossen (12.10.2026):** kompletter aktueller Stand (inkl. der gesamten Zustandsautomat-Erweiterung) liegt jetzt in einem privaten GitHub-Repository – Absicherung vor der DOF-Migration (siehe unten), falls die schiefgeht.
 
 Hindernisparkour und DOF-Migration/Greifen sind zurückgestellt, nicht gestrichen – Wiederaufnahme möglich, wenn Zeit/GPU-Zugriff es erlauben.
 
 ## DOF-Migration gestartet (12.10.2026): Umstieg auf 29-DOF-Ganzkörper-Policy
 
-**Motivation:** Vermutung, dass das 12-DOF-Bein-only-Modell (keine aktuierten Arme/Taille, feste Pose) mit zum Kippen beiträgt, da eine ungünstig positionierte "tote" Oberkörpermasse den Schwerpunkt verschiebt, ohne dass die Bein-Policy das ausgleichen kann. Zustandsautomat-Arbeit (Start/Bereitschaft/NotAus) wird dafür zurückgestellt, nicht verworfen – aktueller Stand ist auf GitHub gesichert (https://github.com/Pascho02/g1-humanoid-robot).
+**Motivation:** Vermutung, dass das 12-DOF-Bein-only-Modell (keine aktuierten Arme/Taille, feste Pose) mit zum Kippen beiträgt, da eine ungünstig positionierte "tote" Oberkörpermasse den Schwerpunkt verschiebt, ohne dass die Bein-Policy das ausgleichen kann. Zustandsautomat-Arbeit (Start/Bereitschaft/NotAus) wird dafür zurückgestellt, nicht verworfen – aktueller Stand ist auf GitHub gesichert.
 
 **Wahl 29-DOF (nicht 23-DOF):** `unitree_rl_lab` bietet die fertige, vortrainierte Ganzkörper-ONNX-Policy (`policy/velocity/v0`) nur für die 29-DOF-Variante an – für 23-DOF gibt es keine fertige Policy (im Repo direkt verifiziert: `deploy/robots/g1_23dof/` enthält keine `.onnx`-Datei). Die Wahl ist damit praktisch vorgegeben.
 
@@ -132,7 +149,7 @@ pip install onnxruntime --break-system-packages
 3. Alternativ: Schleife in `_run_simulation()` mit `time.perf_counter()` profilieren (Physik vs. Publish vs. PD-Berechnung).
 4. Erst danach zurück zur eigentlichen Forschungsfrage (hilft 29-DOF-Ganzkörper tatsächlich gegen das Kippen, verglichen mit 12-DOF).
 
-**Werkzeug-Entscheidung für die weitere autonome Fehlersuche:** Ein vom Nutzer vorgeschlagener, selbstgebauter Python-Agent (eigene Haiku/Sonnet-Model-Umschaltung, Telegram-Benachrichtigungen, Kosten-Tracking über die Anthropic-API) wurde geprüft und verworfen – ein solches Skript würde die Claude-API direkt ansprechen und wäre damit *immer* pro Token abgerechnet, unabhängig vom Modell, was dem expliziten Wunsch des Nutzers widerspricht, ausschließlich über das bestehende Pro-Abo (ohne Extra-Tokenkosten) zu arbeiten. Stattdessen: Claude Code CLI direkt in WSL2 installiert (`curl -fsSL https://claude.ai/install.sh | bash`, erfolgreich, Version 2.1.296) – läuft mit echtem Shell-Zugriff auf ROS2/MuJoCo/colcon und nutzt die Abo-Anmeldung (keine separate API-Abrechnung). Übergabe-Dokument `UEBERGABE_fuer_claude_code_wsl2.md` wurde für eine Claude-Code-Sitzung in WSL2 geschrieben (liegt neben dieser Datei), damit die offene Latenz-Frage dort direkt mit echtem ROS2-Zugriff weiterbearbeitet werden kann, ohne die Vorarbeit zu wiederholen. Hinweis: Claude-Code-Sitzungen (lokale `.jsonl`-Historie unter `~/.claude/projects/...`) sind ein eigenständiges System ohne dokumentierte Verbindung zum claude.ai-Projekt "MBSE" (keine Integration bekannt, Stand 13.10.2026) – Kontext-Transfer läuft daher über Projektdateien (diese Datei + das Übergabe-Dokument), nicht über eine Projekt-Verknüpfung.
+Die weitere Fehlersuche lief direkt in der WSL2-Umgebung mit echtem ROS2-Zugriff (nächster Abschnitt).
 
 ## 29-DOF in echter ROS2-Pipeline stabil (13.10.2026, Claude Code in WSL2)
 
@@ -370,7 +387,7 @@ Befunde aus dem Code-Review vom 14.10. (B1, B5, L1, L3) bestätigt und behoben:
 ## Review-Paket 4: Kommentare und Dokumentation (14.10.2026) – v1.8
 - Veraltete/widersprüchliche Kommentare korrigiert: `steuereinheit_node.py` (Positionshaltung „NICHT aufgerufen“, `/base_position`, „47 Beobachtungswerte“, `cmd_init`, Freigabe per `/cmd_vel`), `balancieren_state.py` (vx/vy-Eingabe), `not_aus_state.py` („trabt“ nur 12-DOF, Freigabe-Schritt umgesetzt), `bereitschaft_state.py`, `mujoco_node.py` (Topic-Liste, „bei jedem Physikschritt“, „47-Werte-Policy“, Profiling dauerhaft dokumentiert, `if True:` aufgelöst, Rauschwerte als Annahmen gekennzeichnet), `steuereinheit.launch.py` (2D-Lidar, 16→24 Ringe), `action_bridges.py` (Nav2 getestet, GehAktion nur Testdouble), `nav_testdouble_node.py` (WZ_MAX), `g1_policy_29dof.yaml`.
 - Spärlich kommentierte Stellen ergänzt: Problem-Generator (Abbildung, ganzzahlige Kosten, Kosten 100), Planer (warum A*/LM-Cut), `run_action` (Zeiten), Missionsknoten (Thread-Modell), Weltwissen, Balance-Dienst-Konstanten (Herkunft), Beinodometrie-/Punktwolken-Callbacks, Testdouble, Lidar-/Aufnahmefunktionen.
-- Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben in einen Archivordner verschoben (am 14.10.2026 gelöscht, nur noch unter Tag `v1.9-review-abgeschlossen`); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben (seit 14.10.2026: `PROJEKTSTAND_AKTUELL.md`).
+- Doku: READMEs von `roboter_task_planning`, `roboter_navigation` (inkl. RViz), `tests` (fehlende Tests ergänzt) aktualisiert; Kopf dieses Protokolls und „Thesis“-Bezug korrigiert; alte Übergaben in einen Archivordner verschoben (am 14.10.2026 gelöscht, nur noch unter Tag `v1.9-review-abgeschlossen`); `STATUSUPDATE_fuer_cowork.md` als kompakte aktuelle Übergabe neu geschrieben (seit 14.10.2026: `PROJEKTSTAND_AKTUELL.md`, heute `docs/projektstand.md`).
 - Hinweis: `CODE_REVIEW_PROMPT.md` (Review-Auftrag) wurde beim Commit von Paket 1 versehentlich per `git add -A` mitversioniert; Inhalt unkritisch; lag zunächst im Root, dann bei den Review-Unterlagen; am 14.10.2026 gelöscht (Tag `v1.9-review-abgeschlossen`).
 - Tests: pytest 32, Layer-1 18, Pipeline 32/32, Testwelt 14/14.
 
@@ -509,3 +526,11 @@ Testserie (`tests/alle_tests.sh --mit-slam`).
 - **Tests v2.7** (`tests/alle_tests.sh --mit-slam`, 21.10.2026): pytest 86, Pipeline 37/37, Pipeline realistisch +
   Beinodometrie (mit Viewer) 37/37, Watchdog 8/8, Missionen Testdouble/Testwelt/Patrouille/3D-Palette je 17/17, feste
   Karte (AMCL) 21/21, SLAM realistisch 25/25. Dazu 6/6 realistische Pipeline-Läufe mit Viewer nach der Speicherkorrektur.
+
+## Greif-Machbarkeit mit IK entfernt (18.11.2026)
+Entscheidung: Greifen wird mit einer eigenen, per RL trainierten Greif-Policy umgesetzt (Training auf einer gemieteten
+GPU), nicht mit IK-Trajektorien über der Lauf-Policy. Deshalb entfernt: `experimente/arm_feasibility.py` (IK-Experiment)
+und der zugehörige Regressionstest `tests/simulation/test_greifen_machbarkeit.py`; beide liegen in der Git-Historie.
+Die Messergebnisse vom 13.10.2026 (Abschnitt „Greifen im Stehen“) bleiben als Erfahrungswerte für das Training
+relevant: die Lauf-Policy fällt, wenn sie Armstellungen außerhalb ihres Trainings beobachtet, und unter Last braucht der
+Oberkörper ein Gegengewicht.

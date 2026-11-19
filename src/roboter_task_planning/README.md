@@ -58,12 +58,9 @@ mit `navigation:=extern` (Lidar, Sensorik und Watchdog laufen dann wie mit eigen
 `/freigabe` frei.
 
 ## Voraussetzungen
-- **Fast Downward** (nicht über rosdep verfügbar), gebaut außerhalb des Repos:
-  ```bash
-  git clone --depth 1 --branch release-24.06.1 https://github.com/aibasel/downward.git ~/tools/downward
-  cd ~/tools/downward && python3 build.py release
-  ```
-  Gefunden über `$FAST_DOWNWARD`, `~/tools/downward/fast-downward.py` oder `PATH`.
+- **Fast Downward** 24.06.1 (nicht über rosdep verfügbar), gebaut außerhalb des Repos unter `~/tools/downward`:
+  installiert `scripts/einrichten.sh` (siehe README im Projektordner, „Einrichten eines neuen Rechners“).
+  Der Planer sucht ihn in dieser Reihenfolge: `$FAST_DOWNWARD`, `~/tools/downward/fast-downward.py`, `PATH`.
 - Layer 3/4 (`steuereinheit_node`, `mujoco_node`), `balance_dienst_node`.
 
 ## Nav2 (Layer 2): Schnittstelle zu uns

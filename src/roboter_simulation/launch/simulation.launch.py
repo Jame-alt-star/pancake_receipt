@@ -21,6 +21,7 @@ ARGUMENTE = [
     ("realistic_sensors", "false", "Sensorrauschen, Bias, Drift, Latenz, Lidar-Ausfaelle"),
     ("record_path", "", ".npz-Datei fuer die Posenaufzeichnung"),
     ("odom_ground_truth", "true", "/odom und TF odom->base_link aus der Simulation (false: Schaetzer liefert sie)"),
+    ("kamera", "false", "RGBD-Kamera (/kamera/color|depth/image_raw + camera_info), Montage aus roboter_beschreibung"),
 ]
 
 
@@ -39,6 +40,7 @@ def generate_launch_description():
             "record_path": LaunchConfiguration("record_path"),
             "publish_odom": LaunchConfiguration("odom_ground_truth"),
             "publish_tf": LaunchConfiguration("odom_ground_truth"),
+            "kamera": LaunchConfiguration("kamera"),
         }])
     return LaunchDescription([DeclareLaunchArgument(n, default_value=d, description=t) for n, d, t in ARGUMENTE]
                              + [sim])

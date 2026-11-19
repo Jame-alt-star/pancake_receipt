@@ -1,10 +1,11 @@
-# Python-Pakete ausserhalb von ROS 2 (nicht ueber rosdep verfuegbar). Getestete Versionen (14.10.2026):
+# Python-Pakete ausserhalb von ROS 2 (nicht ueber rosdep verfuegbar). Getestete Versionen (14.10.2026; mujoco seit
+# 18.11.2026 auf 3.12.0 = Stand der Entwicklungsrechner). Die GitHub-CI installiert genau diese Datei.
 #   pip install --user -r requirements.txt     (unter Ubuntu 24.04 ggf. mit --break-system-packages)
-mujoco==3.13.0          # Simulation (mujoco_node) und Vorwaertskinematik (Beinodometrie)
+mujoco==3.12.0        # Simulation (mujoco_node) und Vorwaertskinematik (Beinodometrie)
 onnxruntime==1.31.0     # 29-DOF-Policy (rl_locomotion_controller_29dof)
 numpy==1.26.4           # (auch als python3-numpy aus apt)
 PyYAML==6.0.1           # (auch als python3-yaml aus apt)
 # optional:
 # imageio-ffmpeg==0.6.0 # nur fuer das Demo-Video (demo/render_demo.py), dazu opencv (python3-opencv) und Pillow
-# Nicht ueber pip: Fast Downward 24.06.1 (siehe src/roboter_task_planning/README.md),
-# ROS 2 Jazzy mit ros-jazzy-navigation2, ros-jazzy-nav2-bringup, ros-jazzy-slam-toolbox.
+# Nicht ueber pip: ROS 2 Jazzy, die apt-Pakete und Fast Downward 24.06.1 - installiert scripts/einrichten.sh
+# (Anleitung: README.md, "Einrichten eines neuen Rechners").

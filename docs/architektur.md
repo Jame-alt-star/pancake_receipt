@@ -41,6 +41,7 @@ Stand 21.10.2026 (v2.7, nach Review 2). Einstieg für Übergaben; Bedienung: `RE
 | `/odom` + TF `odom→base_link` | Topic/TF | L4 (Ground-Truth) **oder** `beinodometrie_node` | Schalter `odom_quelle` |
 | `/points` | Topic | L4 → Sensorik | 3D-Lidar, 5 Hz |
 | `/scan`, `/punkte_hindernis` | Topic | Sensorik → L2 | SLAM/Collision-Monitor bzw. Costmaps |
+| `/kamera/color/image_raw`, `/kamera/depth/image_raw` (+ `camera_info`) | Topic | L4 → (noch kein Abnehmer) | RGBD-Kamera, Schalter `kamera`, 5 Hz; Farbe `rgb8`, Tiefe `32FC1` in m (ungültig = NaN), Frame `kamera_optical_frame` |
 | `/cmd_vel` | Topic | L2 (oder Testdouble, Hand ohne Navigation) → L3 | Wunsch [vx, vy, wz], L3 begrenzt |
 | `/cmd_vel/balance` | Topic | Balance-Dienst → L3 | Vorrang vor `/cmd_vel`, solange er sendet (0,5 s) |
 | `/cmd_vel/hand` | Topic | Bediener → L3 | höchster Vorrang (vor Balance und Nav2), solange er sendet (0,5 s) |
@@ -89,6 +90,7 @@ Zustand der Steuerung: `/steuerung/zustand` (latched). Stoerung verlassen nur be
 map ──(statisch | SLAM | AMCL auf fester Karte)── odom ──(Simulation oder Beinodometrie)── base_link
 base_link ── pelvis ──(robot_state_publisher aus /joint_states + URDF)── alle Glieder (torso_link, head_link, ...)
 <Elternglied aus roboter.yaml, Standard pelvis> ── lidar_link
+<Elternglied aus roboter.yaml, Standard torso_link> ── kamera_link ── kamera_optical_frame (z nach vorn, y nach unten)
 ```
 Die Lidar-Montage steht nur in `roboter.yaml` (Elternglied + Pose); Simulation, TF-Baum und Sensorik lesen sie von dort
 bzw. aus dem TF-Baum. Am echten G1 sitzt der MID-360 im Kopf: Elternglied `torso_link`, Pose aus dem Unitree-Datenblatt.

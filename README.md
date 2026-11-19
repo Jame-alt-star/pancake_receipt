@@ -7,11 +7,16 @@ Paketübersicht, Schnittstellen und Abhängigkeitsregeln: `docs/architektur.md`.
 ## Womit anfangen?
 | Datei | Für wen | Inhalt |
 |---|---|---|
-| **`NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`** | Nav2-Kollege | einmalige Übersicht: was seit dem Stand vom 10.10. neu, fertig und umbenannt ist, und was das für Nav2 bedeutet |
-| **`PROJEKTSTAND_AKTUELL.md`** | alle, Übergaben | der aktuelle Stand in Kurzform (wird laufend aktualisiert) |
+| **`docs/projektstand.md`** | alle, Übergaben | der aktuelle Stand in Kurzform (wird laufend aktualisiert) |
 | `README.md` (diese Datei) | alle | Starten, Schalter, Tests |
 | `docs/architektur.md` | wer am Code arbeitet | Pakete, Schnittstellen, wer worauf zugreifen darf |
+| `src/roboter_navigation/README.md` | Nav2-Kollege | Schnittstellen von Layer 2, Eigenheiten des Roboters, eigene Nav2-Variante einbinden |
+| `src/roboter_task_planning/README.md` | wer Missionen schreibt | Missionen, Planer, Fast Downward einrichten |
+| `src/roboter_welten/README.md` | wer Welten baut | Welten, Orte, Karten |
+| `tests/README.md` | wer testet | Testarten, Aufrufe, Dauer |
+| `docs/g1_hardware_checkliste.md` | Bestellung, Hardware | G1 bestellen und konfigurieren (Checkliste für Unitree/Händler) |
 | `docs/statusupdate_g1_projekt.md` | bei Detailfragen | ausführlicher Verlauf mit allen Messwerten |
+| `THIRD_PARTY.md` | vor einer Weitergabe | Fremdbestandteile und Lizenzen |
 
 ```
 Layer 1  Deliberative   roboter_task_planning   Mission (Auftrag) -> PDDL -> Fast Downward -> Dispatcher (ROS-2-Actions)
@@ -28,6 +33,39 @@ Gesamt                  roboter_system          system.launch.py setzt die Schic
 Schnittstellen: Freigabe per `/freigabe` (Bool, eigener Kanal; `/cmd_vel` gibt nicht frei, während NotAus
 wird jede Freigabe abgelehnt; eine Mission gibt beim Start selbst frei); Layer 2 -> 3 per `/cmd_vel`; Layer 1 -> 2 per `NavigateToPose` (Nav2) bzw. `GehAktion`;
 Layer 1 -> 3 per `BalancierAktion`; Sicherheit per `/not_aus` (latched).
+
+## Einrichten eines neuen Rechners
+Getestet unter Ubuntu 24.04 (auch in WSL2). Die Paketliste steht nur an zwei Stellen: `scripts/einrichten.sh` (apt-Pakete,
+Fast Downward) und `requirements.txt` (Python-Pakete mit getesteten Versionen).
+
+1. **ROS 2 Jazzy** (`ros-jazzy-desktop`) nach der offiziellen Anleitung installieren:
+   https://docs.ros.org/en/jazzy/Installation.html – das Skript setzt es voraus.
+2. **Prüfen, was fehlt** (installiert nichts, kein sudo):
+   ```bash
+   bash scripts/einrichten.sh --pruefen
+   ```
+3. **Fehlendes installieren** (fragt für apt nach dem sudo-Passwort):
+   ```bash
+   bash scripts/einrichten.sh
+   ```
+   | Teil | Was | Wohin |
+   |---|---|---|
+   | apt | Nav2, `nav2-bringup`, `slam-toolbox`, `robot-state-publisher`, `tf2-ros`, RViz, colcon, numpy, PyYAML, pytest, OpenCV | System |
+   | pip | `mujoco`, `onnxruntime` (+ numpy, PyYAML) aus `requirements.txt` – gibt es nicht über apt | `~/.local` |
+   | Fast Downward 24.06.1 | PDDL-Planer für Layer 1, von GitHub geklont und gebaut (dauert einige Minuten) | `~/tools/downward` |
+
+   Anderer Ort für Fast Downward: Umgebungsvariable `FAST_DOWNWARD` auf `fast-downward.py` setzen (oder in den `PATH`).
+4. **Bauen und kontrollieren** (~1 min):
+   ```bash
+   source /opt/ros/jazzy/setup.bash && colcon build && source install/setup.bash
+   bash tests/alle_tests.sh --schnell
+   ```
+5. **Optional** für die Demo-Videos (`demo/`): `pip install --user imageio-ffmpeg pillow` (Version siehe
+   `requirements.txt`, auskommentiert) und ein Display mit GLFW (WSLg).
+
+**WSL2:** Ohne `.wslconfig` bekommt die WSL nur den halben Windows-Speicher (hier ~2,8 GB). Das Skript meldet knappen
+Speicher; dann Simulation mit `headless:=true` betreiben oder in `%UserProfile%\.wslconfig` mehr zuteilen
+(`[wsl2]` → `memory=6GB`, danach `wsl --shutdown`).
 
 ## Schnellstart
 ```bash
@@ -48,7 +86,7 @@ ros2 topic echo /mission/status                           # Fortschritt
 ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /not_aus std_msgs/msg/Bool "{data: true}"
 ```
 `system.launch.py`-Schalter: `mission` (Name oder Pfad), `welt`, `navigation` (aus/nav2/extern/testdouble), `nav2_params`,
-`slam`, `karte` (`true` = feste Karte der Welt, oder Pfad einer selbst aufgenommenen Karte; + AMCL), `startpose` (für AMCL), `lidar_modus` (aus/3d/2d), `odom_quelle`, `realistic_sensors`, `headless`,
+`slam`, `karte` (`true` = feste Karte der Welt, oder Pfad einer selbst aufgenommenen Karte; + AMCL), `startpose` (für AMCL), `lidar_modus` (aus/3d/2d), `kamera` (RGBD-Kamera am Kopf), `odom_quelle`, `realistic_sensors`, `headless`,
 `record_path`, `cmd_vel_timeout_s`, `auto_start` (nur Simulation), `rviz` (mit Roboterkörper).
 Weitere Bedienung: `ros2 service call /mission/starte roboter_interfaces/srv/MissionStarten "{mission: patrouille}"`,
 Zustand `ros2 topic echo /steuerung/zustand`, Störung quittieren `ros2 service call /steuerung/quittieren std_srvs/srv/Trigger`. Jede Schicht lässt sich auch einzeln starten (Launch-Datei im jeweiligen Paket).
@@ -69,17 +107,11 @@ Missionen (`roboter_task_planning/missions/`): `beispiel`, `testwelt`, `patrouil
 - Demo-Video "Kontrollrundgang im Lager": `demo/README.md`. Video aller Systemtests: `bash tests/alle_tests.sh --mit-slam
   --video DIR`, dann `MUJOCO_GL=glfw python3 demo/video_tests.py DIR testserie.mp4`.
 
-## Voraussetzungen
-ROS 2 Jazzy, `ros-jazzy-navigation2`, `ros-jazzy-nav2-bringup`, `ros-jazzy-slam-toolbox`;
-Python-Pakete `mujoco`, `onnxruntime`; **Fast Downward** (Release 24.06.1) unter `~/tools/downward`
-(Anleitung: `src/roboter_task_planning/README.md`). Auf WSL2 mit ~2,8 GB RAM Simulation mit
-`headless:=true` betreiben.
-
 ## Tests (alle bestanden, Stand siehe `docs/statusupdate_g1_projekt.md`)
 | Aufruf | Umfang |
 |---|---|
 | `bash tests/alle_tests.sh` | **komplette Serie** in fester Reihenfolge (Build, pytest, alle Systemtests, ~25 min; `--schnell`, `--mit-slam`, `--video DIR`) |
-| `python3 -m pytest -q` | alle schnellen Tests: Unit-Tests der Pakete, Regelkreis ohne ROS, Greif-Regression (~1 min) |
+| `python3 -m pytest -q` | alle schnellen Tests: Unit-Tests der Pakete, Regelkreis ohne ROS (~1 min) |
 | `python3 tests/system/integration_ros.py` | Pipeline: Start, Freigabe, Gehen, Begrenzung, NotAus, Odometrie (~3 min) |
 | `python3 tests/system/integration_watchdog.py` | `cmd_vel`-Watchdog |
 | `... --realistisch --beinodometrie` | dieselben Integrationstests mit realistischer Sensorik und geschätzter Position |
@@ -92,8 +124,8 @@ Details: `tests/README.md`. Bei Codeänderungen erst `colcon build` (Install ist
   sinkt die erlaubte Drehrate linear auf 0,5. Unter ~0,3 m/s läuft der Roboter nicht an; kleine `wz`
   werden im Stand fast ignoriert (Drehen auf der Stelle braucht |wz| ≳ 0,8).
 - **Stehen:** Drift < 1 cm in 120 s (Kurshaltung auch in Bereitschaft), Positionshaltung gegen Störungen.
-- **Greifen:** gemessener Betriebspunkt (Arme per IK, Policy „blind“ für Arme, Taille −0,15 rad,
-  0,30 m Reichweite, ≤ 1 kg je Hand); `Manipulieren`-Zustand und Hand-Modell sind **nicht** umgesetzt.
+- **Greifen:** nicht umgesetzt; geplant ist eine eigene, per RL trainierte Greif-Policy (Training auf einer gemieteten
+  GPU). Die Lauf-Policy ist ohne Hände und ohne Greifbewegungen trainiert.
 - **Position:** standardmäßig Ground-Truth aus der Simulation; mit `odom_quelle:=beinodometrie` geschätzt
   (< 1 % der Strecke). Lidar ist ein Raycast-Modell (3D, 24 Ringe, 5 Hz), optional mit Rauschen/Ausfällen.
 - **Nicht umgesetzt:** Zustände AkkuSchwach/Laden (keine echten Batteriedaten), gelernte Greif-Policy,
@@ -106,8 +138,3 @@ beim Sprung über v2.2 die Ordner `build/` und `install/` vorher leeren, weil Pa
 **Alter Stand vollständig unter Tag `v1.9-review-abgeschlossen`:** 12-DOF-Pfad, Gazebo/R1-Launches, alte Übergaben
 und die Review-Unterlagen wurden am 14.10.2026 aus dem aktuellen Stand gelöscht und sind nur noch dort (und in der
 git-Historie) enthalten.
-
-## Weitere Dokumente
-`NEU_SEIT_10-10_FUER_NAV2_KOLLEGEN.md`, `PROJEKTSTAND_AKTUELL.md`, `docs/architektur.md` (Pakete, Abhängigkeitsregeln, Schnittstellen), `docs/statusupdate_g1_projekt.md` (Verlauf mit allen
-Messwerten), `docs/g1_hardware_checkliste.md` (G1 bestellen und konfigurieren), `src/*/README.md` (Layer 1, Layer 2, Welten),
-`tests/README.md`.
