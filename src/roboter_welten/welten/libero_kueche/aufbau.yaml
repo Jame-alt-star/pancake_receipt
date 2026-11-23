@@ -1,0 +1,28 @@
+# QUELLE fuer szene.xml: welche LIBERO-Fixtures und -Objekte wo in raum.xml stehen. libero_import.py liest diese
+# Datei, kopiert die benoetigten Meshes/Texturen nach libero/ und schreibt szene.xml.
+#
+# name       Instanzname wie in den LIBERO-BDDL-Dateien (<typ>_<n>), damit Aufgaben 1:1 uebertragbar sind. Alle
+#            Elemente der Instanz bekommen ihn als Praefix (z. B. Gelenk wooden_cabinet_1_top_level).
+# asset      Pfad unter libero/libero/assets/ im LIBERO-Repo
+# xy         Mitte der Huellbox in der Welt [m]
+# auf        Hoehe der Flaeche, auf der das Teil steht [m] (Unterkante der Huellbox)
+# gier_grad  Drehung um z. 0 = Vorderseite (Schubladen, Mikrowellentuer) zeigt nach -y, also zum Raum hin
+# kipp_x_grad  Drehung um x vor der Gierdrehung (Ketchup liegt im Original, 90 = aufrecht wie in LIBERO)
+# beweglich  true: freies Gelenk (Objekt kann bewegt werden); false: fest (Fixture, eigene Gelenke bleiben)
+#
+# LIBERO ist auf Tischmassstab gebaut (Schubladenschrank ~26 cm, Mikrowelle ~40 cm) - wie im Original.
+
+quelle_standard: ~/tools/LIBERO      # Umgebungsvariable LIBERO_PFAD hat Vorrang
+
+fixtures:
+  - {name: flat_stove_1,     asset: articulated_objects/flat_stove.xml,     xy: [1.30, 2.62], auf: 0.80}
+  - {name: wooden_cabinet_1, asset: articulated_objects/wooden_cabinet.xml, xy: [2.50, 2.60], auf: 0.80}
+  - {name: microwave_1,      asset: articulated_objects/microwave.xml,      xy: [3.70, 2.62], auf: 0.80}
+
+objekte:
+  - {name: moka_pot_1,         asset: turbosquid_objects/moka_pot/moka_pot.xml,                 xy: [1.85, 2.55], auf: 0.80, beweglich: true}
+  - {name: plate_1,            asset: stable_scanned_objects/plate/plate.xml,                   xy: [1.95, -1.45], auf: 0.75, beweglich: true}
+  - {name: akita_black_bowl_1, asset: stable_scanned_objects/akita_black_bowl/akita_black_bowl.xml, xy: [2.25, -1.45], auf: 0.75, beweglich: true}
+  - {name: white_yellow_mug_1, asset: turbosquid_objects/white_yellow_mug/white_yellow_mug.xml, xy: [2.50, -1.50], auf: 0.75, beweglich: true}
+  - {name: ketchup_1,          asset: stable_hope_objects/ketchup/ketchup.xml,                  xy: [2.15, -1.75], auf: 0.75, beweglich: true, kipp_x_grad: 90}
+  - {name: butter_1,           asset: stable_hope_objects/butter/butter.xml,                    xy: [2.40, -1.75], auf: 0.75, beweglich: true}

@@ -9,7 +9,8 @@ from roboter_steuerung.control.i_locomotion_controller import ILocomotionControl
 # Gelenkreihenfolge wie MuJoCo/g1_29dof.xml sie deklariert (<motor>-
 # Reihenfolge, identisch zur Unitree-SDK-LowCmd-Reihenfolge). Das ist die
 # Reihenfolge, in der joint_positions/joint_velocities hier ankommen
-# (mujoco_node.py publiziert /joint_states direkt aus self.data.qpos[7:]) und
+# (mujoco_node.py publiziert /joint_states aus den qpos-Eintraegen der Aktuator-
+# Gelenke, ohne Weltgelenke wie Schubladen oder freie Objekte) und
 # in der compute_joint_targets() seine Rueckgabe liefern MUSS (mujoco_node.py
 # wendet target_dof_pos 1:1 auf self.data.ctrl[:] an, selbe Reihenfolge).
 MUJOCO_JOINT_ORDER = [

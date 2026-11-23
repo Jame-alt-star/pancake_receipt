@@ -25,11 +25,12 @@ Kapitel je Test).
 |---|---|
 | `python3 tests/system/integration_ros.py [--realistisch] [--beinodometrie] [--headless]` | ~2,5 min |
 | `python3 tests/system/integration_watchdog.py` | ~1 min |
-| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --drei-d \| --nur-2d \| --slam \| --karte \| --aufnehmen] [--realistisch] [--beinodometrie]` | 2–6 min (`--aufnehmen` ~10 min) |
+| `python3 tests/system/integration_mission.py [--nav2 \| --welt \| --patrouille \| --drei-d \| --nur-2d \| --slam \| --karte \| --aufnehmen \| --kueche] [--realistisch] [--beinodometrie]` | 2–6 min (`--aufnehmen` ~10 min) |
 
 Hinweise:
 - Die Systemtests starten und beenden die Pipeline selbst; währenddessen keine eigenen `ros2 topic echo/hz`-Aufrufe.
 - Strenger Stillstand bei NotAus (Beine < 0,05 rad/s, Drift < 5 cm).
-- `--welt`, `--patrouille`, `--slam`, `--drei-d` nutzen echtes Nav2 headless. WSL2 hat ~2,8 GB RAM: Serien nacheinander.
+- `--kueche`: Mission in der Welt `libero_kueche` (LIBERO-Fixtures und -Objekte mit Gelenken im Modell).
+- `--welt`, `--patrouille`, `--slam`, `--drei-d`, `--kueche` nutzen echtes Nav2 headless. WSL2 hat ~2,8 GB RAM: Serien nacheinander.
 - `bash tests/system/stop_all.sh` beendet Reste nach abgebrochenen Tests. **Als eigenen Befehl ausführen**: die
   Suchmuster dürfen nicht in der Kommandozeile des Aufrufers stehen, sonst beendet `pgrep -f` den Aufrufer.

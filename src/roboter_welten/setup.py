@@ -1,13 +1,16 @@
 import os
-from glob import glob
 
 from setuptools import find_packages, setup
 
 package_name = 'roboter_welten'
 
-# Jede Welt als eigener Ordner unter share/roboter_welten/welten/<name>/ (szene.xml, orte.yaml).
-welten = [(os.path.join('share', package_name, d), glob(os.path.join(d, '*.*')))
-          for d in sorted(glob('welten/*')) if os.path.isdir(d)]
+# Jede Welt als eigener Ordner unter share/roboter_welten/welten/<name>/ (szene.xml, orte.yaml, ...), mit
+# Unterordnern (libero_kueche/libero/: Meshes und Texturen, auf die szene.xml relativ verweist).
+welten = []
+for ordner, _, dateien in sorted(os.walk('welten')):
+    dateien = sorted(os.path.join(ordner, f) for f in dateien)
+    if dateien:
+        welten.append((os.path.join('share', package_name, ordner), dateien))
 
 setup(
     name=package_name,

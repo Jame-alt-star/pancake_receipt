@@ -1,0 +1,15 @@
+# Orte der Welt "libero_kueche" (szene.xml), map-Frame in Metern. map = odom = Startpose des Roboters.
+# Je ein Ort vor Herd, Schubladenschrank und Mikrowelle (0.62 m vor der Arbeitsplatte) und vor dem Esstisch.
+# Die LIBERO-Teile heissen wie in den BDDL-Dateien (flat_stove_1, wooden_cabinet_1, microwave_1, plate_1, ...).
+orte:
+  start:      {x: 0.0, y: 0.0}
+  herd:       {x: 1.3, y: 1.75}     # flat_stove_1, moka_pot_1
+  schrank:    {x: 2.5, y: 1.75}     # wooden_cabinet_1
+  mikrowelle: {x: 3.7, y: 1.75}     # microwave_1
+  tisch:      {x: 2.2, y: -0.55}    # plate_1, akita_black_bowl_1, white_yellow_mug_1, ketchup_1, butter_1
+verbindungen:
+  - [start, herd]
+  - [herd, schrank]
+  - [schrank, mikrowelle]
+  - [mikrowelle, tisch]
+  - [tisch, start]

@@ -1,0 +1,16 @@
+# Rundgang in der Kuechenwelt (LIBERO-Fixtures/-Objekte): Herd, Schubladenschrank und Mikrowelle anlaufen, am Esstisch
+# balancieren und warten. Bisher nur Navigation; Ziele zu den LIBERO-Teilen (On/In/Open/...) kommen mit der
+# erweiterten Domaene (Orte: roboter_welten/welten/libero_kueche/orte.yaml).
+welt: libero_kueche
+start_ort: start
+ziele:
+  - {art: besucht,    ort: herd}
+  - {art: besucht,    ort: schrank}
+  - {art: besucht,    ort: mikrowelle}
+  - {art: balanciert, ort: tisch}
+  - {art: gewartet,   ort: tisch}
+parameter:
+  warte_s: 2.0
+  balancier_toleranz_grad: 5.0
+  nav_geschwindigkeit: 0.4
+  max_replans: 2

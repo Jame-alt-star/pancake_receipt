@@ -42,6 +42,7 @@ if [ "$SCHNELL" = 0 ]; then
     lauf "Mission Patrouille" python3 tests/system/integration_mission.py --patrouille $(aufn 06_patrouille)
     lauf "Mission 3D-Palette" python3 tests/system/integration_mission.py --drei-d $(aufn 07_palette)
     lauf "Mission feste Karte (AMCL)" python3 tests/system/integration_mission.py --karte $(aufn 08_feste_karte)
+    lauf "Mission LIBERO-Kueche" python3 tests/system/integration_mission.py --kueche $(aufn 08b_libero_kueche)
     if [ "$SLAM" = 1 ]; then
         lauf "Mission SLAM realistisch" python3 tests/system/integration_mission.py --slam --realistisch --beinodometrie \
             $(aufn 09_slam)

@@ -111,6 +111,12 @@ class MujocoBridgeNode(Node):
         # TF-Baum; ohne Namen konnte niemand ausser der Steuerung die Gelenkwerte zuordnen.
         self.gelenknamen = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, self.model.actuator_trnid[i, 0])
                             for i in range(self.model.nu)]
+        # qpos/qvel-Indizes der angetriebenen Robotergelenke (Reihenfolge = gelenknamen). Nicht einfach qpos[7:]:
+        # Welten mit Gelenken (Schubladen, Tueren, frei bewegliche Objekte, z. B. libero_kueche) haengen weitere
+        # Eintraege hinten an.
+        gelenke = self.model.actuator_trnid[:, 0]
+        self._q_idx = self.model.jnt_qposadr[gelenke].copy()
+        self._v_idx = self.model.jnt_dofadr[gelenke].copy()
         self.get_logger().info(f"[mujoco_bridge_node] Welt: {p['welt'] or '(keine, nur Ebene)'}")
 
         # Antrieb: kommt von der Steuerung (siehe Modul-Docstring)
@@ -239,7 +245,7 @@ class MujocoBridgeNode(Node):
         self.kps, self.kds, self.default_angles = kps, kds, start
         if erstes_mal:
             self.target_dof_pos = start.copy()
-            self.data.qpos[7:] = start
+            self.data.qpos[self._q_idx] = start
             mujoco.mj_forward(self.model, self.data)
             self.get_logger().info("[mujoco_bridge_node] Antriebsparameter von der Steuerung erhalten.")
 
@@ -302,13 +308,13 @@ class MujocoBridgeNode(Node):
                     next_deadline = time.perf_counter()
                     continue
 
-                # PD-Regelung auf die Gelenke (qpos[7:]/qvel[6:]: nach 7 bzw. 6 Werten der freien Basis)
+                # PD-Regelung auf die angetriebenen Gelenke (_q_idx/_v_idx: nach der freien Basis, ohne Weltgelenke)
                 while self._cmd_buf and self._cmd_buf[0][0] + self.command_latency <= self.data.time:
                     self.target_dof_pos = self._cmd_buf.popleft()[1]
                 self._pruefe_kommando_timeout()
                 kp = np.zeros_like(self.kps) if self.daempfung_aktiv else self.kps
-                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[7:], kp,
-                                               np.zeros_like(self.kds), self.data.qvel[6:], self.kds)
+                self.data.ctrl[:] = pd_control(self.target_dof_pos, self.data.qpos[self._q_idx], kp,
+                                               np.zeros_like(self.kds), self.data.qvel[self._v_idx], self.kds)
                 _t0 = time.perf_counter()
                 mujoco.mj_step(self.model, self.data)
                 _t1 = time.perf_counter()
@@ -376,7 +382,7 @@ class MujocoBridgeNode(Node):
         uhr.clock.sec = int(self.data.time)
         uhr.clock.nanosec = int((self.data.time - int(self.data.time)) * 1e9)
         self.pub_clock.publish(uhr)
-        q, dq = self.data.qpos[7:].copy(), self.data.qvel[6:].copy()
+        q, dq = self.data.qpos[self._q_idx], self.data.qvel[self._v_idx]      # Indexzugriff liefert Kopien
         quat_m, omega = self.data.qpos[3:7].copy(), self.data.qvel[3:6].copy()
         if self.sensormodell is not None:
             q, dq, quat_m, omega = self.sensormodell.anwenden(float(self.data.time), q, dq, quat_m, omega)

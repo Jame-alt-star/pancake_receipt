@@ -86,10 +86,13 @@ def test_ohne_regler_faellt_um():
 
 
 def test_welten_laden_roboter_plus_umgebung():
-    """Jede Welt laesst sich mit dem Robotermodell zusammensetzen; Hindernisse liegen in geom group 2 (Lidar)."""
+    """Jede Welt laesst sich mit dem Robotermodell zusammensetzen; Hindernisse liegen in geom group 2 (Lidar).
+    Welten duerfen Koerper und Gelenke mitbringen (libero_kueche: Schubladen, Tueren, freie Objekte), aber keine
+    Antriebe; die Robotergelenke behalten ihre qpos/qvel-Adressen (mujoco_node liest sie ueber die Aktuatoren)."""
     import os
     import sys
     import mujoco
+    import numpy as np
     from sim_helpers import load_config, BRINGUP, WS
     sys.path.insert(0, BRINGUP)
     from roboter_simulation.szene import lade_modell
@@ -98,6 +101,37 @@ def test_welten_laden_roboter_plus_umgebung():
     welten = WS + "roboter_welten/welten/"
     for name in sorted(os.listdir(welten)):
         m = lade_modell(roboter, welten + name + "/szene.xml")
-        assert m.nu == nur_roboter.nu and m.nbody == nur_roboter.nbody, name
+        assert m.nu == nur_roboter.nu, name
+        assert m.nbody >= nur_roboter.nbody, name
+        for j in range(nur_roboter.njnt):
+            assert m.joint(j).name == nur_roboter.joint(j).name, (name, j)
+        gelenke = m.actuator_trnid[:, 0]
+        assert np.array_equal(m.jnt_qposadr[gelenke], nur_roboter.jnt_qposadr[nur_roboter.actuator_trnid[:, 0]]), name
+        assert np.array_equal(m.jnt_dofadr[gelenke], nur_roboter.jnt_dofadr[nur_roboter.actuator_trnid[:, 0]]), name
         if name != "leer":
             assert (m.geom_group == 2).sum() > 0, name
+
+
+def test_libero_kueche_objekte_bleiben_liegen():
+    """libero_kueche: die LIBERO-Objekte stehen nach 2 s Simulation (ohne Roboter) noch auf Tisch bzw. Arbeitsplatte
+    (< 1 cm verschoben, nicht umgekippt) und die Gelenke von Schrank, Mikrowelle und Herd bleiben geschlossen."""
+    import mujoco
+    import numpy as np
+    from sim_helpers import WS
+    m = mujoco.MjModel.from_xml_path(WS + "roboter_welten/welten/libero_kueche/szene.xml")
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    frei = [j for j in range(m.njnt) if m.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE]
+    assert len(frei) == 6
+    start = {j: d.qpos[m.jnt_qposadr[j]:m.jnt_qposadr[j] + 7].copy() for j in frei}
+    for _ in range(int(2.0 / m.opt.timestep)):
+        mujoco.mj_step(m, d)
+    for j in frei:
+        a = m.jnt_qposadr[j]
+        assert np.linalg.norm(d.qpos[a:a + 3] - start[j][:3]) < 0.01, m.joint(j).name
+        # Drehung gegenueber dem Start (Ketchup steht absichtlich gekippt: relativ messen)
+        q0, q1 = start[j][3:], d.qpos[a + 3:a + 7]
+        assert abs(float(np.dot(q0, q1))) > np.cos(np.radians(5) / 2), m.joint(j).name
+    for j in range(m.njnt):
+        if m.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE:
+            assert abs(d.qpos[m.jnt_qposadr[j]]) < 0.01, m.joint(j).name
