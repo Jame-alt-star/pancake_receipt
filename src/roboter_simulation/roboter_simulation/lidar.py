@@ -1,4 +1,6 @@
-"""Simuliertes Lidar: Raycast (mj_multiRay) auf die Welt-Geoms einer Gruppe (Standard 2 = Hindernisse).
+"""Simuliertes Lidar: Raycast (mj_multiRay) auf die Welt-Geoms einer Gruppe (Standard 2 = Hindernisse) und der
+Ersatzgruppe 4 (unsichtbare Ersatzquader importierter Welten, z. B. robocasa_kueche7: deren Optik-Meshes waeren als
+Raycast-Ziel ~10x teurer; unsichtbare Geoms mit rgba-Alpha 0 ignoriert mj_ray, Gruppe 4 wird aber nicht gerendert).
 
 Montage wie in roboter_beschreibung/config/roboter.yaml: Elternglied (MuJoCo-Body) und Pose relativ dazu. Der Sensor
 folgt damit der echten Bewegung dieses Glieds - am Becken wie bisher, am Torso inklusive Taillenbewegung.
@@ -12,6 +14,7 @@ import numpy as np
 from roboter_beschreibung.geometrie import rotmat_aus_rpy
 
 R_MIN = 0.15   # naeher liefert der Sensor nichts (eigener Koerper, Blindbereich)
+ERSATZ_GRUPPE = 4   # immer mit abgetastet: Lidar-/Kartenersatz importierter Welten (in Viewer/Kamera ausgeblendet)
 
 
 class Lidar:
@@ -27,6 +30,7 @@ class Lidar:
         self.R_montage = rotmat_aus_rpy(*montage["rpy"])
         self.maske = np.zeros(6, dtype=np.uint8)
         self.maske[geomgroup] = 1
+        self.maske[ERSATZ_GRUPPE] = 1
         a = np.linspace(-np.pi, np.pi, n_strahlen, endpoint=False)
         self.richtungen_2d = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1)
         self.richtungen_3d = None

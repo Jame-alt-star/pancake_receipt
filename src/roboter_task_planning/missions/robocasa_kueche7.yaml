@@ -1,0 +1,18 @@
+# Rundgang in der RoboCasa-Kueche (Layout 7 / Style 7): einmal um die Insel - Ofen, Spuele, Kaffeemaschine und
+# Kuehlschrank anlaufen, an der Spuele balancieren und warten, zurueck zum Start. Bisher nur Navigation; Ziele zu
+# Tueren, Schubladen und Geraeten kommen mit der erweiterten Domaene (Orte: roboter_welten/welten/robocasa_kueche7/orte.yaml).
+welt: robocasa_kueche7
+start_ort: start
+ziele:
+  - {art: besucht,    ort: ofen}
+  - {art: besucht,    ort: spuele}
+  - {art: besucht,    ort: kaffeemaschine}
+  - {art: besucht,    ort: kuehlschrank}
+  - {art: balanciert, ort: spuele}
+  - {art: gewartet,   ort: spuele}
+  - {art: am_ort,     ort: start}
+parameter:
+  warte_s: 2.0
+  balancier_toleranz_grad: 5.0
+  nav_geschwindigkeit: 0.4
+  max_replans: 2

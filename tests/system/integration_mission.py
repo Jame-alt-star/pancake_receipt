@@ -137,12 +137,13 @@ SLAM = "--slam" in sys.argv       # slam_toolbox (impliziert --welt); prueft /ma
 KARTE = "--karte" in sys.argv     # feste Karte + AMCL (impliziert --welt); prueft /map, map->odom, Wegkosten
 PATROUILLE = "--patrouille" in sys.argv     # Patrouille a, b, zurueck zum Start (impliziert --welt)
 AUFNEHMEN = "--aufnehmen" in sys.argv     # Karte mit SLAM aufnehmen, dann darauf arbeiten (impliziert --welt)
-KUECHE = "--kueche" in sys.argv     # Kuechenwelt libero_kueche (impliziert --nav2)
+ROBOCASA = "--robocasa" in sys.argv     # RoboCasa-Kueche robocasa_kueche7 (impliziert --nav2)
+KUECHE = "--kueche" in sys.argv or ROBOCASA     # Kuechenwelt libero_kueche bzw. robocasa_kueche7 (impliziert --nav2)
 WELT = "--welt" in sys.argv or PATROUILLE or SLAM or DREI_D or NUR_2D or KARTE or AUFNEHMEN   # Testwelt mit Waenden/Hindernis + Lidar (impliziert --nav2)
 if WELT or KUECHE:
     NAV2 = True
 # Die Simulation uebernimmt die Welt aus der Missionsdatei (Schluessel welt).
-MISSION = ("libero_kueche" if KUECHE else
+MISSION = ("robocasa_kueche7" if ROBOCASA else "libero_kueche" if KUECHE else
            ("patrouille" if PATROUILLE else ("testwelt3d" if (DREI_D or NUR_2D) else "testwelt")) if WELT else "beispiel")
 # Hindernisse der Testwelt als Rechtecke (xmin, xmax, ymin, ymax); Roboter ~0.25 m Radius
 BOXEN = [(1.25, 1.75, -0.8, 0.8), (4.45, 4.55, 0.8, 2.95), (4.45, 4.55, -2.95, -0.8)]
@@ -150,6 +151,11 @@ if DREI_D or NUR_2D:
     BOXEN = BOXEN + [(2.0, 2.8, -1.5, -0.7)]     # niedrige Palette (0.45 m)
 if KUECHE:      # Kuechenzeile, Kuehlschrank, Esstisch (roboter_welten/welten/libero_kueche/raum.xml)
     BOXEN = [(0.8, 4.2, 2.37, 3.0), (4.4, 5.1, 2.3, 3.0), (1.6, 2.8, -2.0, -1.2)]
+if ROBOCASA:    # Insel mit Hockern, Rueckzeile, linke Zeile mit Ofen, rechte Zeile mit Kuehlschrank (map-Frame, Ersatzquader)
+    BOXEN = [(0.76, 2.40, -1.25, 1.25), (3.65, 4.35, -3.2, 3.2), (0.85, 3.75, 2.55, 3.2), (0.76, 3.75, -3.2, -2.34)]
+# Ende der Mission (Ort, an dem der Roboter zum Schluss steht)
+ZIEL = {"robocasa_kueche7": ("start", (0.0, 0.0)), "libero_kueche": ("tisch", (2.2, -0.55)),
+        "patrouille": ("start", (0.0, 0.0))}.get(MISSION, ("b", (5.8, 1.5) if WELT else (3.0, 2.0)))
 
 
 def launch(logfile, extra=()):
@@ -178,14 +184,14 @@ def stop(proc):
         except Exception: pass
 
 
-TITEL = ("Mission LIBERO-Kueche" if KUECHE else "Karte aufnehmen und damit arbeiten" if AUFNEHMEN else "Mission mit SLAM" if SLAM
+TITEL = ("Mission RoboCasa-Kueche" if ROBOCASA else "Mission LIBERO-Kueche" if KUECHE else "Karte aufnehmen und damit arbeiten" if AUFNEHMEN else "Mission mit SLAM" if SLAM
          else "Mission auf fester Karte (AMCL)" if KARTE else "Mission 3D-Palette" if DREI_D
          else "Gegenprobe nur 2D-Lidar" if NUR_2D else "Mission Patrouille" if PATROUILLE
          else "Mission Testwelt (Nav2)" if WELT else "Mission mit Testdouble")
 
 
 def lauf_info(**mehr):
-    return dict(welt=None if MISSION == "beispiel" else ("libero_kueche" if KUECHE else
+    return dict(welt=None if MISSION == "beispiel" else (MISSION if KUECHE else
                                                          "testwelt3d" if (DREI_D or NUR_2D) else "testwelt"),
                 mission=MISSION, navigation="nav2" if NAV2 else "testdouble",
                 realistisch="--realistisch" in sys.argv, beinodometrie="--beinodometrie" in sys.argv, **mehr)
@@ -225,9 +231,9 @@ def mission_durchfahren(pr, log, praefix="S1", tol_b=0.6):
         check(f"{praefix} Plan besucht a vor b", bool(plans) and "gehe_zu(start, a)" in plans[0]["plan"]
               and plans[0]["plan"].index("gehe_zu(start, a)") < plans[0]["plan"].index("gehe_zu(a, b)"),
               str(plans[0]["plan"]) if plans else "")
-    goal = (2.2, -0.55) if KUECHE else (0.0, 0.0) if PATROUILLE else ((5.8, 1.5) if WELT else (3.0, 2.0))
+    ziel_ort, goal = ZIEL
     dist_b = float(np.hypot(pr.p[0] - goal[0], pr.p[1] - goal[1]))
-    check(f"{praefix} Roboter nahe {'tisch' if KUECHE else 'b'} (<{tol_b} m)", dist_b < tol_b, f"abstand={dist_b:.2f}")
+    check(f"{praefix} Roboter nahe {ziel_ort} (<{tol_b} m)", dist_b < tol_b, f"abstand={dist_b:.2f}")
     check(f"{praefix} steht (z>0.7)", pr.p[2] > 0.7, f"z={pr.p[2]:.3f}")
     check(f"{praefix} Freigabe nach Missionsende entzogen (Review 2)",
           "Bewegungsfreigabe entzogen" in open(log, errors="replace").read())
@@ -364,7 +370,9 @@ def main():
         print(f"== Pipeline + Layer 1 gestartet, Log {log}")
         system_bereit(pr)
 
-        AUF.schritt("== S1 Mission komplett: herd, schrank, mikrowelle besuchen, am tisch balancieren und warten"
+        AUF.schritt("== S1 Mission komplett: Ring um die Insel (ofen, spuele, kaffeemaschine, kuehlschrank), an der "
+                    "spuele balancieren und warten, zurueck zum start" if ROBOCASA else
+                    "== S1 Mission komplett: herd, schrank, mikrowelle besuchen, am tisch balancieren und warten"
                     if KUECHE else "== S1 Mission komplett: start -> a -> b, balanciere b, warte b")
         mission_durchfahren(pr, log, tol_b=1.0 if SLAM else 0.6)   # SLAM: Ziele im map-Frame, Scan-Matching-Versatz
 

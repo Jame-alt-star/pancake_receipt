@@ -108,8 +108,8 @@ def test_welten_laden_roboter_plus_umgebung():
         gelenke = m.actuator_trnid[:, 0]
         assert np.array_equal(m.jnt_qposadr[gelenke], nur_roboter.jnt_qposadr[nur_roboter.actuator_trnid[:, 0]]), name
         assert np.array_equal(m.jnt_dofadr[gelenke], nur_roboter.jnt_dofadr[nur_roboter.actuator_trnid[:, 0]]), name
-        if name != "leer":
-            assert (m.geom_group == 2).sum() > 0, name
+        if name != "leer":      # Lidar-Ziele: Hindernisse (group 2) oder Ersatzquader importierter Welten (group 4)
+            assert np.isin(m.geom_group, (2, 4)).sum() > 0, name
 
 
 def test_libero_kueche_objekte_bleiben_liegen():
@@ -135,3 +135,29 @@ def test_libero_kueche_objekte_bleiben_liegen():
     for j in range(m.njnt):
         if m.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE:
             assert abs(d.qpos[m.jnt_qposadr[j]]) < 0.01, m.joint(j).name
+
+
+def test_robocasa_kueche7_tueren_bleiben_zu_und_lidar_sieht_kueche():
+    """robocasa_kueche7: alle Tueren und Schubladen (105 Gelenke) bleiben in 2 s Simulation zu, obwohl die
+    Kollisionskoerper der Kueche nicht untereinander kollidieren (contype 0); die Ersatzquader (group 4) sind
+    unsichtbar und ohne Kollision, und ein Lidar-Strahl vom Start Richtung Insel trifft sie."""
+    import mujoco
+    import numpy as np
+    from sim_helpers import WS
+    m = mujoco.MjModel.from_xml_path(WS + "roboter_welten/welten/robocasa_kueche7/szene.xml")
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    assert m.njnt == 105
+    q0 = d.qpos.copy()
+    for _ in range(int(2.0 / m.opt.timestep)):
+        mujoco.mj_step(m, d)
+    assert np.max(np.abs(d.qpos - q0)) < 0.02
+    ersatz = m.geom_group == 4
+    assert ersatz.sum() > 50
+    assert not np.any(m.geom_contype[ersatz] | m.geom_conaffinity[ersatz])
+    kollision = m.geom_group == 3
+    assert np.all(m.geom_contype[kollision] == 0) and np.all(m.geom_conaffinity[kollision] == 1)
+    gid = np.array([-1], dtype=np.int32)
+    maske = np.array([0, 0, 1, 0, 1, 0], dtype=np.uint8)            # wie lidar.py: Gruppen 2 und 4
+    dist = mujoco.mj_ray(m, d, np.array([0.0, 0.0, 0.5]), np.array([1.0, 0.0, 0.0]), maske, 1, -1, gid)
+    assert gid[0] >= 0 and 0.7 < dist < 0.9, (dist, m.geom(gid[0]).name if gid[0] >= 0 else None)   # Insel/Hocker ab x 0.76

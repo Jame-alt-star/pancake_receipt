@@ -1,0 +1,20 @@
+# Orte der Welt "robocasa_kueche7" (RoboCasa Layout 7 / Style 7), map-Frame in Metern. map = odom = Startpose des
+# Roboters: vor der Insel, Blick auf die Insel (+x map = Richtung Kuechenzeile an der Rueckwand, +y map = linke Wand
+# mit Ofen). Umrechnung aus RoboCasa-Kuechenkoordinaten: x_map = y_k + 4.35, y_map = 3.2 - x_k (aufbau.yaml: start).
+# Je Ort der Standpunkt vor dem Geraet (Gangmitte, >= 0.53 m Abstand zum naechsten Hindernis laut Karte).
+orte:
+  start:          {x: 0.0,  y: 0.0}      # vor der Insel (Seite mit den Barhockern)
+  ofen:           {x: 1.25, y: 1.95}     # Backofen mit Mikrowelle darueber (linke Wand)
+  toasterofen:    {x: 2.77, y: 1.95}     # Toasterofen auf der linken Arbeitsplatte
+  spuele:         {x: 3.05, y: 0.20}     # Spuele in der Insel (zwischen Insel und Kuechenzeile)
+  herd:           {x: 3.05, y: -0.70}    # Kochfeld in der Kuechenzeile, Geschirrspueler in der Insel
+  kaffeemaschine: {x: 2.83, y: -1.90}    # Kaffeemaschine und Toaster auf der rechten Arbeitsplatte
+  kuehlschrank:   {x: 1.21, y: -1.80}    # Side-by-Side-Kuehlschrank (rechte Wand; Gang 1.1 m)
+verbindungen:            # Ring um die Insel
+  - [start, ofen]
+  - [ofen, toasterofen]
+  - [toasterofen, spuele]
+  - [spuele, herd]
+  - [herd, kaffeemaschine]
+  - [kaffeemaschine, kuehlschrank]
+  - [kuehlschrank, start]

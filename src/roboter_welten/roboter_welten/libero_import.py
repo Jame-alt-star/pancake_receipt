@@ -77,9 +77,11 @@ def bereinigtes_xml(asset_xml: str) -> str:
     return ET.tostring(wurzel, encoding="unicode")
 
 
-def verkleinere_textur(quelle: str, ziel: str) -> bool:
-    """Bild mit mehr als MAX_TEXTUR Pixeln Kantenlaenge verkleinert speichern; False = unveraendert kopieren.
-    LIBERO-Texturen haben bis 4096 x 4096 (ungepackt ~50 MB Arbeitsspeicher je Textur); die Kamera rendert 320 x 240."""
+def verkleinere_textur(quelle: str, ziel: str, max_px: int = None) -> bool:
+    """Bild mit mehr als max_px (Standard MAX_TEXTUR) Pixeln Kantenlaenge verkleinert speichern; False = unveraendert
+    kopieren. LIBERO-Texturen haben bis 4096 x 4096 (ungepackt ~50 MB Arbeitsspeicher je Textur); die Kamera rendert
+    320 x 240."""
+    max_px = max_px or MAX_TEXTUR
     if not quelle.lower().endswith((".png", ".jpg", ".jpeg")):
         return False
     try:
@@ -88,9 +90,9 @@ def verkleinere_textur(quelle: str, ziel: str) -> bool:
         print(f"  Hinweis: Pillow fehlt, Textur unverkleinert: {os.path.basename(quelle)}")
         return False
     with Image.open(quelle) as bild:
-        if max(bild.size) <= MAX_TEXTUR:
+        if max(bild.size) <= max_px:
             return False
-        f = MAX_TEXTUR / max(bild.size)
+        f = max_px / max(bild.size)
         bild.resize((round(bild.width * f), round(bild.height * f)), Image.LANCZOS).save(ziel, optimize=True)
     return True
 

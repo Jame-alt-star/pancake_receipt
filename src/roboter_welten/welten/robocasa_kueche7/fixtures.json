@@ -1,0 +1,2649 @@
+{
+ "layout": 7,
+ "style": 7,
+ "seed": 0,
+ "fixtures": {
+  "wall_room": {
+   "klasse": "Wall",
+   "pos": [
+    3.2,
+    0.02,
+    1.5
+   ],
+   "groesse": [
+    3.24,
+    1.5,
+    0.02
+   ],
+   "rot": null,
+   "root_body": "wall_room_main",
+   "pos_map": [
+    4.37,
+    0.0,
+    1.5
+   ]
+  },
+  "wall_backing_room": {
+   "klasse": "Wall",
+   "pos": [
+    3.2,
+    0.14,
+    1.38
+   ],
+   "groesse": [
+    3.4400000000000004,
+    1.62,
+    0.1
+   ],
+   "rot": null,
+   "root_body": "wall_backing_room_main",
+   "pos_map": [
+    4.49,
+    0.0,
+    1.38
+   ]
+  },
+  "wall_left_room": {
+   "klasse": "Wall",
+   "pos": [
+    -0.02,
+    -2.5,
+    1.5
+   ],
+   "groesse": [
+    2.54,
+    1.5,
+    0.02
+   ],
+   "rot": null,
+   "root_body": "wall_left_room_main",
+   "pos_map": [
+    1.85,
+    3.22,
+    1.5
+   ]
+  },
+  "wall_left_backing_room": {
+   "klasse": "Wall",
+   "pos": [
+    -0.14,
+    -2.5,
+    1.38
+   ],
+   "groesse": [
+    2.54,
+    1.62,
+    0.1
+   ],
+   "rot": null,
+   "root_body": "wall_left_backing_room_main",
+   "pos_map": [
+    1.85,
+    3.34,
+    1.38
+   ]
+  },
+  "wall_right_room": {
+   "klasse": "Wall",
+   "pos": [
+    6.42,
+    -2.5,
+    1.5
+   ],
+   "groesse": [
+    2.54,
+    1.5,
+    0.02
+   ],
+   "rot": null,
+   "root_body": "wall_right_room_main",
+   "pos_map": [
+    1.85,
+    -3.22,
+    1.5
+   ]
+  },
+  "wall_right_backing_room": {
+   "klasse": "Wall",
+   "pos": [
+    6.54,
+    -2.5,
+    1.38
+   ],
+   "groesse": [
+    2.54,
+    1.62,
+    0.1
+   ],
+   "rot": null,
+   "root_body": "wall_right_backing_room_main",
+   "pos_map": [
+    1.85,
+    -3.34,
+    1.38
+   ]
+  },
+  "wall_front_room": {
+   "klasse": "Wall",
+   "pos": [
+    3.2,
+    -5.02,
+    1.5
+   ],
+   "groesse": [
+    3.24,
+    1.5,
+    0.02
+   ],
+   "rot": null,
+   "root_body": "wall_front_room_main",
+   "pos_map": [
+    -0.67,
+    0.0,
+    1.5
+   ]
+  },
+  "wall_front_backing_room": {
+   "klasse": "Wall",
+   "pos": [
+    3.2,
+    -5.14,
+    1.38
+   ],
+   "groesse": [
+    3.4400000000000004,
+    1.62,
+    0.1
+   ],
+   "rot": null,
+   "root_body": "wall_front_backing_room_main",
+   "pos_map": [
+    -0.79,
+    0.0,
+    1.38
+   ]
+  },
+  "floor_room": {
+   "klasse": "Floor",
+   "pos": [
+    3.2,
+    -2.5,
+    -0.02
+   ],
+   "groesse": [
+    2.54,
+    3.24,
+    0.02
+   ],
+   "rot": null,
+   "root_body": "floor_room_main",
+   "pos_map": [
+    1.85,
+    0.0,
+    -0.02
+   ]
+  },
+  "floor_backing_room": {
+   "klasse": "Floor",
+   "pos": [
+    3.2,
+    -2.5,
+    -0.14
+   ],
+   "groesse": [
+    2.54,
+    3.24,
+    0.1
+   ],
+   "rot": null,
+   "root_body": "floor_backing_room_main",
+   "pos_map": [
+    1.85,
+    0.0,
+    -0.14
+   ]
+  },
+  "utensil_rack_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    6.36,
+    -2.0,
+    1.2
+   ],
+   "groesse": [
+    0.39058186369132564,
+    0.09059074714817197,
+    0.32
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "utensil_rack_room_main",
+   "pos_map": [
+    2.35,
+    -3.16,
+    1.2
+   ]
+  },
+  "light_switch_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    4.2,
+    0.0,
+    1.2
+   ],
+   "groesse": [
+    3e-05,
+    3e-05,
+    3e-05
+   ],
+   "rot": [
+    -1.57
+   ],
+   "root_body": "light_switch_room_main",
+   "pos_map": [
+    4.35,
+    -1.0,
+    1.2
+   ]
+  },
+  "light_switch_2_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    4.1,
+    0.0,
+    1.2
+   ],
+   "groesse": [
+    3e-05,
+    3e-05,
+    3e-05
+   ],
+   "rot": [
+    -1.57
+   ],
+   "root_body": "light_switch_2_room_main",
+   "pos_map": [
+    4.35,
+    -0.9,
+    1.2
+   ]
+  },
+  "outlet_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    6.4,
+    -0.6,
+    1.2
+   ],
+   "groesse": [
+    3e-05,
+    3e-05,
+    3e-05
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "outlet_room_main",
+   "pos_map": [
+    3.75,
+    -3.2,
+    1.2
+   ]
+  },
+  "outlet_2_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    6.4,
+    -3.0,
+    1.2
+   ],
+   "groesse": [
+    3e-05,
+    3e-05,
+    3e-05
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "outlet_2_room_main",
+   "pos_map": [
+    1.35,
+    -3.2,
+    1.2
+   ]
+  },
+  "outlet_3_room": {
+   "klasse": "WallAccessory",
+   "pos": [
+    0.0,
+    -2.4,
+    1.2
+   ],
+   "groesse": [
+    3e-05,
+    3e-05,
+    3e-05
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "outlet_3_room_main",
+   "pos_map": [
+    1.95,
+    3.2,
+    1.2
+   ]
+  },
+  "window_group_room": {
+   "klasse": "Window",
+   "pos": [
+    2.15,
+    -0.015000000000000003,
+    1.75
+   ],
+   "groesse": [
+    1.85,
+    0.03,
+    1.25
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "window_group_room_main",
+   "pos_map": [
+    4.335,
+    1.05,
+    1.75
+   ]
+  },
+  "stool_1_room": {
+   "klasse": "Stool",
+   "pos": [
+    2.55,
+    -3.425,
+    0.4
+   ],
+   "groesse": [
+    0.2908059404855319,
+    0.29025327886378005,
+    0.8
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "stool_1_room_main",
+   "pos_map": [
+    0.925,
+    0.65,
+    0.4
+   ]
+  },
+  "stool_2_room": {
+   "klasse": "Stool",
+   "pos": [
+    3.2,
+    -3.425,
+    0.4
+   ],
+   "groesse": [
+    0.2908059404855319,
+    0.29025327886378005,
+    0.8
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "stool_2_room_main",
+   "pos_map": [
+    0.925,
+    0.0,
+    0.4
+   ]
+  },
+  "stool_3_room": {
+   "klasse": "Stool",
+   "pos": [
+    3.85,
+    -3.425,
+    0.4
+   ],
+   "groesse": [
+    0.2908059404855319,
+    0.29025327886378005,
+    0.8
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "stool_3_room_main",
+   "pos_map": [
+    0.925,
+    -0.65,
+    0.4
+   ]
+  },
+  "counter_corner_main_group": {
+   "klasse": "Counter",
+   "pos": [
+    0.35,
+    -0.325,
+    0.46
+   ],
+   "groesse": [
+    0.7,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "counter_corner_main_group_main",
+   "pos_map": [
+    4.025,
+    2.85,
+    0.46
+   ]
+  },
+  "counter_1_main_group": {
+   "klasse": "Counter",
+   "pos": [
+    1.7,
+    -0.325,
+    0.46
+   ],
+   "groesse": [
+    2.0,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "counter_1_main_group_main",
+   "pos_map": [
+    4.025,
+    1.5,
+    0.46
+   ]
+  },
+  "stovetop_main_group": {
+   "klasse": "Stovetop",
+   "pos": [
+    3.690000009230286,
+    -0.2949998615457178,
+    0.9274779434776252
+   ],
+   "groesse": [
+    0.7382051149341722,
+    0.55,
+    0.011421887551090467
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stovetop_main_group_main",
+   "pos_map": [
+    4.055,
+    -0.49,
+    0.927
+   ]
+  },
+  "counter_main_main_group": {
+   "klasse": "Counter",
+   "pos": [
+    4.2,
+    -0.325,
+    0.46
+   ],
+   "groesse": [
+    3.0,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "counter_main_main_group_main",
+   "pos_map": [
+    4.025,
+    -1.0,
+    0.46
+   ]
+  },
+  "counter_corner_2_main_group": {
+   "klasse": "Counter",
+   "pos": [
+    6.05,
+    -0.325,
+    0.46
+   ],
+   "groesse": [
+    0.7,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "counter_corner_2_main_group_main",
+   "pos_map": [
+    4.025,
+    -2.85,
+    0.46
+   ]
+  },
+  "cab_corner_main_group": {
+   "klasse": "Box",
+   "pos": [
+    0.325,
+    -0.2,
+    1.85
+   ],
+   "groesse": [
+    0.65,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_corner_main_group_main",
+   "pos_map": [
+    4.15,
+    2.875,
+    1.85
+   ]
+  },
+  "cab_corner_2_main_group": {
+   "klasse": "Box",
+   "pos": [
+    0.2,
+    -0.55,
+    1.85
+   ],
+   "groesse": [
+    0.4,
+    0.3,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_corner_2_main_group_main",
+   "pos_map": [
+    3.8,
+    3.0,
+    1.85
+   ]
+  },
+  "cab_1_main_group": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    0.9,
+    -0.2,
+    1.85
+   ],
+   "groesse": [
+    0.5,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_1_main_group_main",
+   "pos_map": [
+    4.15,
+    2.3,
+    1.85
+   ]
+  },
+  "hood_main_group": {
+   "klasse": "Hood",
+   "pos": [
+    3.690027951727185,
+    -0.29420055813485146,
+    2.007047286992046
+   ],
+   "groesse": [
+    0.7382051149341722,
+    0.5999999999999999,
+    0.6743962994775322
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "hood_main_group_main",
+   "pos_map": [
+    4.056,
+    -0.49,
+    2.007
+   ]
+  },
+  "shelves_main_group": {
+   "klasse": "OpenCabinet",
+   "pos": [
+    4.7,
+    -0.2,
+    1.85
+   ],
+   "groesse": [
+    0.95,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "shelves_main_group_main",
+   "pos_map": [
+    4.15,
+    -1.5,
+    1.85
+   ]
+  },
+  "cab_main_main_group": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    5.425,
+    -0.2,
+    1.85
+   ],
+   "groesse": [
+    0.5,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_main_main_group_main",
+   "pos_map": [
+    4.15,
+    -2.225,
+    1.85
+   ]
+  },
+  "cab_corner_3_main_group": {
+   "klasse": "Box",
+   "pos": [
+    6.05,
+    -0.2,
+    1.85
+   ],
+   "groesse": [
+    0.75,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_corner_3_main_group_main",
+   "pos_map": [
+    4.15,
+    -2.85,
+    1.85
+   ]
+  },
+  "cab_corner_4_main_group": {
+   "klasse": "Box",
+   "pos": [
+    6.225,
+    -0.55,
+    1.85
+   ],
+   "groesse": [
+    0.4,
+    0.3,
+    0.92
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "cab_corner_4_main_group_main",
+   "pos_map": [
+    3.8,
+    -3.025,
+    1.85
+   ]
+  },
+  "stack_1_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.2,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_1_main_group_base_main",
+   "pos_map": [
+    4.085,
+    2.0,
+    0.025
+   ]
+  },
+  "stack_1_main_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    1.2,
+    -0.3,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_1_main_group_1_main",
+   "pos_map": [
+    4.05,
+    2.0,
+    0.365
+   ]
+  },
+  "stack_1_main_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    0.95,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_1_main_group_2_main",
+   "pos_map": [
+    4.05,
+    2.25,
+    0.785
+   ]
+  },
+  "stack_1_main_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    1.45,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_1_main_group_3_main",
+   "pos_map": [
+    4.05,
+    1.75,
+    0.785
+   ]
+  },
+  "stack_2_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    2.2,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_2_main_group_base_main",
+   "pos_map": [
+    4.085,
+    1.0,
+    0.025
+   ]
+  },
+  "stack_2_main_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    2.2,
+    -0.3,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_2_main_group_1_main",
+   "pos_map": [
+    4.05,
+    1.0,
+    0.365
+   ]
+  },
+  "stack_2_main_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    1.9500000000000002,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_2_main_group_2_main",
+   "pos_map": [
+    4.05,
+    1.25,
+    0.785
+   ]
+  },
+  "stack_2_main_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    2.45,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_2_main_group_3_main",
+   "pos_map": [
+    4.05,
+    0.75,
+    0.785
+   ]
+  },
+  "stack_3_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    2.95,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_3_main_group_base_main",
+   "pos_map": [
+    4.085,
+    0.25,
+    0.025
+   ]
+  },
+  "stack_3_main_group_1": {
+   "klasse": "Drawer",
+   "pos": [
+    2.95,
+    -0.3,
+    0.15499999999999997
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_3_main_group_1_main",
+   "pos_map": [
+    4.05,
+    0.25,
+    0.155
+   ]
+  },
+  "stack_3_main_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    2.95,
+    -0.3,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_3_main_group_2_main",
+   "pos_map": [
+    4.05,
+    0.25,
+    0.365
+   ]
+  },
+  "stack_3_main_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    2.95,
+    -0.3,
+    0.575
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_3_main_group_3_main",
+   "pos_map": [
+    4.05,
+    0.25,
+    0.575
+   ]
+  },
+  "stack_3_main_group_4": {
+   "klasse": "Drawer",
+   "pos": [
+    2.95,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_3_main_group_4_main",
+   "pos_map": [
+    4.05,
+    0.25,
+    0.785
+   ]
+  },
+  "stack_4_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    3.7,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_4_main_group_base_main",
+   "pos_map": [
+    4.085,
+    -0.5,
+    0.025
+   ]
+  },
+  "stack_4_main_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    3.7,
+    -0.3,
+    0.47
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.84
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_4_main_group_1_main",
+   "pos_map": [
+    4.05,
+    -0.5,
+    0.47
+   ]
+  },
+  "stack_5_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    4.7,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_5_main_group_base_main",
+   "pos_map": [
+    4.085,
+    -1.5,
+    0.025
+   ]
+  },
+  "stack_5_main_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    4.7,
+    -0.3,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_5_main_group_1_main",
+   "pos_map": [
+    4.05,
+    -1.5,
+    0.365
+   ]
+  },
+  "stack_5_main_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    4.45,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_5_main_group_2_main",
+   "pos_map": [
+    4.05,
+    -1.25,
+    0.785
+   ]
+  },
+  "stack_5_main_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    4.95,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_5_main_group_3_main",
+   "pos_map": [
+    4.05,
+    -1.75,
+    0.785
+   ]
+  },
+  "stack_6_main_group_base": {
+   "klasse": "Box",
+   "pos": [
+    5.45,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_6_main_group_base_main",
+   "pos_map": [
+    4.085,
+    -2.25,
+    0.025
+   ]
+  },
+  "stack_6_main_group_1": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    5.45,
+    -0.3,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_6_main_group_1_main",
+   "pos_map": [
+    4.05,
+    -2.25,
+    0.365
+   ]
+  },
+  "stack_6_main_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    5.45,
+    -0.3,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "stack_6_main_group_2_main",
+   "pos_map": [
+    4.05,
+    -2.25,
+    0.785
+   ]
+  },
+  "knife_block_main_group": {
+   "klasse": "Accessory",
+   "pos": [
+    0.42839054450114505,
+    -0.06747415800437556,
+    1.0776080964071066
+   ],
+   "groesse": [
+    0.11999999999999998,
+    0.08764618314638979,
+    0.30897956812298977
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "knife_block_main_group_main",
+   "pos_map": [
+    4.283,
+    2.772,
+    1.078
+   ]
+  },
+  "paper_towel_main_group": {
+   "klasse": "Accessory",
+   "pos": [
+    1.2966073153338011,
+    -0.10375109924274192,
+    1.0880018057499834
+   ],
+   "groesse": [
+    0.1656344512944699,
+    0.16563565512779221,
+    0.32999999999999996
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "paper_towel_main_group_main",
+   "pos_map": [
+    4.246,
+    1.903,
+    1.088
+   ]
+  },
+  "utensil_set_main_group": {
+   "klasse": "Accessory",
+   "pos": [
+    6.10482807007872,
+    -0.14814550947449612,
+    1.0983681858153997
+   ],
+   "groesse": [
+    0.1691332733951239,
+    0.14583794055732793,
+    0.35
+   ],
+   "rot": [
+    0.0
+   ],
+   "root_body": "utensil_set_main_group_main",
+   "pos_map": [
+    4.202,
+    -2.905,
+    1.098
+   ]
+  },
+  "sink_island_group": {
+   "klasse": "Sink",
+   "pos": [
+    3.2000393777756058,
+    -2.300000001824246,
+    1.0063886696456417
+   ],
+   "groesse": [
+    0.8022024193601497,
+    0.53,
+    0.2773665334397793
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "sink_island_group_main",
+   "pos_map": [
+    2.05,
+    -0.0,
+    1.006
+   ]
+  },
+  "island_island_group": {
+   "klasse": "Counter",
+   "pos": [
+    3.2,
+    -2.725,
+    0.46
+   ],
+   "groesse": [
+    2.5,
+    1.55,
+    0.92
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_island_group_main",
+   "pos_map": [
+    1.625,
+    0.0,
+    0.46
+   ]
+  },
+  "island_stack_1_island_group_base": {
+   "klasse": "Box",
+   "pos": [
+    0.0,
+    -0.39,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_stack_1_island_group_base_main",
+   "pos_map": [
+    3.96,
+    3.2,
+    0.025
+   ]
+  },
+  "island_stack_1_island_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    3.2000393777756058,
+    -2.3000000018242464,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_stack_1_island_group_1_main",
+   "pos_map": [
+    2.05,
+    -0.0,
+    0.365
+   ]
+  },
+  "island_stack_1_island_group_2": {
+   "klasse": "PanelCabinet",
+   "pos": [
+    3.2000393777756058,
+    -2.3000000018242464,
+    0.7849999999999999
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_stack_1_island_group_2_main",
+   "pos_map": [
+    2.05,
+    -0.0,
+    0.785
+   ]
+  },
+  "dishwasher_island_group": {
+   "klasse": "Dishwasher",
+   "pos": [
+    4.025040998132748,
+    -2.2825498851310764,
+    0.4449999999999999
+   ],
+   "groesse": [
+    0.65,
+    0.6,
+    0.89
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "dishwasher_island_group_main",
+   "pos_map": [
+    2.067,
+    -0.825,
+    0.445
+   ]
+  },
+  "island_panel_cab_right_island_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.2,
+    0.035,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.1,
+    1.38,
+    0.05
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_panel_cab_right_island_group_base_main",
+   "pos_map": [
+    4.385,
+    2.0,
+    0.025
+   ]
+  },
+  "island_panel_cab_right_island_group_1": {
+   "klasse": "PanelCabinet",
+   "pos": [
+    2.000000005150813,
+    -2.7248888156924074,
+    0.47
+   ],
+   "groesse": [
+    0.1,
+    1.45,
+    0.84
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_panel_cab_right_island_group_1_main",
+   "pos_map": [
+    1.625,
+    1.2,
+    0.47
+   ]
+  },
+  "island_cab_right_island_group_base": {
+   "klasse": "Box",
+   "pos": [
+    0.825,
+    -0.39,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.65,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_cab_right_island_group_base_main",
+   "pos_map": [
+    3.96,
+    2.375,
+    0.025
+   ]
+  },
+  "island_cab_right_island_group_1": {
+   "klasse": "Drawer",
+   "pos": [
+    2.37503938131679,
+    -2.2999235626127765,
+    0.15499999999999997
+   ],
+   "groesse": [
+    0.65,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_cab_right_island_group_1_main",
+   "pos_map": [
+    2.05,
+    0.825,
+    0.155
+   ]
+  },
+  "island_cab_right_island_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    2.37503938131679,
+    -2.2999235626127765,
+    0.365
+   ],
+   "groesse": [
+    0.65,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_cab_right_island_group_2_main",
+   "pos_map": [
+    2.05,
+    0.825,
+    0.365
+   ]
+  },
+  "island_cab_right_island_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    2.37503938131679,
+    -2.2999235626127765,
+    0.575
+   ],
+   "groesse": [
+    0.65,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_cab_right_island_group_3_main",
+   "pos_map": [
+    2.05,
+    0.825,
+    0.575
+   ]
+  },
+  "island_cab_right_island_group_4": {
+   "klasse": "Drawer",
+   "pos": [
+    2.37503938131679,
+    -2.2999235626127765,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.65,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_cab_right_island_group_4_main",
+   "pos_map": [
+    2.05,
+    0.825,
+    0.785
+   ]
+  },
+  "island_panel_cab_left_island_group_base": {
+   "klasse": "Box",
+   "pos": [
+    -1.2,
+    0.035,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.1,
+    1.38,
+    0.05
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_panel_cab_left_island_group_base_main",
+   "pos_map": [
+    4.385,
+    4.4,
+    0.025
+   ]
+  },
+  "island_panel_cab_left_island_group_1": {
+   "klasse": "PanelCabinet",
+   "pos": [
+    4.399999994849187,
+    -2.725111184307593,
+    0.47
+   ],
+   "groesse": [
+    0.1,
+    1.45,
+    0.84
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_panel_cab_left_island_group_1_main",
+   "pos_map": [
+    1.625,
+    -1.2,
+    0.47
+   ]
+  },
+  "island_base_box_island_group": {
+   "klasse": "Box",
+   "pos": [
+    0.0,
+    0.2,
+    0.445
+   ],
+   "groesse": [
+    2.3,
+    0.1,
+    0.89
+   ],
+   "rot": [
+    3.1415
+   ],
+   "root_body": "island_base_box_island_group_main",
+   "pos_map": [
+    4.55,
+    3.2,
+    0.445
+   ]
+  },
+  "plant_island_group": {
+   "klasse": "Accessory",
+   "pos": [
+    3.3885760724340246,
+    -2.7402429690845236,
+    1.0583866409749014
+   ],
+   "groesse": [
+    0.17913457495631657,
+    0.1771390660056345,
+    0.27
+   ],
+   "rot": [
+    3.1414999961853027
+   ],
+   "root_body": "plant_island_group_main",
+   "pos_map": [
+    1.61,
+    -0.189,
+    1.058
+   ]
+  },
+  "counter_1_left_group": {
+   "klasse": "Counter",
+   "pos": [
+    0.32499338822862145,
+    -1.6999988062204847,
+    0.46
+   ],
+   "groesse": [
+    2.0,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "counter_1_left_group_main",
+   "pos_map": [
+    2.65,
+    2.875,
+    0.46
+   ]
+  },
+  "counter_corner_left_group": {
+   "klasse": "Counter",
+   "pos": [
+    0.324989531363263,
+    -0.6499988062275688,
+    0.46
+   ],
+   "groesse": [
+    0.1,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "counter_corner_left_group_main",
+   "pos_map": [
+    3.7,
+    2.875,
+    0.46
+   ]
+  },
+  "bottom_left_group_base": {
+   "klasse": "Box",
+   "pos": [
+    0.4,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.8,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "bottom_left_group_base_main",
+   "pos_map": [
+    4.085,
+    2.8,
+    0.025
+   ]
+  },
+  "bottom_left_group_1": {
+   "klasse": "Drawer",
+   "pos": [
+    0.2999985307159348,
+    -3.0999988980411675,
+    0.19999999999999998
+   ],
+   "groesse": [
+    0.8,
+    0.6,
+    0.3
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "bottom_left_group_1_main",
+   "pos_map": [
+    1.25,
+    2.9,
+    0.2
+   ]
+  },
+  "bottom_left_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    0.2999985307159348,
+    -3.0999988980411675,
+    0.5
+   ],
+   "groesse": [
+    0.8,
+    0.6,
+    0.3
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "bottom_left_group_2_main",
+   "pos_map": [
+    1.25,
+    2.9,
+    0.5
+   ]
+  },
+  "oven_left_group": {
+   "klasse": "Oven",
+   "pos": [
+    0.32902088324744055,
+    -3.0999987978274115,
+    0.9999999884404763
+   ],
+   "groesse": [
+    0.75,
+    0.6000000000000001,
+    0.6800000000000002
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "oven_left_group_main",
+   "pos_map": [
+    1.25,
+    2.871,
+    1.0
+   ]
+  },
+  "oven_housing_left_group": {
+   "klasse": "HousingCabinet",
+   "pos": [
+    0.2999985307159348,
+    -3.0999988980411675,
+    0.9999999999999999
+   ],
+   "groesse": [
+    0.8,
+    0.6,
+    0.7
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "oven_housing_left_group_main",
+   "pos_map": [
+    1.25,
+    2.9,
+    1.0
+   ]
+  },
+  "microwave_left_group": {
+   "klasse": "Microwave",
+   "pos": [
+    0.3795314185047634,
+    -3.0999985964320924,
+    1.625
+   ],
+   "groesse": [
+    0.75,
+    0.5,
+    0.4285172992036819
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "microwave_left_group_main",
+   "pos_map": [
+    1.25,
+    2.82,
+    1.625
+   ]
+  },
+  "micro_housing_left_group": {
+   "klasse": "HousingCabinet",
+   "pos": [
+    0.2999985307159348,
+    -3.0999988980411675,
+    1.625
+   ],
+   "groesse": [
+    0.8,
+    0.6,
+    0.55
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "micro_housing_left_group_main",
+   "pos_map": [
+    1.25,
+    2.9,
+    1.625
+   ]
+  },
+  "top_left_group": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    0.2999985307159348,
+    -3.0999988980411675,
+    2.25
+   ],
+   "groesse": [
+    0.8,
+    0.6,
+    0.7
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "top_left_group_main",
+   "pos_map": [
+    1.25,
+    2.9,
+    2.25
+   ]
+  },
+  "stack_1_left_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.05,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_1_left_group_base_main",
+   "pos_map": [
+    4.085,
+    2.15,
+    0.025
+   ]
+  },
+  "stack_1_left_group_1": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    0.2999961431326176,
+    -2.4499988980455525,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_1_left_group_1_main",
+   "pos_map": [
+    1.9,
+    2.9,
+    0.365
+   ]
+  },
+  "stack_1_left_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    0.2999961431326176,
+    -2.4499988980455525,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_1_left_group_2_main",
+   "pos_map": [
+    1.9,
+    2.9,
+    0.785
+   ]
+  },
+  "stack_2_left_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.8,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_2_left_group_base_main",
+   "pos_map": [
+    4.085,
+    1.4,
+    0.025
+   ]
+  },
+  "stack_2_left_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    0.29999338822879007,
+    -1.6999988980506124,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_2_left_group_1_main",
+   "pos_map": [
+    2.65,
+    2.9,
+    0.365
+   ]
+  },
+  "stack_2_left_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    0.2999943065300659,
+    -1.9499988980489258,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_2_left_group_2_main",
+   "pos_map": [
+    2.4,
+    2.9,
+    0.785
+   ]
+  },
+  "stack_2_left_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    0.29999246992751427,
+    -1.449998898052299,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_2_left_group_3_main",
+   "pos_map": [
+    2.9,
+    2.9,
+    0.785
+   ]
+  },
+  "stack_3_left_group_base": {
+   "klasse": "Box",
+   "pos": [
+    2.55,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_3_left_group_base_main",
+   "pos_map": [
+    4.085,
+    0.65,
+    0.025
+   ]
+  },
+  "stack_3_left_group_1": {
+   "klasse": "Drawer",
+   "pos": [
+    0.29999063332496256,
+    -0.9499988980556724,
+    0.15499999999999997
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_3_left_group_1_main",
+   "pos_map": [
+    3.4,
+    2.9,
+    0.155
+   ]
+  },
+  "stack_3_left_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    0.29999063332496256,
+    -0.9499988980556724,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_3_left_group_2_main",
+   "pos_map": [
+    3.4,
+    2.9,
+    0.365
+   ]
+  },
+  "stack_3_left_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    0.29999063332496256,
+    -0.9499988980556724,
+    0.575
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_3_left_group_3_main",
+   "pos_map": [
+    3.4,
+    2.9,
+    0.575
+   ]
+  },
+  "stack_3_left_group_4": {
+   "klasse": "Drawer",
+   "pos": [
+    0.29999063332496256,
+    -0.9499988980556724,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "stack_3_left_group_4_main",
+   "pos_map": [
+    3.4,
+    2.9,
+    0.785
+   ]
+  },
+  "shelves_left_group": {
+   "klasse": "OpenCabinet",
+   "pos": [
+    0.19999430653074057,
+    -1.949999265369436,
+    1.85
+   ],
+   "groesse": [
+    1.5,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "shelves_left_group_main",
+   "pos_map": [
+    2.4,
+    3.0,
+    1.85
+   ]
+  },
+  "cab_2_left_group": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    0.1999906333256372,
+    -0.9499992653761828,
+    1.85
+   ],
+   "groesse": [
+    0.5,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    1.5708
+   ],
+   "root_body": "cab_2_left_group_main",
+   "pos_map": [
+    3.4,
+    3.0,
+    1.85
+   ]
+  },
+  "toaster_oven_left_group": {
+   "klasse": "ToasterOven",
+   "pos": [
+    0.2973382718051528,
+    -1.5846135911598762,
+    1.0802250800270619
+   ],
+   "groesse": [
+    0.4840618915961632,
+    0.31999999999999995,
+    0.3144574903859965
+   ],
+   "rot": [
+    1.5707999467849731
+   ],
+   "root_body": "toaster_oven_left_group_main",
+   "pos_map": [
+    2.765,
+    2.903,
+    1.08
+   ]
+  },
+  "counter_1_right_group": {
+   "klasse": "Counter",
+   "pos": [
+    6.0749963267970895,
+    -1.6999988062015952,
+    0.46
+   ],
+   "groesse": [
+    2.0,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "counter_1_right_group_main",
+   "pos_map": [
+    2.65,
+    -2.875,
+    0.46
+   ]
+  },
+  "counter_corner_right_group": {
+   "klasse": "Counter",
+   "pos": [
+    6.075000183662448,
+    -0.6499988062086787,
+    0.46
+   ],
+   "groesse": [
+    0.1,
+    0.65,
+    0.92
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "counter_corner_right_group_main",
+   "pos_map": [
+    3.7,
+    -2.875,
+    0.46
+   ]
+  },
+  "fridge_right_group": {
+   "klasse": "FridgeSideBySide",
+   "pos": [
+    5.957419295393233,
+    -3.144998374326791,
+    0.875
+   ],
+   "groesse": [
+    0.85,
+    0.8,
+    1.75
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "fridge_right_group_main",
+   "pos_map": [
+    1.205,
+    -2.757,
+    0.875
+   ]
+  },
+  "fridge_housing_right_group": {
+   "klasse": "HousingCabinet",
+   "pos": [
+    6.009991019016153,
+    -3.1449985674335146,
+    0.885
+   ],
+   "groesse": [
+    0.89,
+    0.78,
+    1.77
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "fridge_housing_right_group_main",
+   "pos_map": [
+    1.205,
+    -2.81,
+    0.885
+   ]
+  },
+  "stack_1_right_group_base": {
+   "klasse": "Box",
+   "pos": [
+    0.5,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    1.0,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_1_right_group_base_main",
+   "pos_map": [
+    4.085,
+    2.7,
+    0.025
+   ]
+  },
+  "stack_1_right_group_1": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    6.099998163399473,
+    -1.1999988980350957,
+    0.365
+   ],
+   "groesse": [
+    1.0,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_1_right_group_1_main",
+   "pos_map": [
+    3.15,
+    -2.9,
+    0.365
+   ]
+  },
+  "stack_1_right_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099999081700749,
+    -0.9499988980367824,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_1_right_group_2_main",
+   "pos_map": [
+    3.4,
+    -2.9,
+    0.785
+   ]
+  },
+  "stack_1_right_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099997245098197,
+    -1.4499988980334093,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_1_right_group_3_main",
+   "pos_map": [
+    2.9,
+    -2.9,
+    0.785
+   ]
+  },
+  "stack_2_right_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.25,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_2_right_group_base_main",
+   "pos_map": [
+    4.085,
+    1.95,
+    0.025
+   ]
+  },
+  "stack_2_right_group_1": {
+   "klasse": "SingleCabinet",
+   "pos": [
+    6.099995408495645,
+    -1.9499988980300362,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.63
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_2_right_group_1_main",
+   "pos_map": [
+    2.4,
+    -2.9,
+    0.365
+   ]
+  },
+  "stack_2_right_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099995408495645,
+    -1.9499988980300362,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_2_right_group_2_main",
+   "pos_map": [
+    2.4,
+    -2.9,
+    0.785
+   ]
+  },
+  "stack_3_right_group_base": {
+   "klasse": "Box",
+   "pos": [
+    1.75,
+    -0.265,
+    0.024999999999999988
+   ],
+   "groesse": [
+    0.5,
+    0.53,
+    0.05
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_3_right_group_base_main",
+   "pos_map": [
+    4.085,
+    1.45,
+    0.025
+   ]
+  },
+  "stack_3_right_group_1": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099993571893093,
+    -2.449998898026663,
+    0.15499999999999997
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_3_right_group_1_main",
+   "pos_map": [
+    1.9,
+    -2.9,
+    0.155
+   ]
+  },
+  "stack_3_right_group_2": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099993571893093,
+    -2.449998898026663,
+    0.365
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_3_right_group_2_main",
+   "pos_map": [
+    1.9,
+    -2.9,
+    0.365
+   ]
+  },
+  "stack_3_right_group_3": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099993571893093,
+    -2.449998898026663,
+    0.575
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_3_right_group_3_main",
+   "pos_map": [
+    1.9,
+    -2.9,
+    0.575
+   ]
+  },
+  "stack_3_right_group_4": {
+   "klasse": "Drawer",
+   "pos": [
+    6.099993571893093,
+    -2.449998898026663,
+    0.7849999999999999
+   ],
+   "groesse": [
+    0.5,
+    0.6,
+    0.21
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "stack_3_right_group_4_main",
+   "pos_map": [
+    1.9,
+    -2.9,
+    0.785
+   ]
+  },
+  "cab_1_right_group": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    6.1999981633987975,
+    -1.1999992653556062,
+    1.85
+   ],
+   "groesse": [
+    1.0,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "cab_1_right_group_main",
+   "pos_map": [
+    3.15,
+    -3.0,
+    1.85
+   ]
+  },
+  "cab_2_right_group": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    6.199994490193695,
+    -2.19999926534886,
+    1.85
+   ],
+   "groesse": [
+    1.0,
+    0.4,
+    0.92
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "cab_2_right_group_main",
+   "pos_map": [
+    2.15,
+    -3.0,
+    1.85
+   ]
+  },
+  "fridge_cab_right_group": {
+   "klasse": "HingeCabinet",
+   "pos": [
+    6.199991019014872,
+    -3.1449992653424843,
+    2.04
+   ],
+   "groesse": [
+    0.89,
+    0.4,
+    0.54
+   ],
+   "rot": [
+    -1.5708
+   ],
+   "root_body": "fridge_cab_right_group_main",
+   "pos_map": [
+    1.205,
+    -3.0,
+    2.04
+   ]
+  },
+  "coffee_machine_right_group": {
+   "klasse": "CoffeeMachine",
+   "pos": [
+    6.129590663112642,
+    -1.522373422568655,
+    1.073
+   ],
+   "groesse": [
+    0.1243635567902712,
+    0.4968047824611731,
+    0.3
+   ],
+   "rot": [
+    -1.5707999467849731
+   ],
+   "root_body": "coffee_machine_right_group_main",
+   "pos_map": [
+    2.828,
+    -2.93,
+    1.073
+   ]
+  },
+  "toaster_right_group": {
+   "klasse": "Toaster",
+   "pos": [
+    6.157095482715525,
+    -2.2189335626743416,
+    1.0180000016413502
+   ],
+   "groesse": [
+    0.3305969951644365,
+    0.3024989205514512,
+    0.19
+   ],
+   "rot": [
+    -1.5707999467849731
+   ],
+   "root_body": "toaster_right_group_main",
+   "pos_map": [
+    2.131,
+    -2.957,
+    1.018
+   ]
+  }
+ }
+}

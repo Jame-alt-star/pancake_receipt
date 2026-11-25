@@ -18,11 +18,16 @@ Missionen (`roboter_task_planning/missions/*.yaml`) enthalten nur noch Ziele und
 | `testwelt3d` | wie `testwelt`, zusätzlich niedrige Palette (nur mit 3D-Lidar sichtbar) |
 | `demo_lager` | Lagerhalle mit Regalen und Kistenstapeln, Büro hinter einer Tür (Demo-Video) |
 | `libero_kueche` | Küche mit Fixtures und Objekten aus LIBERO (Herd, Schubladenschrank, Mikrowelle, Geschirr), mit Gelenken; `szene.xml` wird erzeugt, siehe `welten/libero_kueche/README.md` |
+| `robocasa_kueche7` | RoboCasa-Testküche Layout 7 / Style 7 (U-Form mit Insel, 121 Fixtures, 105 Gelenke); `szene.xml` wird mit RoboCasa erzeugt, siehe `welten/robocasa_kueche7/README.md` |
 
 Konventionen in `szene.xml`: Hindernisse in geom group 2 (kollidieren und sind für das simulierte Lidar sichtbar),
 reine Dekoration ohne Kollision (`contype`/`conaffinity` 0). Der Roboter startet bei (0, 0) mit Blick nach +x;
 `map` = `odom` = diese Startpose, solange keine gespeicherte Karte genutzt wird.
 
+Importierte Welten (RoboCasa) trennen das: Optik in group 1, Kollision in group 3 (nicht gerendert), je Teil ein
+unsichtbarer Ersatzquader in group 4. Das Lidar und `karte_aus_szene.py` nutzen die Gruppen 2 und 4.
+
 Neue Welt: Ordner anlegen, beide Dateien schreiben, `colcon build`. Unterordner (z. B. Meshes) werden mit installiert;
-`szene.xml` verweist relativ auf sie. Welten mit Teilen aus LIBERO erzeugt `roboter_welten/libero_import.py`. Für die echte Halle kämen hier eine gespeicherte
+`szene.xml` verweist relativ auf sie. Welten mit Teilen aus LIBERO erzeugt `roboter_welten/libero_import.py`, ganze
+RoboCasa-Küchen `roboter_welten/robocasa_import.py` (mit `robocasa_export.py` in der RoboCasa-Umgebung). Für die echte Halle kämen hier eine gespeicherte
 Karte (`karte.yaml`/`.pgm`) und per Teach-in erfasste Orte hinzu; `szene.xml` entfällt dort.

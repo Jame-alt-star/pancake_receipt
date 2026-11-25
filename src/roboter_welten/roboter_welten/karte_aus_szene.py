@@ -1,8 +1,9 @@
 """Belegungskarte (Nav2-Format: karte.pgm + karte.yaml) aus der Szene einer Welt.
 
 In der Simulation ist die Umgebung bekannt; statt sie erst per SLAM abzufahren, wird die Karte direkt aus den
-Hindernissen der Szene gerechnet (alle Quader der geom group 2, die das Hoehenband 0,12-1,9 m schneiden - dasselbe
-Band, das die Sensorik als Hindernis wertet). Fuer eine echte Halle wird die Karte stattdessen einmal mit SLAM
+Hindernissen der Szene gerechnet (alle Geoms der geom groups 2 und 4 - dieselben, die das Lidar sieht -, die das
+Hoehenband 0,12-1,9 m schneiden - dasselbe Band, das die Sensorik als Hindernis wertet; Quader exakt, Meshes ueber
+ihre Huellbox). Fuer eine echte Halle wird die Karte stattdessen einmal mit SLAM
 aufgenommen und gespeichert (ros2 run nav2_map_server map_saver_cli -f welten/<name>/karte).
 
 Kartenursprung = map-Frame = Startpose des Roboters (0, 0, Blick +x), wie die Orte in orte.yaml.
@@ -20,21 +21,29 @@ AUFLOESUNG = 0.05                 # m je Zelle
 RAND = 1.0                        # m Rand um die Welt
 BAND = (0.12, 1.9)                # Hoehenband der Hindernisse [m], wie roboter_sensorik
 FREI, BELEGT = 254, 0             # PGM-Werte (map_server: trinary, negate 0)
+GRUPPEN = (2, 4)                  # Hindernisse (2) und unsichtbare Ersatzquader importierter Welten (4), wie das Lidar
 
 
 def quader(szene_xml: str):
-    """(x0, y0, x1, y1) aller Hindernis-Quader (geom group 2, Box, schneidet das Hoehenband) - ohne Roboter."""
+    """(x0, y0, x1, y1) aller Hindernisse (geom group 2, schneidet das Hoehenband) - ohne Roboter.
+    Quader exakt; andere Formen (Meshes der RoboCasa-Kuechen, Zylinder, ...) ueber ihre lokale Huellbox
+    (geom_aabb), also etwas grosszuegig - fuer die Navigation die sichere Seite. Ebenen zaehlen nicht."""
     import mujoco
     m = mujoco.MjModel.from_xml_path(szene_xml)
     d = mujoco.MjData(m)
     mujoco.mj_kinematics(m, d)
     boxen = []
     for g in range(m.ngeom):
-        if m.geom_group[g] != 2 or m.geom_type[g] != mujoco.mjtGeom.mjGEOM_BOX:
+        if m.geom_group[g] not in GRUPPEN or m.geom_type[g] == mujoco.mjtGeom.mjGEOM_PLANE:
             continue
         R = d.geom_xmat[g].reshape(3, 3)
-        halb = np.abs(R) @ m.geom_size[g]             # achsparallele Huelle (auch fuer gedrehte Quader)
-        p = d.geom_xpos[g]
+        if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_BOX:
+            halb = np.abs(R) @ m.geom_size[g]         # achsparallele Huelle (auch fuer gedrehte Quader)
+            p = d.geom_xpos[g]
+        else:
+            mitte, lokal = m.geom_aabb[g, :3], m.geom_aabb[g, 3:]
+            halb = np.abs(R) @ lokal
+            p = d.geom_xpos[g] + R @ mitte
         if p[2] + halb[2] < BAND[0] or p[2] - halb[2] > BAND[1]:
             continue
         boxen.append((p[0] - halb[0], p[1] - halb[1], p[0] + halb[0], p[1] + halb[1]))

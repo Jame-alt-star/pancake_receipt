@@ -28,7 +28,23 @@ def lade_modell(roboter_xml: str, welt_szene: Optional[str] = None, kamera: Opti
     if kamera:
         from roboter_simulation.kamera import fuege_kamera_hinzu
         fuege_kamera_hinzu(roboter, kamera)
-    return roboter.compile()
+    modell = roboter.compile()
+    del roboter
+    _speicher_zurueckgeben()
+    return modell
+
+
+def _speicher_zurueckgeben():
+    """Beim Kompilieren grosser Welten (robocasa_kueche7: ~2700 Geoms, ~200 Meshes) entsteht viel Zwischenspeicher, den
+    glibc nach dem Freigeben behaelt (gemessen: RSS 1024 MB, nach malloc_trim 686 MB). WSL2 hat ~3,5 GB fuer die ganze
+    Pipeline; Auslagern liess dort Nav2 sekundenlang stehen. Ohne glibc (anderes System) passiert nichts."""
+    try:
+        import ctypes
+        import gc
+        gc.collect()
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def lade_welt(roboter_xml: str, welt: str = "", kamera: Optional[dict] = None) -> mujoco.MjModel:

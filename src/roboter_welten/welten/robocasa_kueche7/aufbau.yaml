@@ -1,0 +1,19 @@
+# QUELLE fuer szene.xml: welche RoboCasa-Kueche und wo der Roboter in ihr startet. robocasa_import.py exportiert die
+# Kueche mit RoboCasa (robocasa_export.py), entfernt den RoboCasa-Roboter, kopiert die benutzten Dateien nach
+# robocasa/ und schreibt szene.xml. Siehe README.md in diesem Ordner.
+
+layout: 7          # U-shaped Island Layout (RoboCasa-Testkueche, kitchen_layouts/test/layout007.yaml)
+style: 7           # Mediterranean Style (kitchen_styles/test/style007.yaml)
+seed: 0            # fest: zufaellige Varianten (z. B. Glas-, Glasdeckel-Modell) jedes Mal gleich
+
+# Startpose des Roboters in RoboCasa-Kuechenkoordinaten. Sie wird zum Ursprung des map-Frames (Blick = +x map).
+# RoboCasa-Kueche 7: Raum x 0..6.4, y -5.0..0; Insel x 1.95..4.45, y -3.5..-1.95; Hocker bei y -3.42.
+# Start im freien Bereich vor der Insel (vorne), Blick auf die Insel (+y Kueche).
+start:
+  xy: [3.2, -4.35]
+  blick_grad: 90
+
+boden_praefixe: [floor]      # Boden: ohne Kollision (den Boden stellt das Robotermodell), kein Lidar-/Kartenhindernis
+max_textur: 512              # px; RoboCasa liefert 1024er Texturen, die Kamera rendert 320 x 240 (spart ~65 MB RAM)
+
+# Quellen der Dateien (Standard): ~/tools/robocasa/robocasa/models/assets, ~/tools/robosuite/robosuite/models/assets

@@ -1,0 +1,9 @@
+# Belegungskarte der Welt, aus szene.xml gerechnet (roboter_welten/karte_aus_szene.py). Nicht von Hand
+# aendern: nach einer Aenderung der Szene neu erzeugen.
+image: karte.pgm
+mode: trinary
+resolution: 0.05
+origin: [-1.900, -4.450, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
